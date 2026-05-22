@@ -34,14 +34,17 @@ $targets = @{
 
 function Get-PythonCommand {
   if (Get-Command py -ErrorAction SilentlyContinue) {
-    return "py"
+    & py -3.11 --version *> $null
+    if ($LASTEXITCODE -eq 0) {
+      return "py -3.11"
+    }
   }
 
-  if (Get-Command python -ErrorAction SilentlyContinue) {
-    return "python"
+  if (Get-Command python3.11 -ErrorAction SilentlyContinue) {
+    return "python3.11"
   }
 
-  throw "Python launcher not found. Install Python first, then run this script again."
+  throw "Python 3.11 is required. Install Python 3.11.9 and run this script again."
 }
 
 function Get-VenvPythonPath {
@@ -68,9 +71,18 @@ function Test-NpmInCmd {
     throw "cmd.exe was not found."
   }
 
+  $nodeVersion = (& $cmdPath /d /c "node -p process.versions.node" 2>$null | Select-Object -First 1).Trim()
+  if (-not $nodeVersion) {
+    throw "Node.js was not found in cmd. Install Node.js 22 and run this script again."
+  }
+
+  if (-not $nodeVersion.StartsWith("22.")) {
+    throw "Node.js 22 is required. Current version: $nodeVersion"
+  }
+
   & $cmdPath /d /c "npm --version" *> $null
   if ($LASTEXITCODE -ne 0) {
-    throw "npm was not found in cmd. Install Node.js first, then run this script again."
+    throw "npm was not found in cmd. Install Node.js 22 and run this script again."
   }
 
   return $cmdPath
@@ -100,8 +112,8 @@ function Initialize-Venv {
 
   try {
     if (-not (Test-Path $venvPath)) {
-      Write-Host "Creating virtual environment..."
-      & $pythonCommand -m venv --without-pip $venvPath
+      Write-Host "Creating virtual environment with Python 3.11..."
+      Invoke-Expression "& $pythonCommand -m venv --without-pip `"$venvPath`""
     } else {
       Write-Host "Virtual environment already exists."
     }
@@ -119,8 +131,8 @@ function Initialize-Venv {
     }
 
     Write-Host "Installing packages from $($config.Requirements)..."
-    & $pythonCommand -m pip install --python $venvPython --upgrade pip
-    & $pythonCommand -m pip install --python $venvPython -r $requirementsPath
+    Invoke-Expression "& $pythonCommand -m pip install --python `"$venvPython`" --upgrade pip"
+    Invoke-Expression "& $pythonCommand -m pip install --python `"$venvPython`" -r `"$requirementsPath`""
   } finally {
     $env:TEMP = $originalTemp
     $env:TMP = $originalTmp

@@ -120,9 +120,21 @@ exit /b 0
 :setup_frontend
 set "PROJECT_PATH=%REPO_ROOT%\frontend"
 set "LOCKFILE_PATH=%PROJECT_PATH%\package-lock.json"
+set "NODE_VERSION="
 
 echo.
 echo [Frontend] %PROJECT_PATH%
+
+for /f "usebackq delims=" %%V in (`cmd /d /c "node -p process.versions.node" 2^>nul`) do set "NODE_VERSION=%%V"
+if not defined NODE_VERSION (
+  echo Node.js was not found in cmd. Install Node.js 22 and run this script again.
+  exit /b 1
+)
+
+if not "%NODE_VERSION:~0,3%"=="22." (
+  echo Node.js 22 is required. Current version: %NODE_VERSION%
+  exit /b 1
+)
 
 cmd /d /c "npm --version" >nul 2>&1
 if errorlevel 1 (
