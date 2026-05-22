@@ -1,0 +1,99 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env*.example
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Node / frontend
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.vite/
+vite.svg
+frontend/dist/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Databases / local state
+*.sqlite3
+*.db
+backend/*.sqlite3
+backend/backend/*.sqlite3
+
+# Runtime / temp files
+*.pid
+*.pid.lock
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Arduino / embedded build outputs
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.a
+*.d
+*.obj
+*.exe
+.pio/
+
+# Vercel / v0 leftovers
+.vercel/
+.v0-trash/
+.snowflake/
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts

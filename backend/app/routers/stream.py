@@ -1,0 +1,123 @@
+import base64
+import os
+import threading
+import time
+from collections.abc import Iterator
+from urllib.request import urlopen
+
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
+
+router = APIRouter(prefix="/api/stream", tags=["stream"])
+_camera_lock = threading.Lock()
+
+_FRAME = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z"
+)
+
+
+@router.get("/url")
+def stream_url():
+    camera_stream_url = os.getenv("CAMERA_STREAM_URL", "").strip()
+    if camera_stream_url and os.getenv("CAMERA_PROXY", "false").lower() != "true":
+        return {"url": camera_stream_url, "mode": "external"}
+
+    base_url = os.getenv("STREAM_BASE_URL", "http://localhost:8000/api/stream").rstrip("/")
+
+    if camera_stream_url or os.getenv("SIMULATION_MODE", "true").lower() != "true":
+        return {"url": f"{base_url}/live.mjpg", "mode": "live"}
+
+    if os.getenv("SIMULATION_MODE", "true").lower() == "true":
+        return {"url": f"{base_url}/simulated.mjpg", "mode": "simulated"}
+
+    return {"url": f"{base_url}/live.mjpg", "mode": "live"}
+
+
+@router.get("/live.mjpg")
+def live_mjpeg():
+    camera_stream_url = os.getenv("CAMERA_STREAM_URL", "").strip()
+    if camera_stream_url:
+        return StreamingResponse(
+            _proxy_mjpeg(camera_stream_url),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    return StreamingResponse(
+        _opencv_mjpeg(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@router.get("/simulated.mjpg")
+def simulated_mjpeg():
+    return StreamingResponse(_frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+def _frame_generator() -> Iterator[bytes]:
+    while True:
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + _FRAME + b"\r\n"
+        time.sleep(0.25)
+
+
+def _proxy_mjpeg(url: str) -> Iterator[bytes]:
+    with urlopen(url, timeout=10) as response:
+        while True:
+            chunk = response.read(8192)
+            if not chunk:
+                break
+            yield chunk
+
+
+def _opencv_mjpeg() -> Iterator[bytes]:
+    try:
+        import cv2
+    except ImportError:
+        yield from _frame_generator()
+        return
+
+    source = os.getenv("CAMERA_SOURCE", "0").strip()
+    capture_source = int(source) if source.isdigit() else source
+    if isinstance(capture_source, int) and hasattr(cv2, "CAP_AVFOUNDATION"):
+        capture = cv2.VideoCapture(capture_source, cv2.CAP_AVFOUNDATION)
+    else:
+        capture = cv2.VideoCapture(capture_source)
+
+    if not capture.isOpened():
+        yield from _frame_generator()
+        return
+
+    width = int(os.getenv("CAMERA_WIDTH", "640"))
+    height = int(os.getenv("CAMERA_HEIGHT", "360"))
+    fps = max(1, int(os.getenv("CAMERA_FPS", "10")))
+    frame_delay = 1 / fps
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    capture.set(cv2.CAP_PROP_FPS, fps)
+
+    if not _camera_lock.acquire(blocking=False):
+        yield from _frame_generator()
+        capture.release()
+        return
+
+    try:
+        missed_frames = 0
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                missed_frames += 1
+                if missed_frames > 30:
+                    yield from _frame_generator()
+                    return
+                time.sleep(0.05)
+                continue
+
+            missed_frames = 0
+            ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            if not ok:
+                continue
+
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
+            time.sleep(frame_delay)
+    finally:
+        capture.release()
+        _camera_lock.release()

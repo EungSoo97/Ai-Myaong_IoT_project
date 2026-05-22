@@ -1,0 +1,491 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2f3336;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404448;
+}
+
+/* Safe area for mobile */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Touch optimization */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Prevent text selection on UI elements */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Active state for touch */
+.touch-active:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+
+.login-stage {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  padding: 7vh 20px;
+  perspective: 900px;
+  background: #0f1419;
+}
+
+.login-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 22% 20%, rgba(255, 138, 120, 0.18), transparent 26%),
+    radial-gradient(circle at 82% 18%, rgba(29, 155, 240, 0.15), transparent 25%),
+    radial-gradient(circle at 50% 86%, rgba(255, 138, 120, 0.12), transparent 34%),
+    linear-gradient(180deg, #121923 0%, #0f1419 58%, #131a22 100%);
+}
+
+.login-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255, 138, 120, 0.34) 0 4px, transparent 5px);
+  background-position: 8vw 12vh, 86vw 72vh;
+  background-size: 42px 42px, 42px 42px, 210px 210px;
+  opacity: 0.72;
+}
+
+.cat-scene {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.login-brand {
+  position: absolute;
+  top: clamp(24px, 5vh, 54px);
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.18em;
+  transform: translateX(-50%);
+  color: #f7ede6;
+  font-size: clamp(34px, 7vw, 92px);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+}
+
+.login-brand span,
+.login-brand i {
+  color: #ff8a78;
+  font-style: normal;
+}
+
+.login-brand b {
+  color: #f7ede6;
+}
+
+.logo-cat {
+  position: absolute;
+  z-index: 1;
+  width: clamp(250px, 34vw, 500px);
+  height: clamp(180px, 24vw, 360px);
+  transform: translate(-50%, -50%) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
+  transition: left 90ms linear, top 90ms linear, transform 110ms ease-out;
+  filter: drop-shadow(0 26px 24px rgba(0, 0, 0, 0.34));
+}
+
+.cat-sprite {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(var(--face));
+  transform-style: preserve-3d;
+}
+
+.logo-cat.is-walking .cat-sprite {
+  animation: cat-body-bob 420ms steps(2, end) infinite;
+}
+
+.cat-shadow {
+  position: absolute;
+  left: 22%;
+  right: 18%;
+  bottom: 2%;
+  height: 14%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  filter: blur(10px);
+  transform: translateZ(-10px);
+}
+
+.cat-body {
+  position: absolute;
+  left: 26%;
+  bottom: 18%;
+  width: 48%;
+  height: 34%;
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, #5c3a2b 0%, #38231b 78%);
+  box-shadow:
+    inset -16px -18px 0 rgba(0, 0, 0, 0.14),
+    0 0 0 4px rgba(255, 255, 255, 0.035);
+  transform: translateZ(20px);
+}
+
+.cat-body::before,
+.cat-body::after {
+  content: "";
+  position: absolute;
+  background: #5c3a2b;
+  box-shadow: inset -8px -8px 0 rgba(0, 0, 0, 0.13);
+}
+
+.cat-body::before {
+  left: -8%;
+  top: 24%;
+  width: 16%;
+  height: 44%;
+  border-radius: 6px 0 0 6px;
+}
+
+.cat-body::after {
+  right: -6%;
+  top: 18%;
+  width: 12%;
+  height: 52%;
+  border-radius: 0 6px 6px 0;
+}
+
+.cat-head {
+  position: absolute;
+  left: 52%;
+  top: 14%;
+  width: 34%;
+  height: 45%;
+  border-radius: 7px;
+  background:
+    linear-gradient(145deg, #5c3a2b 0%, #3b261d 80%);
+  box-shadow:
+    inset -14px -16px 0 rgba(0, 0, 0, 0.14),
+    0 0 0 4px rgba(255, 255, 255, 0.035);
+  transform: translateX(-50%) translateZ(48px);
+}
+
+.cat-ear {
+  position: absolute;
+  top: -28%;
+  width: 30%;
+  height: 38%;
+  background: #3b261d;
+  clip-path: polygon(50% 0, 6% 100%, 100% 100%);
+}
+
+.cat-ear.left {
+  left: 1%;
+  transform: rotate(-12deg);
+}
+
+.cat-ear.right {
+  right: 1%;
+  transform: rotate(12deg);
+}
+
+.cat-inner-ear {
+  position: absolute;
+  top: -13%;
+  width: 13%;
+  height: 18%;
+  background: #ff9b91;
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+  z-index: 2;
+}
+
+.cat-inner-ear.left {
+  left: 8%;
+  transform: rotate(-12deg);
+}
+
+.cat-inner-ear.right {
+  right: 8%;
+  transform: rotate(12deg);
+}
+
+.cat-eye-dot {
+  position: absolute;
+  top: 43%;
+  width: 10%;
+  height: 12%;
+  border-radius: 3px;
+  background: #fffdfa;
+  transform: translate(var(--look-x), var(--look-y));
+  transition: transform 65ms linear;
+}
+
+.cat-eye-dot.left {
+  left: 26%;
+}
+
+.cat-eye-dot.right {
+  right: 26%;
+}
+
+.cat-mouth {
+  position: absolute;
+  left: 50%;
+  top: 61%;
+  width: 18%;
+  height: 17%;
+  transform: translateX(-50%);
+}
+
+.cat-mouth::before,
+.cat-mouth::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  width: 50%;
+  height: 62%;
+  border-bottom: 4px solid #fffdfa;
+  border-radius: 0 0 999px 999px;
+}
+
+.cat-mouth::before {
+  left: 0;
+  border-right: 3px solid #fffdfa;
+}
+
+.cat-mouth::after {
+  right: 0;
+  border-left: 3px solid #fffdfa;
+}
+
+.cat-mouth {
+  background:
+    radial-gradient(circle at 50% 13%, #fffdfa 0 5px, transparent 6px);
+}
+
+.cat-whisker {
+  position: absolute;
+  top: 58%;
+  width: 20%;
+  height: 3px;
+  border-radius: 2px;
+  background: #fffdfa;
+}
+
+.cat-whisker.left {
+  left: 4%;
+}
+
+.cat-whisker.right {
+  right: 4%;
+}
+
+.cat-whisker.left.one,
+.cat-whisker.right.two {
+  transform: rotate(11deg);
+}
+
+.cat-whisker.left.two,
+.cat-whisker.right.one {
+  transform: rotate(-11deg);
+}
+
+.cat-whisker.two {
+  top: 68%;
+}
+
+.cat-tail {
+  position: absolute;
+  right: 8%;
+  bottom: 36%;
+  width: 30%;
+  height: 24%;
+  border: clamp(12px, 1.8vw, 24px) solid #3d271d;
+  border-left-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 0 80% 0 0;
+  transform: rotate(16deg) translateZ(4px);
+  transform-origin: 5% 85%;
+}
+
+.logo-cat.is-walking .cat-tail {
+  animation: tail-sway 520ms steps(2, end) infinite;
+}
+
+.cat-leg {
+  position: absolute;
+  bottom: -32%;
+  width: 13%;
+  height: 46%;
+  border-radius: 3px;
+  background: #3a251c;
+  transform-origin: 50% 10%;
+}
+
+.cat-leg.front-left {
+  left: 23%;
+}
+
+.cat-leg.front-right {
+  left: 40%;
+  background: #2f1e17;
+}
+
+.cat-leg.back-left {
+  right: 38%;
+}
+
+.cat-leg.back-right {
+  right: 21%;
+  background: #2f1e17;
+}
+
+.logo-cat.is-walking .cat-leg.front-left,
+.logo-cat.is-walking .cat-leg.back-right {
+  animation: leg-step-a 420ms steps(2, end) infinite;
+}
+
+.logo-cat.is-walking .cat-leg.front-right,
+.logo-cat.is-walking .cat-leg.back-left {
+  animation: leg-step-b 420ms steps(2, end) infinite;
+}
+
+.login-panel {
+  position: relative;
+  z-index: 3;
+  width: min(100%, 320px);
+  padding: 20px;
+  border: 1px solid rgba(231, 233, 234, 0.14);
+  border-radius: 12px;
+  background: rgba(22, 32, 42, 0.86);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px);
+}
+
+.login-panel h1,
+.login-panel input {
+  color: #e7e9ea;
+}
+
+.login-panel label > span:first-child,
+.login-panel p {
+  color: #71767b;
+}
+
+.login-panel label > span:nth-child(2) {
+  border-color: #2f3336;
+  background: #1e2732;
+}
+
+.login-panel button {
+  background: #ff8a78;
+}
+
+.login-panel button:hover {
+  background: #ff7864;
+}
+
+@keyframes cat-body-bob {
+  0%, 100% {
+    transform: scaleX(var(--face)) translateY(0);
+  }
+  50% {
+    transform: scaleX(var(--face)) translateY(-7px);
+  }
+}
+
+@keyframes leg-step-a {
+  0%, 100% {
+    transform: translateX(-7px) rotate(14deg);
+  }
+  50% {
+    transform: translateX(7px) rotate(-14deg);
+  }
+}
+
+@keyframes leg-step-b {
+  0%, 100% {
+    transform: translateX(7px) rotate(-14deg);
+  }
+  50% {
+    transform: translateX(-7px) rotate(14deg);
+  }
+}
+
+@keyframes tail-sway {
+  0%, 100% {
+    transform: rotate(10deg) translateZ(4px);
+  }
+  50% {
+    transform: rotate(24deg) translateZ(4px);
+  }
+}
+
+@media (max-width: 640px) {
+  .login-stage {
+    padding-bottom: 5vh;
+  }
+
+  .logo-cat {
+    width: 78vw;
+    height: 56vw;
+  }
+
+  .login-brand {
+    top: 28px;
+    font-size: 12vw;
+  }
+}
