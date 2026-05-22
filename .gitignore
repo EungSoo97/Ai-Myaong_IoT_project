@@ -99,13 +99,13 @@ __v0_runtime_loader.js
 __v0_devtools.tsx
 __v0_jsx-dev-runtime.ts
 
-# 🎥 비디오 및 영상 파일 제외 설정
+#  비디오 및 영상 파일 제외 설정
 *.mp4
 *.avi
 *.mkv
 *.mov
 *.wmv
 
-# 📁 녹화 기능으로 자동 생성되는 폴더 전체 제외 (필요한 경우)
+#  녹화 기능으로 자동 생성되는 폴더 전체 제외 (필요한 경우)
 clips/
 recordings/
