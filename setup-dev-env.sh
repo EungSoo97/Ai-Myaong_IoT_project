@@ -52,6 +52,13 @@ check_node() {
     echo "npm is required. Install Node.js 22 and run again." >&2
     exit 1
   fi
+
+  local node_version
+  node_version="$(node -p 'process.versions.node')"
+  if [[ "$node_version" != 22.* ]]; then
+    echo "Node.js 22 is required. Current version: $node_version" >&2
+    exit 1
+  fi
 }
 
 setup_python_target() {

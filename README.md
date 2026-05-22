@@ -33,13 +33,47 @@ The backend simulator can still process commands even without the real Raspberry
 2. The backend publishes MQTT messages to dispenser topics.
 3. The standalone ESP32 dispenser receives commands and actuates food or water hardware.
 
+## Quick Start Order
+
+Follow this order on a fresh machine:
+
+1. Match the OS toolchain versions.
+2. Create the project environments.
+3. Start the services you need.
+
+Windows:
+
+```cmd
+setup-toolchain.bat
+setup-python-venv.bat -Target all
+scripts\start-backend.bat
+scripts\start-frontend.bat
+```
+
+macOS:
+
+```bash
+bash ./setup-toolchain.sh
+bash ./setup-dev-env.sh -Target all
+bash ./scripts/start-backend.sh
+bash ./scripts/start-frontend.sh
+```
+
 ## Windows `cmd` Quick Start
 
 Pinned toolchain:
 
 - Python `3.11.9`
 - Node.js `22` LTS
+- OpenCV `4.13.0.0`
+- Ultralytics `8.4.52`
 - See [docs/team-rules.md](/C:/Users/soldesk/Desktop/Ai-Myaong/docs/team-rules.md:1) for collaboration and OS-specific rules
+
+You can align the OS toolchain automatically before creating project environments:
+
+```cmd
+setup-toolchain.bat
+```
 
 Python and frontend environments can be created automatically from the repo root:
 
@@ -51,6 +85,8 @@ setup-python-venv.bat -Target raspberrypi
 setup-python-venv.bat -Target frontend
 setup-python-venv.bat -Target all
 ```
+
+These setup scripts now stop with an error if Python is not `3.11.x` or Node.js is not `22.x`.
 
 Start scripts can also be run directly from `cmd`:
 
@@ -69,6 +105,12 @@ cat .python-version
 cat .nvmrc
 ```
 
+Then align the macOS toolchain:
+
+```bash
+bash ./setup-toolchain.sh
+```
+
 Then create environments from the repo root:
 
 ```bash
@@ -77,12 +119,39 @@ bash ./setup-dev-env.sh -Target backend
 bash ./setup-dev-env.sh -Target frontend
 ```
 
+These setup scripts now stop with an error if Python is not `3.11.x` or Node.js is not `22.x`.
+
 Start services with:
 
 ```bash
 bash ./scripts/start-backend.sh
 bash ./scripts/start-frontend.sh
 bash ./scripts/start-raspberrypi.sh
+```
+
+## Common Workflows
+
+Backend only:
+
+```cmd
+setup-toolchain.bat
+setup-python-venv.bat -Target backend
+scripts\start-backend.bat
+```
+
+Frontend only:
+
+```cmd
+setup-toolchain.bat
+setup-python-venv.bat -Target frontend
+scripts\start-frontend.bat
+```
+
+Desktop vision only:
+
+```cmd
+setup-toolchain.bat
+setup-python-venv.bat -Target desktop
 ```
 
 ### Backend

@@ -4,7 +4,8 @@
 
 - Python: `3.11.9`
 - Node.js: `22` LTS
-- OpenCV: `4.10.0.84`
+- OpenCV: `4.13.0.0`
+- YOLO / Ultralytics: `8.4.52`
 - FastAPI: `0.115.0`
 - Uvicorn: `0.30.6`
 - MQTT client: `paho-mqtt 2.1.0`
