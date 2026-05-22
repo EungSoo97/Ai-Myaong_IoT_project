@@ -131,8 +131,8 @@ function Initialize-Venv {
     }
 
     Write-Host "Installing packages from $($config.Requirements)..."
-    Invoke-Expression "& $pythonCommand -m pip install --python `"$venvPython`" --upgrade pip"
-    Invoke-Expression "& $pythonCommand -m pip install --python `"$venvPython`" -r `"$requirementsPath`""
+    Invoke-Expression "& $pythonCommand -m pip --python `"$venvPython`" install --upgrade pip"
+    Invoke-Expression "& $pythonCommand -m pip --python `"$venvPython`" install -r `"$requirementsPath`""
   } finally {
     $env:TEMP = $originalTemp
     $env:TMP = $originalTmp

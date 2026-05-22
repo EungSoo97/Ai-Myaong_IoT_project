@@ -3,32 +3,37 @@ setlocal EnableExtensions
 
 set "TARGET=%~1"
 if not defined TARGET set "TARGET=all"
+set "EXIT_CODE=0"
+set "AUTO_PAUSE=0"
+echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
+if not errorlevel 1 set "AUTO_PAUSE=1"
 
 set "REPO_ROOT=%~dp0"
 if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
 set /p EXPECTED_PYTHON=<"%REPO_ROOT%\.python-version"
 set /p EXPECTED_NODE=<"%REPO_ROOT%\.nvmrc"
 
-if /I "%TARGET%"=="backend" call :check_python_target backend Backend || exit /b 1
-if /I "%TARGET%"=="desktop" call :check_python_target desktop Desktop || exit /b 1
-if /I "%TARGET%"=="raspberrypi" call :check_python_target raspberrypi Raspberry Pi || exit /b 1
-if /I "%TARGET%"=="frontend" call :check_node_target || exit /b 1
+if /I "%TARGET%"=="backend" call :check_python_target backend Backend || set "EXIT_CODE=1"
+if /I "%TARGET%"=="desktop" call :check_python_target desktop Desktop || set "EXIT_CODE=1"
+if /I "%TARGET%"=="raspberrypi" call :check_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
+if /I "%TARGET%"=="frontend" call :check_node_target || set "EXIT_CODE=1"
 if /I "%TARGET%"=="all" (
-  call :check_python_target backend Backend || exit /b 1
-  call :check_python_target desktop Desktop || exit /b 1
-  call :check_python_target raspberrypi Raspberry Pi || exit /b 1
-  call :check_node_target || exit /b 1
+  call :check_python_target backend Backend || set "EXIT_CODE=1"
+  call :check_python_target desktop Desktop || set "EXIT_CODE=1"
+  call :check_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
+  call :check_node_target || set "EXIT_CODE=1"
 )
 
 if /I not "%TARGET%"=="backend" if /I not "%TARGET%"=="desktop" if /I not "%TARGET%"=="raspberrypi" if /I not "%TARGET%"=="frontend" if /I not "%TARGET%"=="all" (
   echo Invalid target: %TARGET%
   echo Use one of: backend, desktop, raspberrypi, frontend, all
-  exit /b 1
+  set "EXIT_CODE=1"
 )
 
 echo.
 echo Version check finished.
-exit /b 0
+if "%AUTO_PAUSE%"=="1" pause
+exit /b %EXIT_CODE%
 
 :check_python_target
 set "TARGET_KEY=%~1"
@@ -71,10 +76,8 @@ echo.
 echo [Frontend]
 
 for /f "usebackq delims=" %%V in (`cmd /d /c "node -p process.versions.node" 2^>nul`) do set "CURRENT_NODE=%%V"
-if not defined CURRENT_NODE (
-  echo Node: not available
-  exit /b 1
-)
+call :ensure_expected_node_for_check
+if errorlevel 1 exit /b 1
 
 echo Node: %CURRENT_NODE%
 if /I "%CURRENT_NODE:~0,3%"=="%EXPECTED_NODE%." (
@@ -89,4 +92,27 @@ if errorlevel 1 (
   exit /b 1
 )
 
+exit /b 0
+
+:ensure_expected_node_for_check
+if defined CURRENT_NODE if "%CURRENT_NODE:~0,3%"=="%EXPECTED_NODE%." exit /b 0
+
+where nvm >nul 2>&1
+if errorlevel 1 (
+  if not defined CURRENT_NODE (
+    echo Node: not available
+  )
+  exit /b 0
+)
+
+if defined CURRENT_NODE (
+  echo Current Node.js version is %CURRENT_NODE%. Trying nvm use %EXPECTED_NODE%...
+) else (
+  echo Trying nvm use %EXPECTED_NODE%...
+)
+
+nvm use %EXPECTED_NODE% >nul 2>&1
+
+set "CURRENT_NODE="
+for /f "usebackq delims=" %%V in (`cmd /d /c "node -p process.versions.node" 2^>nul`) do set "CURRENT_NODE=%%V"
 exit /b 0

@@ -3,28 +3,36 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 set "REPO_ROOT=%~dp0"
 if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
+set "EXIT_CODE=0"
+set "AUTO_PAUSE=0"
+echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
+if not errorlevel 1 set "AUTO_PAUSE=1"
 
 set /p PYTHON_VERSION=<"%REPO_ROOT%\.python-version"
 set /p NODE_VERSION=<"%REPO_ROOT%\.nvmrc"
 
 if not defined PYTHON_VERSION (
   echo .python-version was not found or is empty.
-  exit /b 1
+  set "EXIT_CODE=1"
+  goto finish
 )
 
 if not defined NODE_VERSION (
   echo .nvmrc was not found or is empty.
-  exit /b 1
+  set "EXIT_CODE=1"
+  goto finish
 )
 
-call :ensure_python || exit /b 1
-call :ensure_node || exit /b 1
+call :ensure_python || set "EXIT_CODE=1"
+if "%EXIT_CODE%"=="1" goto finish
+call :ensure_node || set "EXIT_CODE=1"
+if "%EXIT_CODE%"=="1" goto finish
 
 echo.
 echo Toolchain is ready.
 echo Python target: %PYTHON_VERSION%
 echo Node target: %NODE_VERSION%
-exit /b 0
+goto finish
 
 :ensure_python
 echo Checking Python %PYTHON_VERSION%...
@@ -75,7 +83,10 @@ if defined CURRENT_NODE (
 )
 
 where nvm >nul 2>&1
-if not errorlevel 1 goto install_node_with_nvm
+if not errorlevel 1 (
+  call :install_node_with_nvm
+  exit /b %ERRORLEVEL%
+)
 
 where winget >nul 2>&1
 if errorlevel 1 (
@@ -109,3 +120,7 @@ if /I "!CURRENT_NODE:~0,3!"=="%NODE_VERSION%." (
 echo Node.js installation finished, but the current shell does not see version %NODE_VERSION% yet.
 echo Open a new cmd window and run this script again.
 exit /b 1
+
+:finish
+if "%AUTO_PAUSE%"=="1" pause
+exit /b %EXIT_CODE%
