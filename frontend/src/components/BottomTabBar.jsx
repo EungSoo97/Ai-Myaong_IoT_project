@@ -1,39 +1,46 @@
-import { LayoutDashboard, Camera, Cookie, Settings } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+import { Home, Video, UtensilsCrossed, Settings as SettingsIcon, User } from 'lucide-react'
 
-const menuItems = [
-  { id: 'dashboard', label: '대시보드', icon: LayoutDashboard },
-  { id: 'robot-vision', label: '로봇비전', icon: Camera },
-  { id: 'dispenser', label: '디스펜서', icon: Cookie },
-  { id: 'settings', label: '세팅', icon: Settings },
+const TABS = [
+  { to: '/', label: '대시보드', icon: Home, end: true },
+  { to: '/vision', label: '로봇 비전', icon: Video },
+  { to: '/dispenser', label: '디스펜서', icon: UtensilsCrossed },
+  { to: '/settings', label: '설정', icon: SettingsIcon },
+  { to: '/mypage', label: '마이', icon: User },
 ]
 
-export function BottomTabBar({ activeMenu, onMenuChange }) {
+export function BottomTabBar() {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border safe-area-bottom z-50">
-      <div className="flex items-center justify-around py-2">
-        {menuItems.map((item) => {
-          const Icon = item.icon
-          const isActive = activeMenu === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => onMenuChange(item.id)}
-              className={`
-                flex flex-col items-center justify-center py-2 px-4 rounded-lg transition-all touch-active
-                ${isActive 
-                  ? 'text-primary' 
-                  : 'text-muted-foreground'
-                }
-              `}
+    <nav className="sticky bottom-0 left-0 right-0 z-40 bg-brand-card/95 backdrop-blur-md border-t border-brand-line pb-safe">
+      <ul className="flex justify-around items-stretch px-2 pt-1.5">
+        {TABS.map(({ to, label, icon: Icon, end }) => (
+          <li key={to} className="flex-1">
+            <NavLink
+              to={to}
+              end={end}
+              className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-2xl no-select touch-active"
             >
-              <Icon className={`w-6 h-6 ${isActive ? 'scale-110' : ''} transition-transform`} />
-              <span className={`text-xs mt-1 font-medium ${isActive ? 'text-primary' : ''}`}>
-                {item.label}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={`flex items-center justify-center w-10 h-10 rounded-2xl transition-colors ${
+                      isActive ? 'bg-brand-primary/15' : 'bg-transparent'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-5 h-5 ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}
+                      strokeWidth={isActive ? 2.4 : 2}
+                    />
+                  </span>
+                  <span className={`text-[11px] font-semibold ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}>
+                    {label}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
     </nav>
   )
 }
