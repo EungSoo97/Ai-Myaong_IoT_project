@@ -46,6 +46,8 @@ Windows:
 ```cmd
 setup-toolchain.bat
 setup-python-venv.bat -Target all
+rebuild-env.bat all
+check-versions.bat all
 scripts\start-backend.bat
 scripts\start-frontend.bat
 ```
@@ -55,6 +57,8 @@ macOS:
 ```bash
 bash ./setup-toolchain.sh
 bash ./setup-dev-env.sh -Target all
+bash ./rebuild-env.sh all
+bash ./check-versions.sh all
 bash ./scripts/start-backend.sh
 bash ./scripts/start-frontend.sh
 ```
@@ -96,6 +100,20 @@ scripts\start-frontend.bat
 scripts\start-raspberrypi.bat
 ```
 
+Check installed versions:
+
+```cmd
+check-versions.bat all
+check-versions.bat desktop
+```
+
+Rebuild old environments if they were created with the wrong Python version:
+
+```cmd
+rebuild-env.bat all
+rebuild-env.bat desktop
+```
+
 ## macOS Quick Start
 
 Use the repo version files first:
@@ -127,6 +145,20 @@ Start services with:
 bash ./scripts/start-backend.sh
 bash ./scripts/start-frontend.sh
 bash ./scripts/start-raspberrypi.sh
+```
+
+Check installed versions:
+
+```bash
+bash ./check-versions.sh all
+bash ./check-versions.sh desktop
+```
+
+Rebuild old environments if they were created with the wrong Python version:
+
+```bash
+bash ./rebuild-env.sh all
+bash ./rebuild-env.sh desktop
 ```
 
 ## Common Workflows
