@@ -6,6 +6,24 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 EXPECTED_NODE="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
 
+ensure_nvm_loaded() {
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    # shellcheck disable=SC1090
+    . "$NVM_DIR/nvm.sh"
+    return
+  fi
+
+  if command -v brew >/dev/null 2>&1 && brew list nvm >/dev/null 2>&1; then
+    mkdir -p "$NVM_DIR"
+    local brew_prefix
+    brew_prefix="$(brew --prefix nvm)"
+    # shellcheck disable=SC1090
+    . "$brew_prefix/nvm.sh"
+  fi
+}
+
 check_python_target() {
   local key="$1"
   local label="$2"
@@ -45,6 +63,24 @@ check_python_target() {
 check_node_target() {
   echo
   echo "[Frontend]"
+
+  if command -v node >/dev/null 2>&1; then
+    local current_node
+    current_node="$(node -p 'process.versions.node')"
+    if [[ "$current_node" != "$EXPECTED_NODE".* ]]; then
+      echo "Current Node.js version is $current_node. Trying nvm use $EXPECTED_NODE..."
+      ensure_nvm_loaded
+      if command -v nvm >/dev/null 2>&1; then
+        nvm use "$EXPECTED_NODE" >/dev/null 2>&1 || true
+      fi
+    fi
+  else
+    ensure_nvm_loaded
+    if command -v nvm >/dev/null 2>&1; then
+      echo "Trying nvm use $EXPECTED_NODE..."
+      nvm use "$EXPECTED_NODE" >/dev/null 2>&1 || true
+    fi
+  fi
 
   if ! command -v node >/dev/null 2>&1; then
     echo "Node: not available"

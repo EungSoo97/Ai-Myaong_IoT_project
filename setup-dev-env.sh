@@ -5,6 +5,7 @@ TARGET="all"
 SKIP_INSTALL=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
+EXPECTED_NODE="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,22 +44,73 @@ pick_python() {
 }
 
 check_node() {
-  if ! command -v node >/dev/null 2>&1; then
-    echo "Node.js is required. Install Node.js 22 and run again." >&2
-    exit 1
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    local node_version
+    node_version="$(node -p 'process.versions.node')"
+    if [[ "$node_version" == "$EXPECTED_NODE".* ]]; then
+      echo "Node.js $node_version is active."
+      return
+    fi
+    echo "Current Node.js version is $node_version. Trying to activate $EXPECTED_NODE..."
+  else
+    echo "Node.js $EXPECTED_NODE was not found. Trying to activate it..."
   fi
 
+  ensure_nvm_loaded
+  nvm install "$EXPECTED_NODE"
+  nvm use "$EXPECTED_NODE"
+
   if ! command -v npm >/dev/null 2>&1; then
-    echo "npm is required. Install Node.js 22 and run again." >&2
+    echo "npm is required. Install Node.js $EXPECTED_NODE and run again." >&2
     exit 1
   fi
 
   local node_version
   node_version="$(node -p 'process.versions.node')"
-  if [[ "$node_version" != 22.* ]]; then
-    echo "Node.js 22 is required. Current version: $node_version" >&2
+  if [[ "$node_version" != "$EXPECTED_NODE".* ]]; then
+    echo "Node.js $EXPECTED_NODE is required. Current version: $node_version" >&2
     exit 1
   fi
+
+  echo "Node.js $node_version is now active."
+}
+
+ensure_homebrew() {
+  if command -v brew >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Homebrew is required. Install it first from https://brew.sh and run again." >&2
+  exit 1
+}
+
+ensure_nvm_loaded() {
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    # shellcheck disable=SC1090
+    . "$NVM_DIR/nvm.sh"
+    return
+  fi
+
+  ensure_homebrew
+
+  if brew list nvm >/dev/null 2>&1; then
+    mkdir -p "$NVM_DIR"
+    local brew_prefix
+    brew_prefix="$(brew --prefix nvm)"
+    # shellcheck disable=SC1090
+    . "$brew_prefix/nvm.sh"
+    return
+  fi
+
+  echo "Installing nvm with Homebrew..."
+  brew install nvm
+  mkdir -p "$NVM_DIR"
+  local brew_prefix
+  brew_prefix="$(brew --prefix nvm)"
+  # shellcheck disable=SC1090
+  . "$brew_prefix/nvm.sh"
 }
 
 setup_python_target() {
@@ -110,7 +162,11 @@ setup_frontend() {
   pushd "$project_path" >/dev/null
   if [[ -f package-lock.json ]]; then
     echo "Installing packages with npm ci..."
-    npm ci
+    if ! npm ci; then
+      echo "npm ci failed. package-lock.json may be out of sync."
+      echo "Retrying with npm install..."
+      npm install
+    fi
   else
     echo "Installing packages with npm install..."
     npm install

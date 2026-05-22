@@ -4,7 +4,7 @@
 
 - Python: `3.11.9`
 - Node.js: `22` LTS
-- OpenCV: `4.13.0.0`
+- OpenCV: `4.13.0.92`
 - YOLO / Ultralytics: `8.4.52`
 - FastAPI: `0.115.0`
 - Uvicorn: `0.30.6`
@@ -25,7 +25,7 @@ Use the repo version files before creating environments:
 ## Cross-Platform Rules
 
 - Use `pathlib.Path` in Python instead of absolute Windows or macOS paths.
-- Keep shell scripts on LF and Windows batch/PowerShell scripts on CRLF. `.gitattributes` handles this.
+- Keep shell scripts on LF and Windows batch scripts on CRLF. `.gitattributes` handles this.
 - Windows users should avoid Korean or overly long project paths when possible.
 - Apple Silicon users should prefer `pyenv` plus `python 3.11.9` for better package compatibility.
 

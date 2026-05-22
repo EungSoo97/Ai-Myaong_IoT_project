@@ -69,7 +69,7 @@ Pinned toolchain:
 
 - Python `3.11.9`
 - Node.js `22` LTS
-- OpenCV `4.13.0.0`
+- OpenCV `4.13.0.92`
 - Ultralytics `8.4.52`
 - See [docs/team-rules.md](/C:/Users/soldesk/Desktop/Ai-Myaong/docs/team-rules.md:1) for collaboration and OS-specific rules
 
