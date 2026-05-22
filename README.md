@@ -35,6 +35,56 @@ The backend simulator can still process commands even without the real Raspberry
 
 ## Windows `cmd` Quick Start
 
+Pinned toolchain:
+
+- Python `3.11.9`
+- Node.js `22` LTS
+- See [docs/team-rules.md](/C:/Users/soldesk/Desktop/Ai-Myaong/docs/team-rules.md:1) for collaboration and OS-specific rules
+
+Python and frontend environments can be created automatically from the repo root:
+
+```cmd
+setup-python-venv.bat
+setup-python-venv.bat -Target backend
+setup-python-venv.bat -Target desktop
+setup-python-venv.bat -Target raspberrypi
+setup-python-venv.bat -Target frontend
+setup-python-venv.bat -Target all
+```
+
+Start scripts can also be run directly from `cmd`:
+
+```cmd
+scripts\start-backend.bat
+scripts\start-frontend.bat
+scripts\start-raspberrypi.bat
+```
+
+## macOS Quick Start
+
+Use the repo version files first:
+
+```bash
+cat .python-version
+cat .nvmrc
+```
+
+Then create environments from the repo root:
+
+```bash
+bash ./setup-dev-env.sh -Target all
+bash ./setup-dev-env.sh -Target backend
+bash ./setup-dev-env.sh -Target frontend
+```
+
+Start services with:
+
+```bash
+bash ./scripts/start-backend.sh
+bash ./scripts/start-frontend.sh
+bash ./scripts/start-raspberrypi.sh
+```
+
 ### Backend
 
 ```cmd

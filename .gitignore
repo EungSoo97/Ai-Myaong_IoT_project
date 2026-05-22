@@ -75,6 +75,7 @@ backend/backend/*.sqlite3
 *.pid.lock
 *.tmp
 *.temp
+.tmp/
 tmp/
 temp/
 
