@@ -108,4 +108,4 @@ __v0_jsx-dev-runtime.ts
 
 #  녹화 기능으로 자동 생성되는 폴더 전체 제외 (필요한 경우)
 clips/
-recordings/
+recordings/*.swp
