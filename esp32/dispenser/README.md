@@ -17,6 +17,22 @@ Wi-Fi setup behavior:
 - use the same real Wi-Fi SSID/password that the Raspberry Pi uses
 - hold the setup button on GPIO0 for 3 seconds to clear saved Wi-Fi/MQTT settings and reopen setup mode
 
+Shared Raspberry Pi / ESP32 Wi-Fi setup:
+
+```bash
+cd ~/Ai-Myaong_IoT_project
+bash ./scripts/setup-raspberrypi-wifi.sh "Wi-Fi SSID" "Wi-Fi password"
+```
+
+The script connects the Raspberry Pi to the Wi-Fi, detects the Raspberry Pi Wi-Fi IP, writes that IP to `raspberrypi/.env`, updates the ESP32 sketch default MQTT host, and pushes the same settings to the ESP32 setup portal when `http://192.168.4.1` is reachable.
+
+ESP32 recovery behavior:
+
+- Wi-Fi credentials and MQTT host are stored in Preferences.
+- New Wi-Fi settings are tested before replacing the old saved settings.
+- If the new Wi-Fi connection fails, the previous SSID/password/MQTT host are restored.
+- If saved Wi-Fi cannot connect on boot, the `ESP32_FEEDER_SETUP` AP setup mode starts.
+
 Setup page:
 
 - app route: `/wifi-setup`

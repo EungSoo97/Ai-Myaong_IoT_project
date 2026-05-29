@@ -164,6 +164,13 @@ inline String savedSsid() {
   return ssid;
 }
 
+inline String savedPassword() {
+  preferences.begin(PREF_NAMESPACE, true);
+  String password = preferences.getString(PREF_PASSWORD, "");
+  preferences.end();
+  return password;
+}
+
 inline String savedMqttHost() {
   preferences.begin(PREF_NAMESPACE, true);
   String host = preferences.getString(PREF_MQTT_HOST, DEFAULT_MQTT_HOST);
@@ -339,12 +346,44 @@ inline void handleConnect() {
     return;
   }
 
+  String previousSsid = savedSsid();
+  String previousPassword = savedPassword();
+  String previousMqttHost = savedMqttHost();
+  if (mqttClient.connected()) {
+    mqttClient.disconnect();
+  }
+
+  if (!connectToWifi(ssid, password, true)) {
+    if (previousSsid.length() > 0) {
+      saveWifiCredentials(previousSsid, previousPassword);
+      saveMqttHost(previousMqttHost);
+      mqttHost = previousMqttHost;
+      connectToWifi(previousSsid, previousPassword, true);
+      mqttClient.setServer(mqttHost.c_str(), MQTT_PORT);
+    } else {
+      clearSavedNetworkConfig();
+    }
+
+    String response = "{\"ok\":false,\"saved\":false,\"restored\":true,\"error\":\"Wi-Fi connection failed\",\"ssid\":\"";
+    response += jsonEscape(ssid);
+    response += "\",\"restoredSsid\":\"";
+    response += jsonEscape(previousSsid);
+    response += "\"}";
+    sendJson(503, response);
+    Serial.print("[wifi] connection failed, restored previous SSID: ");
+    Serial.println(previousSsid);
+    return;
+  }
+
   saveWifiCredentials(ssid, password);
   saveMqttHost(requestedMqttHost);
   mqttHost = savedMqttHost();
+  mqttClient.setServer(mqttHost.c_str(), MQTT_PORT);
 
-  String response = "{\"ok\":true,\"saved\":true,\"rebooting\":true,\"ssid\":\"";
+  String response = "{\"ok\":true,\"saved\":true,\"connected\":true,\"rebooting\":true,\"ssid\":\"";
   response += jsonEscape(ssid);
+  response += "\",\"ip\":\"";
+  response += WiFi.localIP().toString();
   response += "\",\"mqttHost\":\"";
   response += jsonEscape(mqttHost);
   response += "\"}";
