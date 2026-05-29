@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
+import { useAccount, petAge, speciesLabel } from '../lib/accountRepository'
 
 const RECENT = [
   { id: 1, icon: UtensilsCrossed, tone: 'primary', title: '자동 배식 완료', desc: '15g · 정기 스케줄', time: '방금 전' },
@@ -36,11 +37,22 @@ const SHORTCUTS = [
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const account = useAccount()
+
+  // 가입 데이터 기반 값 (없으면 샘플 fallback)
+  const nickname = account?.user?.nickname || '묘냥집사'
+  const pets = account?.pets ?? []
+  const pet = pets[0] || null
+  const petName = pet?.name || '미야옹'
+  const petBreed = pet?.breed || '코숏'
+  const petSpecies = pet ? speciesLabel(pet.species) : '고양이'
+  const age = pet ? petAge(pet.birthDate) : 3
+  const ageBreed = [age != null ? `${age}살` : null, petBreed].filter(Boolean).join(' · ')
 
   return (
     <div className="px-5 pb-6">
       <PageHeader
-        title="안녕, 묘냥집사 🐾"
+        title={`안녕, ${nickname} 🐾`}
         subtitle="오늘도 우리 아이를 살펴봐요"
         right={
           <button
@@ -54,19 +66,23 @@ export function Dashboard() {
         }
       />
 
-      {/* 1) 고양이 프로필 */}
+      {/* 1) 펫 프로필 (가입 데이터 기반) */}
       <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
         <div className="relative">
           <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-            <PawPrint className="w-9 h-9 text-brand-primary" />
+            {pet?.photo
+              ? <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
+              : <PawPrint className="w-9 h-9 text-brand-primary" />}
           </div>
           <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-brand-mute font-semibold">우리집 고양이</p>
-          <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">미야옹</h2>
+          <p className="text-xs text-brand-mute font-semibold">
+            우리집 {petSpecies}{pets.length > 1 ? ` · 외 ${pets.length - 1}마리` : ''}
+          </p>
+          <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">{petName}</h2>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone="brown">3살 · 코숏</Badge>
+            {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
             <Badge tone="success">건강 양호</Badge>
           </div>
         </div>
