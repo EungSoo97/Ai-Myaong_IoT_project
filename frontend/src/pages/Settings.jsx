@@ -12,6 +12,7 @@ import {
   Signal,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, ToggleSwitch, Badge, PrimaryButton, GhostButton } from '../components/ui'
+import { api } from '../api/api'
 
 const ESP32_SETUP_URL_KEY = 'aimyaong:esp32SetupUrl'
 const ESP32_MQTT_HOST_KEY = 'aimyaong:esp32MqttHost'
@@ -35,6 +36,8 @@ export function Settings() {
   const [wifiPassword, setWifiPassword] = useState('')
   const [networkBusy, setNetworkBusy] = useState(false)
   const [networkMessage, setNetworkMessage] = useState('')
+  const [piNetworkStatus, setPiNetworkStatus] = useState(null)
+  const [piApFallback, setPiApFallback] = useState(false)
 
   useEffect(() => {
     try { localStorage.setItem(ESP32_SETUP_URL_KEY, setupUrl) } catch { /* ignore */ }
@@ -46,6 +49,7 @@ export function Settings() {
 
   useEffect(() => {
     refreshWifiStatus()
+    refreshPiNetworkStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -115,6 +119,46 @@ export function Settings() {
     }
   }
 
+  async function refreshPiNetworkStatus() {
+    try {
+      const data = await api.getNetworkStatus()
+      setPiNetworkStatus(data)
+      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      if (host) setMqttHost(host)
+    } catch {
+      setPiNetworkStatus(null)
+    }
+  }
+
+  async function applySharedWifi() {
+    if (!selectedSsid) {
+      setNetworkMessage('같이 적용할 와이파이를 선택해 주세요')
+      return
+    }
+
+    setNetworkBusy(true)
+    setNetworkMessage('라즈베리파이와 ESP32 설정을 같이 적용 중이에요')
+    try {
+      const data = await api.configureSharedWifi({
+        ssid: selectedSsid,
+        password: wifiPassword,
+        mqttHost: mqttHost.trim() || 'auto',
+        mqttPort: 1883,
+        esp32SetupUrl: setupUrl,
+        piApFallback,
+      })
+      const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      if (nextHost) setMqttHost(nextHost)
+      setNetworkMessage(nextHost ? `적용 완료 · MQTT ${nextHost}:1883` : '적용 완료')
+      await refreshPiNetworkStatus()
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || '공통 와이파이 설정에 실패했어요')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
+
   return (
     <div className="px-5 pb-6">
       <PageHeader title="설정" subtitle="기기와 알림을 관리해요" />
@@ -132,7 +176,9 @@ export function Settings() {
                 {wifiStatus?.ssid || wifiStatus?.savedSsid || 'ESP32_FEEDER_SETUP'}
               </p>
               <p className="text-xs text-brand-mute truncate">
-                {wifiStatus?.ip ? `${wifiStatus.ip} · MQTT ${wifiStatus.mqttConnected ? '연결됨' : '대기'}` : setupUrl}
+                {piNetworkStatus?.wifiSsid
+                  ? `Pi ${piNetworkStatus.wifiSsid} · ${piNetworkStatus.raspberrypiEnv?.MQTT_BROKER_HOST || mqttHost}`
+                  : wifiStatus?.ip ? `${wifiStatus.ip} · MQTT ${wifiStatus.mqttConnected ? '연결됨' : '대기'}` : setupUrl}
               </p>
             </div>
             <Badge tone={wifiStatus?.stationConnected ? 'success' : 'warn'}>
@@ -158,7 +204,7 @@ export function Settings() {
               스캔
             </PrimaryButton>
             <GhostButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={connectWifi} disabled={networkBusy}>
-              연결
+              ESP32
             </GhostButton>
           </div>
 
@@ -180,9 +226,24 @@ export function Settings() {
               value={mqttHost}
               onChange={(event) => setMqttHost(event.target.value)}
               className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-              placeholder="MQTT 호스트 IP"
+              placeholder="MQTT 호스트 IP 또는 비우면 자동"
             />
           </div>
+
+          <PrimaryButton className="mt-3 w-full py-2.5 rounded-2xl text-sm" onClick={applySharedWifi} disabled={networkBusy}>
+            <Wifi className="w-4 h-4" />
+            라즈베리파이 + ESP32 같이 적용
+          </PrimaryButton>
+
+          <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-brand-cream px-3 py-2.5">
+            <span className="text-xs font-bold text-brand-brown">실패 시 Pi AP 모드</span>
+            <input
+              type="checkbox"
+              checked={piApFallback}
+              onChange={(event) => setPiApFallback(event.target.checked)}
+              className="h-4 w-4 accent-brand-primary"
+            />
+          </label>
 
           {networkMessage && <p className="mt-3 text-xs font-semibold text-brand-mute">{networkMessage}</p>}
 

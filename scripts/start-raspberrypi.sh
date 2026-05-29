@@ -3,15 +3,87 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$SCRIPT_DIR/../raspberrypi"
+PORT="${MQTT_BROKER_PORT:-1883}"
+BIND_ADDRESS="${MQTT_BROKER_BIND_ADDRESS:-0.0.0.0}"
+BROKER_PID=""
+CONFIG_DIR=""
+
+cleanup() {
+  if [[ -n "$BROKER_PID" ]] && kill -0 "$BROKER_PID" >/dev/null 2>&1; then
+    echo "[mqtt-broker] stopping bundled broker..."
+    kill "$BROKER_PID" >/dev/null 2>&1 || true
+    wait "$BROKER_PID" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$CONFIG_DIR" ]]; then
+    rm -rf "$CONFIG_DIR"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+port_is_open() {
+  (echo >/dev/tcp/127.0.0.1/"$PORT") >/dev/null 2>&1
+}
+
+start_broker_if_needed() {
+  if port_is_open; then
+    echo "[mqtt-broker] broker is already listening on port $PORT."
+    return
+  fi
+
+  if ! command -v mosquitto >/dev/null 2>&1; then
+    echo "[mqtt-broker] mosquitto is not installed."
+    echo "[mqtt-broker] Install it on Raspberry Pi with:"
+    echo "  sudo apt update && sudo apt install -y mosquitto mosquitto-clients"
+    exit 1
+  fi
+
+  CONFIG_DIR="$(mktemp -d)"
+  local config_file="$CONFIG_DIR/mosquitto.conf"
+
+  cat >"$config_file" <<EOF
+listener $PORT $BIND_ADDRESS
+allow_anonymous true
+persistence false
+log_dest stdout
+connection_messages true
+EOF
+
+  echo "[mqtt-broker] starting bundled broker on $BIND_ADDRESS:$PORT..."
+  mosquitto -c "$config_file" &
+  BROKER_PID="$!"
+
+  for _ in {1..20}; do
+    if port_is_open; then
+      echo "[mqtt-broker] bundled broker is ready."
+      return
+    fi
+
+    if ! kill -0 "$BROKER_PID" >/dev/null 2>&1; then
+      echo "[mqtt-broker] bundled broker exited before it was ready." >&2
+      wait "$BROKER_PID"
+      exit 1
+    fi
+
+    sleep 0.2
+  done
+
+  echo "[mqtt-broker] bundled broker did not open port $PORT in time." >&2
+  exit 1
+}
+
+start_broker_if_needed
 
 cd "$PROJECT_PATH"
 
 if [[ -x ".venv/bin/python" ]]; then
-  exec .venv/bin/python ./main.py
+  .venv/bin/python ./main.py
+  exit $?
 fi
 
 if command -v python3.11 >/dev/null 2>&1; then
-  exec python3.11 ./main.py
+  python3.11 ./main.py
+  exit $?
 fi
 
-exec python3 ./main.py
+python3 ./main.py

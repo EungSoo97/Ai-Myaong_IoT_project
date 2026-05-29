@@ -22,6 +22,15 @@ class WaterRequest(BaseModel):
     amount: int = Field(default=1, ge=1, le=20)
 
 
+class SharedWifiRequest(BaseModel):
+    ssid: str = Field(min_length=1)
+    password: str = ""
+    mqtt_host: str | None = None
+    mqtt_port: int = Field(default=1883, ge=1, le=65535)
+    esp32_setup_url: str | None = None
+    pi_ap_fallback: bool = False
+
+
 class CommandResponse(BaseModel):
     request_id: str
     status: str

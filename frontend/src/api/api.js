@@ -11,7 +11,13 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const message = await response.text()
-    throw new Error(message || `API error: ${response.status}`)
+    let errorMessage = message || `API error: ${response.status}`
+    try {
+      const parsed = JSON.parse(message)
+      if (typeof parsed.detail === 'string') errorMessage = parsed.detail
+      else if (parsed.detail?.message) errorMessage = parsed.detail.message
+    } catch { /* keep raw message */ }
+    throw new Error(errorMessage)
   }
 
   return response.json()
@@ -36,5 +42,17 @@ export const api = {
   dispenserWater: (amount = 1) => request('/api/dispenser/water', {
     method: 'POST',
     body: JSON.stringify({ amount }),
+  }),
+  getNetworkStatus: () => request('/api/network/status'),
+  configureSharedWifi: ({ ssid, password, mqttHost, mqttPort = 1883, esp32SetupUrl, piApFallback = false }) => request('/api/network/shared-wifi', {
+    method: 'POST',
+    body: JSON.stringify({
+      ssid,
+      password,
+      mqtt_host: mqttHost,
+      mqtt_port: mqttPort,
+      esp32_setup_url: esp32SetupUrl,
+      pi_ap_fallback: piApFallback,
+    }),
   }),
 }
