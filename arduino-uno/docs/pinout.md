@@ -13,8 +13,8 @@ Use this page to lock down the final Arduino Uno wiring.
 
 ## Pan/Tilt Servos
 
-- Pan servo signal:
-- Tilt servo signal:
+- Pan servo signal: D9
+- Tilt servo signal: D10
 
 ## Serial Link
 
