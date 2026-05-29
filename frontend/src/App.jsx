@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useEffect, useState } from "react";
 import {
   BrowserRouter,
@@ -14,6 +15,19 @@ import { RobotVision } from "./pages/RobotVision";
 import { Dispenser } from "./pages/Dispenser";
 import { Settings } from "./pages/Settings";
 import { MyPage } from "./pages/MyPage";
+=======
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { PublicLayout, PrivateLayout } from './components/Layout'
+import { Splash } from './pages/Splash'
+import { Login } from './pages/Login'
+import { Dashboard } from './pages/Dashboard'
+import { RobotVision } from './pages/RobotVision'
+import { Dispenser } from './pages/Dispenser'
+import { Settings } from './pages/Settings'
+import { MyPage } from './pages/MyPage'
+import { WifiSetup } from './pages/WifiSetup'
+>>>>>>> 8b7572c5de088875af1c491bd6acb307212e237f
 
 const AUTH_KEY = "aimyaong:auth";
 
@@ -41,6 +55,7 @@ function App() {
         {/* Public: Splash / Login - 하단 탭 바 없음 */}
         <Route element={<PublicLayout />}>
           <Route path="/splash" element={<Splash />} />
+          <Route path="/wifi-setup" element={<WifiSetup />} />
           <Route
             path="/login"
             element={
