@@ -11,6 +11,7 @@ import {
   MicOff,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
+import { api } from '../api/api'
 
 const EVENT_LOG = [
   { id: 1, type: '움직임 감지', time: '14:22:08', clip: 'clip-001' },
@@ -19,11 +20,28 @@ const EVENT_LOG = [
   { id: 4, type: '외부인 감지', time: '09:11:55', clip: 'clip-004' },
 ]
 
+const MOVE_COMMANDS = {
+  up: 'FORWARD',
+  down: 'BACKWARD',
+  left: 'LEFT',
+  right: 'RIGHT',
+}
+
+const CAMERA_COMMANDS = {
+  up: 'CAM_UP',
+  down: 'CAM_DOWN',
+  left: 'CAM_LEFT',
+  right: 'CAM_RIGHT',
+  center: 'CAM_CENTER',
+}
+
 export function RobotVision() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [irOn, setIrOn] = useState(false)
   const [recording, setRecording] = useState(false)
   const [selectedClip, setSelectedClip] = useState(null)
+  const [controlBusy, setControlBusy] = useState(false)
+  const controlBusyRef = useRef(false)
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false)
@@ -103,11 +121,31 @@ export function RobotVision() {
     setForceCssLandscape(false)
   }
 
-  const onMove = (dir) => {
-    console.log('[RobotVision] move:', dir)
+  const sendCommand = async (kind, command) => {
+    if (!command || controlBusyRef.current) return
+
+    controlBusyRef.current = true
+    setControlBusy(true)
+    try {
+      if (kind === 'camera') {
+        await api.moveCamera(command)
+      } else {
+        await api.moveRobot(command)
+      }
+    } catch (error) {
+      console.error(`[RobotVision] ${kind} command failed:`, error)
+    } finally {
+      controlBusyRef.current = false
+      setControlBusy(false)
+    }
   }
+
+  const onMove = (dir) => {
+    sendCommand('move', MOVE_COMMANDS[dir])
+  }
+
   const onPan = (dir) => {
-    console.log('[RobotVision] pan/tilt:', dir)
+    sendCommand('camera', CAMERA_COMMANDS[dir])
   }
 
   return (
@@ -347,6 +385,7 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
         className="absolute bottom-6 right-6 z-50"
         label="카메라"
         onPress={onPan}
+        centerAction="center"
         muted
       />
     </>
@@ -360,7 +399,7 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
  *  - 영상 위 시인성을 위해 반투명 배경 + 블러.
  *  - 누름 피드백: scale 변화 없이 배경색만 brand-brown 으로 즉시 전환.
  */
-function DPad({ className = '', label, onPress, muted = false }) {
+function DPad({ centerAction = null, className = '', label, onPress, muted = false }) {
   const baseBg = muted ? 'bg-white/12' : 'bg-white/18'
   return (
     <div className={className}>
@@ -370,9 +409,13 @@ function DPad({ className = '', label, onPress, muted = false }) {
           <DBtn onClick={() => onPress('up')} bg={baseBg} aria="Up" />
           <span />
           <DBtn onClick={() => onPress('left')} bg={baseBg} aria="Left" rotate="rotate-[270deg]" />
-          <div className="w-12 h-12 rounded-2xl bg-black/35 backdrop-blur-sm flex items-center justify-center">
-            <span className="text-[10px] font-bold tracking-wider text-white/85">{label}</span>
-          </div>
+          {centerAction ? (
+            <CenterBtn onClick={() => onPress(centerAction)} />
+          ) : (
+            <div className="w-12 h-12 rounded-2xl bg-black/35 backdrop-blur-sm flex items-center justify-center">
+              <span className="text-[10px] font-bold tracking-wider text-white/85">{label}</span>
+            </div>
+          )}
           <DBtn onClick={() => onPress('right')} bg={baseBg} aria="Right" rotate="rotate-90" />
           <span />
           <DBtn onClick={() => onPress('down')} bg={baseBg} aria="Down" rotate="rotate-180" />
@@ -384,10 +427,38 @@ function DPad({ className = '', label, onPress, muted = false }) {
 }
 
 function DBtn({ onClick, bg, aria, rotate = '' }) {
+  const repeatTimerRef = useRef(null)
+  const repeatDelayTimerRef = useRef(null)
+
+  const stopRepeat = () => {
+    window.clearTimeout(repeatDelayTimerRef.current)
+    window.clearInterval(repeatTimerRef.current)
+    repeatDelayTimerRef.current = null
+    repeatTimerRef.current = null
+  }
+
+  const startRepeat = (event) => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    onClick()
+    stopRepeat()
+    repeatDelayTimerRef.current = window.setTimeout(() => {
+      repeatTimerRef.current = window.setInterval(onClick, 120)
+    }, 240)
+  }
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        if (event.detail === 0) {
+          onClick()
+        }
+      }}
+      onPointerCancel={stopRepeat}
+      onPointerDown={startRepeat}
+      onPointerLeave={stopRepeat}
+      onPointerUp={stopRepeat}
       aria-label={aria}
       className={`
         w-12 h-12 rounded-2xl
@@ -399,6 +470,26 @@ function DBtn({ onClick, bg, aria, rotate = '' }) {
       `}
     >
       <PawPrint className={`w-5 h-5 ${rotate}`} strokeWidth={2.2} />
+    </button>
+  )
+}
+
+function CenterBtn({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Center"
+      className="
+        w-12 h-12 rounded-2xl
+        bg-black/45 backdrop-blur-sm
+        text-white shadow-md
+        flex items-center justify-center
+        transition-colors duration-75
+        active:bg-brand-brown
+      "
+    >
+      <span className="text-[9px] font-bold tracking-wider text-white/90">CENTER</span>
     </button>
   )
 }

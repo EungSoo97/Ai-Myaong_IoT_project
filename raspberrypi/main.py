@@ -8,6 +8,19 @@ from comm.serial_comm import SerialComm
 
 load_dotenv()
 
+ROBOT_COMMANDS = {
+    "FORWARD",
+    "BACKWARD",
+    "LEFT",
+    "RIGHT",
+    "STOP",
+    "CAM_UP",
+    "CAM_DOWN",
+    "CAM_LEFT",
+    "CAM_RIGHT",
+    "CAM_CENTER",
+}
+
 
 class RaspberryPiAgent:
     def __init__(self) -> None:
@@ -82,7 +95,11 @@ class RaspberryPiAgent:
             print(f"[raspberrypi] ignored empty command on {message.topic}")
             return
 
-        print(f"[raspberrypi] MQTT {message.topic} <- {command}")
+        if command not in ROBOT_COMMANDS:
+            print(f"[raspberrypi] ignored unsupported command on {message.topic}: {command}")
+            return
+
+        print(f"[raspberrypi] MQTT {message.topic} -> Arduino {command}")
         self.serial.send(command)
 
     def _extract_command(self, payload_bytes: bytes) -> str | None:

@@ -8,6 +8,7 @@ import { RobotVision } from './pages/RobotVision'
 import { Dispenser } from './pages/Dispenser'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
+import { WifiSetup } from './pages/WifiSetup'
 
 const AUTH_KEY = 'aimyaong:auth'
 
@@ -29,6 +30,7 @@ function App() {
         {/* Public: Splash / Login - 하단 탭 바 없음 */}
         <Route element={<PublicLayout />}>
           <Route path="/splash" element={<Splash />} />
+          <Route path="/wifi-setup" element={<WifiSetup />} />
           <Route
             path="/login"
             element={
