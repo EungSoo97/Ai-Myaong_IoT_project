@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Wifi,
   Bell,
@@ -7,14 +7,113 @@ import {
   ChevronRight,
   Info,
   ShieldCheck,
+  Search,
+  Lock,
+  Signal,
 } from 'lucide-react'
-import { Card, CreamCard, PageHeader, ToggleSwitch, Badge } from '../components/ui'
+import { Card, CreamCard, PageHeader, ToggleSwitch, Badge, PrimaryButton, GhostButton } from '../components/ui'
+
+const ESP32_SETUP_URL_KEY = 'aimyaong:esp32SetupUrl'
+const ESP32_MQTT_HOST_KEY = 'aimyaong:esp32MqttHost'
+const DEFAULT_ESP32_SETUP_URL = import.meta.env.VITE_ESP32_SETUP_URL || 'http://192.168.4.1'
+const DEFAULT_ESP32_MQTT_HOST = import.meta.env.VITE_ESP32_MQTT_HOST || '10.1.82.103'
 
 export function Settings() {
   const [pushOn, setPushOn] = useState(true)
   const [motionAlert, setMotionAlert] = useState(true)
   const [strangerAlert, setStrangerAlert] = useState(true)
   const [feedAlert, setFeedAlert] = useState(false)
+  const [setupUrl, setSetupUrl] = useState(() => {
+    try { return localStorage.getItem(ESP32_SETUP_URL_KEY) || DEFAULT_ESP32_SETUP_URL } catch { return DEFAULT_ESP32_SETUP_URL }
+  })
+  const [mqttHost, setMqttHost] = useState(() => {
+    try { return localStorage.getItem(ESP32_MQTT_HOST_KEY) || DEFAULT_ESP32_MQTT_HOST } catch { return DEFAULT_ESP32_MQTT_HOST }
+  })
+  const [wifiStatus, setWifiStatus] = useState(null)
+  const [networks, setNetworks] = useState([])
+  const [selectedSsid, setSelectedSsid] = useState('')
+  const [wifiPassword, setWifiPassword] = useState('')
+  const [networkBusy, setNetworkBusy] = useState(false)
+  const [networkMessage, setNetworkMessage] = useState('')
+
+  useEffect(() => {
+    try { localStorage.setItem(ESP32_SETUP_URL_KEY, setupUrl) } catch { /* ignore */ }
+  }, [setupUrl])
+
+  useEffect(() => {
+    try { localStorage.setItem(ESP32_MQTT_HOST_KEY, mqttHost) } catch { /* ignore */ }
+  }, [mqttHost])
+
+  useEffect(() => {
+    refreshWifiStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function esp32Request(path, options = {}) {
+    const base = setupUrl.replace(/\/$/, '')
+    const response = await fetch(`${base}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      ...options,
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || `ESP32 API error: ${response.status}`)
+    }
+    return data
+  }
+
+  async function refreshWifiStatus({ silent = false } = {}) {
+    try {
+      if (!silent) setNetworkMessage('')
+      const data = await esp32Request('/api/wifi/status')
+      setWifiStatus(data)
+      if (data.mqttHost) setMqttHost(data.mqttHost)
+    } catch (error) {
+      setWifiStatus(null)
+      if (!silent) setNetworkMessage('ESP32 설정 페이지에 연결할 수 없어요')
+    }
+  }
+
+  async function scanWifi() {
+    setNetworkBusy(true)
+    setNetworkMessage('주변 와이파이를 찾는 중이에요')
+    try {
+      const data = await esp32Request('/api/wifi/scan')
+      setNetworks(data.networks || [])
+      setNetworkMessage(data.networks?.length ? '검색 완료' : '검색된 와이파이가 없어요')
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || '와이파이 검색에 실패했어요')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
+
+  async function connectWifi() {
+    if (!selectedSsid) {
+      setNetworkMessage('연결할 와이파이를 선택해 주세요')
+      return
+    }
+
+    setNetworkBusy(true)
+    setNetworkMessage('ESP32가 와이파이에 연결 중이에요')
+    try {
+      const data = await esp32Request('/api/wifi/connect', {
+        method: 'POST',
+        body: JSON.stringify({ ssid: selectedSsid, password: wifiPassword, mqttHost, reboot: false }),
+      })
+      setNetworkMessage(data.rebooting ? '저장 완료 · ESP32가 재부팅돼요' : data.connected ? `연결됨 · ${data.ip}` : '저장됐지만 아직 연결 대기 중이에요')
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || '와이파이 저장에 실패했어요')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
 
   return (
     <div className="px-5 pb-6">
@@ -29,14 +128,84 @@ export function Settings() {
               <Wifi className="w-5 h-5" />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-brand-brown truncate">AiMyaong-Home</p>
-              <p className="text-xs text-brand-mute">신호 강도 우수 · 5GHz</p>
+              <p className="text-sm font-bold text-brand-brown truncate">
+                {wifiStatus?.ssid || wifiStatus?.savedSsid || 'ESP32_FEEDER_SETUP'}
+              </p>
+              <p className="text-xs text-brand-mute truncate">
+                {wifiStatus?.ip ? `${wifiStatus.ip} · MQTT ${wifiStatus.mqttConnected ? '연결됨' : '대기'}` : setupUrl}
+              </p>
             </div>
-            <Badge tone="success">연결됨</Badge>
+            <Badge tone={wifiStatus?.stationConnected ? 'success' : 'warn'}>
+              {wifiStatus?.stationConnected ? '연결됨' : '설정 모드'}
+            </Badge>
           </div>
-          <button className="mt-3 w-full py-2.5 rounded-2xl bg-brand-cream text-brand-brown text-sm font-bold touch-active shadow-soft">
-            와이파이 변경
-          </button>
+
+          <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+            <input
+              value={setupUrl}
+              onChange={(event) => setSetupUrl(event.target.value)}
+              className="min-w-0 rounded-2xl border border-brand-line bg-brand-cream px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="ESP32 설정 주소"
+            />
+            <GhostButton className="px-3 py-2 text-sm rounded-2xl" onClick={refreshWifiStatus}>
+              <RotateCw className="w-4 h-4" />
+            </GhostButton>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <PrimaryButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={scanWifi} disabled={networkBusy}>
+              <Search className="w-4 h-4" />
+              스캔
+            </PrimaryButton>
+            <GhostButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={connectWifi} disabled={networkBusy}>
+              연결
+            </GhostButton>
+          </div>
+
+          <div className="mt-3">
+            <input
+              value={selectedSsid}
+              onChange={(event) => setSelectedSsid(event.target.value)}
+              className="w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="SSID"
+            />
+            <input
+              value={wifiPassword}
+              onChange={(event) => setWifiPassword(event.target.value)}
+              type="password"
+              className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="비밀번호"
+            />
+            <input
+              value={mqttHost}
+              onChange={(event) => setMqttHost(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="MQTT 호스트 IP"
+            />
+          </div>
+
+          {networkMessage && <p className="mt-3 text-xs font-semibold text-brand-mute">{networkMessage}</p>}
+
+          {networks.length > 0 && (
+            <div className="mt-3 max-h-64 overflow-y-auto rounded-2xl border border-brand-line divide-y divide-brand-line">
+              {networks.map((network, index) => (
+                <button
+                  key={`${network.ssid}-${network.channel}-${index}`}
+                  className={`w-full flex items-center gap-3 px-3 py-3 text-left touch-active ${selectedSsid === network.ssid ? 'bg-brand-primary/10' : 'bg-white'}`}
+                  onClick={() => setSelectedSsid(network.ssid)}
+                >
+                  <span className="w-9 h-9 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+                    {network.secure ? <Lock className="w-4 h-4" /> : <Signal className="w-4 h-4" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-brand-brown truncate">{network.ssid || '숨겨진 네트워크'}</span>
+                    <span className="block text-xs text-brand-mute">신호 {network.rssi} dBm · CH {network.channel}</span>
+                  </span>
+                  {selectedSsid === network.ssid && <Badge tone="primary">선택</Badge>}
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
       </section>
 
