@@ -5,6 +5,7 @@ TARGET="all"
 SKIP_INSTALL=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
+EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 EXPECTED_NODE="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
 
 while [[ $# -gt 0 ]]; do
@@ -25,6 +26,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 pick_python() {
+  if command -v pyenv >/dev/null 2>&1; then
+    eval "$(pyenv init -)"
+    local pyenv_python
+    pyenv_python="$(pyenv exec python -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+    if [[ "$pyenv_python" == "$EXPECTED_PYTHON" ]]; then
+      PYTHON_BIN="$(pyenv which python)"
+      return
+    fi
+  fi
+
   if command -v python3.11 >/dev/null 2>&1; then
     PYTHON_BIN="python3.11"
     return
@@ -39,7 +50,7 @@ pick_python() {
     fi
   fi
 
-  echo "Python 3.11 is required. Install Python 3.11.9 and run again." >&2
+  echo "Python $EXPECTED_PYTHON is required. Run setup-toolchain.sh first and try again." >&2
   exit 1
 }
 
