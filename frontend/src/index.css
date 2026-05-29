@@ -92,6 +92,17 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Cute rounded font (동물 귀여움 느낌) */
+.font-cute {
+  font-family: 'Jua', 'Pretendard', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Cute handwriting accent */
+.font-hand {
+  font-family: 'Gaegu', 'Jua', 'Pretendard', system-ui, sans-serif;
+}
+
 /* Soft 3D card */
 .soft-card {
   background: #FFFFFF;
