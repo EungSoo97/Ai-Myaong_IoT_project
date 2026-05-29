@@ -53,20 +53,27 @@ export function WifiSetup() {
       if (data.mqttHost) setMqttHost(data.mqttHost)
     } catch {
       setStatus(null)
-      if (!silent) setMessage('ESP32 설정 AP에 연결되지 않았어요')
+      if (!silent) setMessage('ESP32 설정 주소에 연결할 수 없습니다.')
     }
   }
 
   async function scanWifi() {
     setBusy(true)
-    setMessage('주변 Wi-Fi 검색 중')
+    setMessage('라즈베리파이에서 주변 Wi-Fi를 검색하는 중입니다.')
     try {
-      const data = await esp32Request('/api/wifi/scan')
-      setNetworks(data.networks || [])
-      setMessage(data.networks?.length ? '검색 완료' : '검색된 Wi-Fi가 없어요')
+      let data
+      try {
+        data = await api.scanPiWifi()
+      } catch {
+        setMessage('라즈베리파이 스캔 실패. ESP32 스캔으로 다시 시도합니다.')
+        data = await esp32Request('/api/wifi/scan')
+      }
+      const nextNetworks = data.networks || []
+      setNetworks(nextNetworks)
+      setMessage(nextNetworks.length ? '검색 완료. 연결할 Wi-Fi를 선택하세요.' : '검색된 Wi-Fi가 없습니다.')
       await refreshStatus({ silent: true })
     } catch (error) {
-      setMessage(error.message || 'Wi-Fi 검색 실패')
+      setMessage(error.message || 'Wi-Fi 검색에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -74,20 +81,20 @@ export function WifiSetup() {
 
   async function saveWifi() {
     if (!ssid.trim()) {
-      setMessage('SSID를 선택해 주세요')
+      setMessage('SSID를 선택해 주세요.')
       return
     }
 
     setBusy(true)
-    setMessage('설정 저장 중')
+    setMessage('ESP32 설정 저장 중입니다.')
     try {
       const data = await esp32Request('/api/wifi/connect', {
         method: 'POST',
         body: JSON.stringify({ ssid, password, mqttHost, reboot: false }),
       })
-      setMessage(data.rebooting ? '저장 완료 · ESP32 재부팅 중' : '저장 완료')
+      setMessage(data.rebooting ? '저장 완료. ESP32 재부팅 중입니다.' : '저장 완료.')
     } catch (error) {
-      setMessage(error.message || '설정 저장 실패')
+      setMessage(error.message || 'ESP32 설정 저장에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -106,28 +113,40 @@ export function WifiSetup() {
 
   async function saveSharedWifi() {
     if (!ssid.trim()) {
-      setMessage('SSID를 선택해 주세요')
+      setMessage('SSID를 선택해 주세요.')
       return
     }
 
     setBusy(true)
-    setMessage('라즈베리파이와 ESP32 설정 적용 중')
+    setMessage('라즈베리파이와 ESP32 설정 적용 중입니다.')
     try {
-      const data = await api.configureSharedWifi({
-        ssid,
-        password,
-        mqttHost: mqttHost.trim() || 'auto',
-        mqttPort: 1883,
-        esp32SetupUrl: setupUrl,
-        piApFallback,
-      })
+      let data
+      try {
+        data = await api.configurePiWifi({
+          ssid,
+          password,
+          mqttHost: mqttHost.trim() || 'auto',
+          mqttPort: 1883,
+          esp32SetupUrl: setupUrl,
+          piApFallback,
+        })
+      } catch {
+        data = await api.configureSharedWifi({
+          ssid,
+          password,
+          mqttHost: mqttHost.trim() || 'auto',
+          mqttPort: 1883,
+          esp32SetupUrl: setupUrl,
+          piApFallback,
+        })
+      }
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
       if (nextHost) setMqttHost(nextHost)
-      setMessage(nextHost ? `적용 완료 · MQTT ${nextHost}:1883` : '적용 완료')
+      setMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
       await refreshPiStatus()
       await refreshStatus({ silent: true })
     } catch (error) {
-      setMessage(error.message || '공통 설정 적용 실패')
+      setMessage(error.message || '공통 설정 적용에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -146,7 +165,7 @@ export function WifiSetup() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">Wi-Fi 설정</h1>
-          <p className="mt-1 text-sm text-brand-mute truncate">ESP32_FEEDER_SETUP</p>
+          <p className="mt-1 text-sm text-brand-mute truncate">라즈베리파이 스캔 우선</p>
         </div>
         <Badge tone={status?.stationConnected ? 'success' : 'warn'}>
           {status?.stationConnected ? '연결됨' : '설정'}

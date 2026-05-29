@@ -1,5 +1,8 @@
+import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +26,26 @@ def network_status():
         "wifiIp": _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"]),
         "wifiSsid": _command_output(["bash", "-lc", "iwgetid -r"]),
     }
+
+
+@router.get("/pi-wifi-scan")
+def pi_wifi_scan():
+    return _pi_agent_json_request("/api/wifi/scan")
+
+
+@router.post("/pi-wifi-connect")
+def pi_wifi_connect(payload: SharedWifiRequest):
+    return _pi_agent_json_request(
+        "/api/wifi/connect",
+        {
+            "ssid": payload.ssid,
+            "password": payload.password,
+            "mqttHost": payload.mqtt_host,
+            "mqttPort": payload.mqtt_port,
+            "esp32SetupUrl": payload.esp32_setup_url,
+            "piApFallback": payload.pi_ap_fallback,
+        },
+    )
 
 
 @router.post("/shared-wifi")
@@ -107,3 +130,40 @@ def _command_output(command: list[str]) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
+    pi_agent_base_url = os.getenv("PI_AGENT_BASE_URL", "http://10.1.82.103:8765").rstrip("/")
+    body = None
+    method = "GET"
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        method = "POST"
+        headers["Content-Type"] = "application/json"
+
+    request = urllib.request.Request(
+        f"{pi_agent_base_url}{path}",
+        data=body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail_text = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail_text)
+        except json.JSONDecodeError:
+            detail = detail_text or exc.reason
+        raise HTTPException(status_code=exc.code, detail=detail) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Raspberry Pi Wi-Fi API is not reachable.",
+                "baseUrl": pi_agent_base_url,
+                "error": str(exc),
+            },
+        ) from exc
