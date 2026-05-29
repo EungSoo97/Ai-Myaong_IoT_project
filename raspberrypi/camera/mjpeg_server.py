@@ -3,9 +3,11 @@ import os
 import time
 from collections.abc import Iterator
 
-from flask import Flask, Response
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
-app = Flask(__name__)
+app = FastAPI(title="Ai-Myaong MJPEG Server", version="0.1.0")
 
 _FRAME = base64.b64decode(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z"
@@ -13,8 +15,8 @@ _FRAME = base64.b64decode(
 
 
 @app.get("/stream")
-def stream() -> Response:
-    return Response(frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+def stream() -> StreamingResponse:
+    return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 def frames() -> Iterator[bytes]:
@@ -24,4 +26,4 @@ def frames() -> Iterator[bytes]:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("STREAM_PORT", "8080")), threaded=True)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("STREAM_PORT", "8080")))
