@@ -8,9 +8,11 @@ import {
   Link as LinkIcon,
   Calendar,
   AlertTriangle,
+  Plus,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
-import { useAccount, petAge, speciesLabel, clearAccount } from '../lib/accountRepository'
+import { useAccount, petAge, speciesLabel, clearAccount, addPet } from '../lib/accountRepository'
+import { AddPetModal } from '../components/AddPetModal'
 
 function handleLogout() {
   try { sessionStorage.removeItem('aimyaong:auth') } catch { /* ignore */ }
@@ -39,9 +41,16 @@ function fmtDate(iso) {
 
 export function MyPage() {
   const [showWithdraw, setShowWithdraw] = useState(false)
+  const [showAddPet, setShowAddPet] = useState(false)
   const account = useAccount()
   const user = account?.user || null
-  const pet = account?.pets?.[0] || FALLBACK_PET
+  const pets = account?.pets ?? []
+  const pet = pets[0] || FALLBACK_PET
+
+  const handleAddPet = (newPet) => {
+    addPet(newPet)
+    setShowAddPet(false)
+  }
 
   const nickname = user?.nickname || '묘냥집사'
   const email = user?.email || 'nyce18711@gmail.com'
@@ -71,10 +80,21 @@ export function MyPage() {
       {/* 펫 프로필 */}
       <section className="mt-5">
         <div className="flex items-center justify-between px-1 mb-2">
-          <h3 className="font-display text-base font-bold text-brand-brown">펫 프로필</h3>
-          <button className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active">
-            <Pencil className="w-3.5 h-3.5" /> 수정
-          </button>
+          <h3 className="font-display text-base font-bold text-brand-brown">
+            펫 프로필{pets.length > 1 ? ` · ${pets.length}마리` : ''}
+          </h3>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowAddPet(true)}
+              className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active"
+            >
+              <Plus className="w-3.5 h-3.5" /> 펫 추가
+            </button>
+            <button className="flex items-center gap-1 text-xs font-bold text-brand-mute touch-active">
+              <Pencil className="w-3.5 h-3.5" /> 수정
+            </button>
+          </div>
         </div>
 
         <Card className="paw-watermark px-5 py-5">
@@ -142,6 +162,13 @@ export function MyPage() {
           onConfirm={handleWithdraw}
         />
       )}
+
+      {showAddPet && (
+        <AddPetModal
+          onClose={() => setShowAddPet(false)}
+          onSave={handleAddPet}
+        />
+      )}
     </div>
   )
 }
@@ -149,7 +176,7 @@ export function MyPage() {
 function WithdrawModal({ onCancel, onConfirm }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      className="fixed inset-0 z-[60] flex items-center justify-center px-6"
       style={{ background: 'rgba(45,37,32,0.45)' }}
       onClick={onCancel}
     >

@@ -9,6 +9,7 @@ import {
   PawPrint,
   Mic,
   MicOff,
+  Moon,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
 import { api } from '../api/api'
@@ -18,6 +19,7 @@ const EVENT_LOG = [
   { id: 2, type: '배식 동작', time: '13:00:00', clip: 'clip-002' },
   { id: 3, type: '음성 호출', time: '11:45:12', clip: 'clip-003' },
   { id: 4, type: '외부인 감지', time: '09:11:55', clip: 'clip-004' },
+  { id: 5, type: '수면 감지', time: '03:20:41', clip: 'clip-005' },
 ]
 
 const MOVE_COMMANDS = {
@@ -199,6 +201,23 @@ export function RobotVision() {
         </div>
       </Card>
 
+      {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
+      <section className="mt-5">
+        <h3 className="font-display text-base font-bold text-brand-brown mb-3">조종 패드</h3>
+        <Card className="px-4 py-6">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col items-center gap-2">
+              <DPad label="이동" onPress={onMove} tone="light" />
+              <span className="text-[11px] font-bold text-brand-mute">기기 이동</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <DPad label="카메라" onPress={onPan} centerAction="center" muted tone="light" />
+              <span className="text-[11px] font-bold text-brand-mute">카메라 회전</span>
+            </div>
+          </div>
+        </Card>
+      </section>
+
       {/* 컨트롤 (IR / 녹화 / 캡처) */}
       <section className="mt-5">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">제어</h3>
@@ -243,8 +262,8 @@ export function RobotVision() {
               onClick={() => setSelectedClip(e)}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
             >
-              <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
-                <Video className="w-4 h-4" />
+              <span className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${e.type === '수면 감지' ? 'bg-brand-brown/10 text-brand-brown' : 'bg-brand-primary/15 text-brand-primary'}`}>
+                {e.type === '수면 감지' ? <Moon className="w-4 h-4" /> : <Video className="w-4 h-4" />}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-brand-brown">{e.type}</p>
@@ -399,26 +418,28 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
  *  - 영상 위 시인성을 위해 반투명 배경 + 블러.
  *  - 누름 피드백: scale 변화 없이 배경색만 brand-brown 으로 즉시 전환.
  */
-function DPad({ centerAction = null, className = '', label, onPress, muted = false }) {
-  const baseBg = muted ? 'bg-white/12' : 'bg-white/18'
+function DPad({ centerAction = null, className = '', label, onPress, muted = false, tone = 'dark' }) {
+  const light = tone === 'light'
+  const baseBg = light ? 'bg-brand-cream' : muted ? 'bg-white/12' : 'bg-white/18'
+  const labelBox = light ? 'bg-brand-primary/15 text-brand-primary' : 'bg-black/35 backdrop-blur-sm text-white/85'
   return (
     <div className={className}>
       <div className="relative">
         <div className="grid grid-cols-3 gap-1.5 w-[148px]">
           <span />
-          <DBtn onClick={() => onPress('up')} bg={baseBg} aria="Up" />
+          <DBtn onClick={() => onPress('up')} bg={baseBg} tone={tone} aria="Up" />
           <span />
-          <DBtn onClick={() => onPress('left')} bg={baseBg} aria="Left" rotate="rotate-[270deg]" />
+          <DBtn onClick={() => onPress('left')} bg={baseBg} tone={tone} aria="Left" rotate="rotate-[270deg]" />
           {centerAction ? (
-            <CenterBtn onClick={() => onPress(centerAction)} />
+            <CenterBtn onClick={() => onPress(centerAction)} tone={tone} />
           ) : (
-            <div className="w-12 h-12 rounded-2xl bg-black/35 backdrop-blur-sm flex items-center justify-center">
-              <span className="text-[10px] font-bold tracking-wider text-white/85">{label}</span>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${labelBox}`}>
+              <span className="text-[10px] font-bold tracking-wider">{label}</span>
             </div>
           )}
-          <DBtn onClick={() => onPress('right')} bg={baseBg} aria="Right" rotate="rotate-90" />
+          <DBtn onClick={() => onPress('right')} bg={baseBg} tone={tone} aria="Right" rotate="rotate-90" />
           <span />
-          <DBtn onClick={() => onPress('down')} bg={baseBg} aria="Down" rotate="rotate-180" />
+          <DBtn onClick={() => onPress('down')} bg={baseBg} tone={tone} aria="Down" rotate="rotate-180" />
           <span />
         </div>
       </div>
@@ -426,7 +447,7 @@ function DPad({ centerAction = null, className = '', label, onPress, muted = fal
   )
 }
 
-function DBtn({ onClick, bg, aria, rotate = '' }) {
+function DBtn({ onClick, bg, aria, rotate = '', tone = 'dark' }) {
   const repeatTimerRef = useRef(null)
   const repeatDelayTimerRef = useRef(null)
 
@@ -462,11 +483,12 @@ function DBtn({ onClick, bg, aria, rotate = '' }) {
       aria-label={aria}
       className={`
         w-12 h-12 rounded-2xl
-        ${bg} backdrop-blur-sm
-        text-white shadow-md
+        ${bg}
         flex items-center justify-center
         transition-colors duration-75
-        active:bg-brand-brown
+        ${tone === 'light'
+          ? 'text-brand-brown shadow-soft active:bg-brand-primary active:text-white'
+          : 'backdrop-blur-sm text-white shadow-md active:bg-brand-brown'}
       `}
     >
       <PawPrint className={`w-5 h-5 ${rotate}`} strokeWidth={2.2} />
@@ -474,22 +496,23 @@ function DBtn({ onClick, bg, aria, rotate = '' }) {
   )
 }
 
-function CenterBtn({ onClick }) {
+function CenterBtn({ onClick, tone = 'dark' }) {
+  const light = tone === 'light'
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Center"
-      className="
+      className={`
         w-12 h-12 rounded-2xl
-        bg-black/45 backdrop-blur-sm
-        text-white shadow-md
         flex items-center justify-center
         transition-colors duration-75
-        active:bg-brand-brown
-      "
+        ${light
+          ? 'bg-brand-primary/15 text-brand-primary shadow-soft active:bg-brand-primary active:text-white'
+          : 'bg-black/45 backdrop-blur-sm text-white shadow-md active:bg-brand-brown'}
+      `}
     >
-      <span className="text-[9px] font-bold tracking-wider text-white/90">CENTER</span>
+      <span className="text-[9px] font-bold tracking-wider">CENTER</span>
     </button>
   )
 }

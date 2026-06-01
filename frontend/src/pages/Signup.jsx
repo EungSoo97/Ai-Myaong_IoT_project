@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   Check, ChevronLeft, ChevronRight, User, Smile,
-  PawPrint, Dog, Cat, Calendar, Scale, Camera, Plus,
+  PawPrint, Dog, Cat, Calendar, Scale, Ruler, Camera, Plus,
   PartyPopper, Trash2,
 } from 'lucide-react'
 import { GoogleButton } from '../components/GoogleButton'
@@ -42,6 +42,7 @@ const emptyPet = () => ({
   gender: 'M',
   birthDate: '',
   weightKg: '',
+  heightCm: '',
   photo: '',     // Base64 미리보기 문자열
   notes: '',
 })
@@ -425,6 +426,8 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(v) => setPetField('birthDate', v)} type="date" />
       <Field icon={<Scale className="w-5 h-5" />} label="몸무게 (kg)" value={pet.weightKg}
         onChange={(v) => setPetField('weightKg', v)} placeholder="예: 4.2" type="number" />
+      <Field icon={<Ruler className="w-5 h-5" />} label="키 (cm)" value={pet.heightCm}
+        onChange={(v) => setPetField('heightCm', v)} placeholder="예: 25" type="number" />
 
       {/* 특이사항 */}
       <FieldLabel>특이사항</FieldLabel>

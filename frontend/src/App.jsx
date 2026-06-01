@@ -11,6 +11,9 @@ import PetAuthFlow from './pages/PetAuthFlow'
 import { Dashboard } from './pages/Dashboard'
 import { RobotVision } from './pages/RobotVision'
 import { Dispenser } from './pages/Dispenser'
+import { Feeding } from './pages/Feeding'
+import { Activity } from './pages/Activity'
+import { PetDetail } from './pages/PetDetail'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
 import { WifiSetup } from './pages/WifiSetup'
@@ -36,7 +39,7 @@ function App() {
   }, [authenticated]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* 단독 데모: 인증→펫 등록→대시보드 통합 플로우 (자체 셸 포함) */}
         <Route path="/flow" element={<PetAuthFlow />} />
@@ -77,6 +80,9 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="vision" element={<RobotVision />} />
           <Route path="dispenser" element={<Dispenser />} />
+          <Route path="feeding" element={<Feeding />} />
+          <Route path="activity" element={<Activity />} />
+          <Route path="pet/:idx" element={<PetDetail />} />
           <Route path="settings" element={<Settings />} />
           <Route path="mypage" element={<MyPage />} />
         </Route>

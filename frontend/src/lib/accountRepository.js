@@ -62,6 +62,14 @@ export function getPets() {
   return getAccount()?.pets ?? []
 }
 
+/* 펫 추가 — 내일: POST /api/pets 로 교체 */
+export function addPet(pet) {
+  const acc = getAccount()
+  if (!acc) return false
+  saveAccount({ ...acc, pets: [...(acc.pets || []), pet] })
+  return true
+}
+
 /* 생년월일 → 만 나이 (없으면 null) */
 export function petAge(birthDate) {
   if (!birthDate) return null
@@ -74,6 +82,23 @@ export function petAge(birthDate) {
 /* 종류 코드 → 한글 라벨 */
 export function speciesLabel(species) {
   return species === 'DOG' ? '강아지' : species === 'CAT' ? '고양이' : '반려동물'
+}
+
+/* BMI = 체중(kg) / 키(m)^2 — 키/몸무게 없으면 null */
+export function petBmi(weightKg, heightCm) {
+  const w = Number(weightKg)
+  const h = Number(heightCm) / 100
+  if (!w || !h) return null
+  return Math.round((w / (h * h)) * 10) / 10
+}
+
+/* BMI 등급 (참고용 · 사람 기준 근사) */
+export function bmiGrade(bmi) {
+  if (bmi == null) return { label: '정보 부족', color: '#A98A6B', ratio: 0 }
+  if (bmi < 18.5) return { label: '저체중', color: '#F0B860', ratio: 0.25 }
+  if (bmi < 25) return { label: '정상', color: '#7FB28A', ratio: 0.5 }
+  if (bmi < 30) return { label: '과체중', color: '#F0A56E', ratio: 0.75 }
+  return { label: '비만', color: '#E26D5C', ratio: 1 }
 }
 
 /**
