@@ -8,11 +8,13 @@ import {
   UtensilsCrossed,
   AlertTriangle,
   Droplets,
+  ChevronLeft,
   ChevronRight,
   X,
   Plus as PlusIcon,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, PrimaryButton } from '../components/ui'
+import { TimeWheel } from '../components/TimeWheel'
 
 const COLORS = {
   food: '#F08D86',
@@ -89,7 +91,21 @@ export function Dispenser() {
 
   return (
     <div className="px-5 pb-6">
-      <PageHeader title="디스펜서" subtitle="사료 · 음수 · 통계" />
+      {/* 헤더 + 뒤로가기 */}
+      <header className="flex items-center gap-2.5 pt-5 pb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">디스펜서</h1>
+          <p className="text-sm text-brand-mute truncate">사료 · 음수 · 통계</p>
+        </div>
+      </header>
 
       {/* 잔여량 (사료 + 물) */}
       <section className="grid grid-cols-2 gap-3">
@@ -117,7 +133,7 @@ export function Dispenser() {
         unitLabel="g"
         amount={foodAmount}
         min={5}
-        max={50}
+        max={300}
         step={5}
         onChange={setFoodAmount}
         button={`지금 ${foodAmount}g 배식하기`}
@@ -328,9 +344,20 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
         >
           <Minus className="w-5 h-5" />
         </button>
-        <div className="flex-1 h-3 rounded-full bg-brand-line overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{ width: `${ratio * 100}%`, background: accent }} />
-        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={amount}
+          onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={`${title} 제공량`}
+          className="flex-1 h-2.5 cursor-pointer appearance-none rounded-full"
+          style={{
+            accentColor: accent,
+            background: `linear-gradient(to right, ${accent} 0%, ${accent} ${ratio * 100}%, #EFE3D2 ${ratio * 100}%, #EFE3D2 100%)`,
+          }}
+        />
         <button
           onClick={() => onChange(Math.min(max, amount + step))}
           className="w-12 h-12 rounded-2xl bg-brand-cream text-brand-brown shadow-soft touch-active flex items-center justify-center"
@@ -425,6 +452,10 @@ function ScheduleModal({ initial, onClose, onSave }) {
   const isFood = type === 'food'
   const unit = isFood ? 'g' : 'ml'
   const step = isFood ? 5 : 20
+  const min = isFood ? 5 : 20
+  const max = 300
+  const accent = isFood ? COLORS.food : COLORS.water
+  const ratio = (Number(amount) - min) / (max - min)
 
   const submit = (e) => {
     e.preventDefault()
@@ -475,34 +506,47 @@ function ScheduleModal({ initial, onClose, onSave }) {
           </button>
         </div>
 
-        {/* 시간 */}
-        <label className="mt-4 block">
+        {/* 시간 (시/분 휠) */}
+        <div className="mt-4">
           <span className="text-sm font-bold text-brand-mute pl-1 flex items-center gap-1"><Clock className="w-4 h-4" /> 시간</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="mt-1.5 w-full rounded-2xl px-4 py-3.5 text-base font-bold text-brand-brown bg-brand-cream outline-none border-[1.5px] border-brand-line"
-          />
-        </label>
-
-        {/* 급여량/급수량 */}
-        <label className="mt-4 block">
-          <span className="text-sm font-bold text-brand-mute pl-1">{isFood ? '급여량' : '급수량'} ({unit})</span>
-          <div className="mt-1.5 flex items-center gap-3">
-            <button type="button" onClick={() => setAmount((a) => Math.max(step, Number(a) - step))}
-              className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center"><Minus className="w-5 h-5" /></button>
-            <input
-              type="number"
-              min={1}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="flex-1 text-center rounded-2xl px-4 py-3.5 text-base font-bold text-brand-brown bg-brand-cream outline-none border-[1.5px] border-brand-line"
-            />
-            <button type="button" onClick={() => setAmount((a) => Number(a) + step)}
-              className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center"><Plus className="w-5 h-5" /></button>
+          <div className="mt-1.5">
+            <TimeWheel value={time} onChange={setTime} />
           </div>
-        </label>
+        </div>
+
+        {/* 급여량/급수량 (슬라이드 막대) */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between pl-1">
+            <span className="text-sm font-bold text-brand-mute">{isFood ? '급여량' : '급수량'}</span>
+            <span className="px-2.5 py-1 rounded-full text-sm font-bold" style={{ background: `${accent}26`, color: accent }}>
+              {amount}{unit}
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-center gap-3">
+            <button type="button" onClick={() => setAmount((a) => Math.max(min, Number(a) - step))}
+              className="w-10 h-10 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center shrink-0"><Minus className="w-5 h-5" /></button>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              aria-label={isFood ? '급여량' : '급수량'}
+              className="flex-1 h-2.5 cursor-pointer appearance-none rounded-full"
+              style={{
+                accentColor: accent,
+                background: `linear-gradient(to right, ${accent} 0%, ${accent} ${ratio * 100}%, #EFE3D2 ${ratio * 100}%, #EFE3D2 100%)`,
+              }}
+            />
+            <button type="button" onClick={() => setAmount((a) => Math.min(max, Number(a) + step))}
+              className="w-10 h-10 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center shrink-0"><Plus className="w-5 h-5" /></button>
+          </div>
+          <div className="mt-1 flex justify-between text-[11px] text-brand-mute px-1">
+            <span>{min}{unit}</span>
+            <span>{max}{unit}</span>
+          </div>
+        </div>
 
         <div className="mt-6 flex gap-3">
           <button type="button" onClick={() => dismiss(onClose)} className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active">취소</button>

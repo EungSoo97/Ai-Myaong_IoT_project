@@ -50,6 +50,14 @@ export function getCurrentUser() {
   return getAccount()?.user ?? null
 }
 
+/* 유저 정보 수정 — 내일: PATCH /api/me 로 교체 */
+export function updateUser(patch) {
+  const acc = getAccount()
+  if (!acc) return false
+  saveAccount({ ...acc, user: { ...acc.user, ...patch } })
+  return true
+}
+
 /* 비밀번호 재설정 — 내일: PATCH /api/me/password 로 교체 */
 export function updatePassword(newPassword) {
   const acc = getAccount()
@@ -70,6 +78,23 @@ export function addPet(pet) {
   return true
 }
 
+/* 펫 수정 — 내일: PATCH /api/pets/:id 로 교체 */
+export function updatePet(index, pet) {
+  const acc = getAccount()
+  if (!acc || !acc.pets?.[index]) return false
+  const pets = acc.pets.map((p, i) => (i === index ? { ...p, ...pet } : p))
+  saveAccount({ ...acc, pets })
+  return true
+}
+
+/* 펫 삭제 — 내일: DELETE /api/pets/:id 로 교체 */
+export function removePet(index) {
+  const acc = getAccount()
+  if (!acc || !acc.pets?.[index]) return false
+  saveAccount({ ...acc, pets: acc.pets.filter((_, i) => i !== index) })
+  return true
+}
+
 /* 생년월일 → 만 나이 (없으면 null) */
 export function petAge(birthDate) {
   if (!birthDate) return null
@@ -77,6 +102,18 @@ export function petAge(birthDate) {
   if (Number.isNaN(b.getTime())) return null
   const years = Math.floor((Date.now() - b.getTime()) / (365.25 * 24 * 3600 * 1000))
   return years >= 0 ? years : null
+}
+
+/* 생년월일 → 나이 라벨 (1살 미만은 "N개월", 이상은 "N살", 없으면 null) */
+export function petAgeLabel(birthDate) {
+  if (!birthDate) return null
+  const b = new Date(birthDate)
+  if (Number.isNaN(b.getTime())) return null
+  const now = new Date()
+  let months = (now.getFullYear() - b.getFullYear()) * 12 + (now.getMonth() - b.getMonth())
+  if (now.getDate() < b.getDate()) months -= 1 // 생일 안 지난 달 보정
+  if (months < 0) return null
+  return months < 12 ? `${months}개월` : `${Math.floor(months / 12)}살`
 }
 
 /* 종류 코드 → 한글 라벨 */
@@ -99,6 +136,33 @@ export function bmiGrade(bmi) {
   if (bmi < 25) return { label: '정상', color: '#7FB28A', ratio: 0.5 }
   if (bmi < 30) return { label: '과체중', color: '#F0A56E', ratio: 0.75 }
   return { label: '비만', color: '#E26D5C', ratio: 1 }
+}
+
+/* 체지방률(%BF) — 종류별 둘레/하퇴골 길이 기반 (없으면 null) */
+export function petBodyFat(species, circumference, legLength) {
+  const c = Number(circumference)
+  const l = Number(legLength)
+  if (!c || !l) return null
+  const raw = species === 'CAT' ? (c / l * 1.5) - 9 : (c / l * 1.2) - 15.5
+  return Math.round(raw * 10) / 10
+}
+
+/* 체지방률 등급 (종류별 임계값) */
+export function bodyFatGrade(species, bf) {
+  if (bf == null) return null
+  let status
+  if (species === 'CAT') {
+    status = bf < 10 ? 'UNDERWEIGHT' : bf < 30 ? 'IDEAL' : bf <= 42 ? 'OVERWEIGHT' : 'OBESE'
+  } else {
+    status = bf < 10 ? 'UNDERWEIGHT' : bf < 25 ? 'IDEAL' : bf < 35 ? 'OVERWEIGHT' : 'OBESE'
+  }
+  const META = {
+    UNDERWEIGHT: { label: '저체중', color: '#F0B860', ratio: 0.25 },
+    IDEAL: { label: '정상', color: '#7FB28A', ratio: 0.5 },
+    OVERWEIGHT: { label: '과체중', color: '#F0A56E', ratio: 0.75 },
+    OBESE: { label: '비만', color: '#E26D5C', ratio: 1 },
+  }
+  return { status, ...META[status] }
 }
 
 /**

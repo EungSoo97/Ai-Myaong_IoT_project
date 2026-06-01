@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Maximize2,
   Minimize2,
@@ -10,6 +11,7 @@ import {
   Mic,
   MicOff,
   Moon,
+  ChevronLeft,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
 import { api } from '../api/api'
@@ -38,6 +40,7 @@ const CAMERA_COMMANDS = {
 }
 
 export function RobotVision() {
+  const navigate = useNavigate()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [irOn, setIrOn] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -152,8 +155,16 @@ export function RobotVision() {
 
   return (
     <div className="px-5 pt-5 pb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="font-display text-2xl font-bold text-brand-brown">로봇 비전</h1>
+      <div className="flex items-center gap-2.5 mb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown">로봇 비전</h1>
         <Badge tone="success">연결됨</Badge>
       </div>
 

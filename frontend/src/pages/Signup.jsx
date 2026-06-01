@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check, ChevronLeft, ChevronRight, User, Smile,
   PawPrint, Dog, Cat, Calendar, Scale, Ruler, Camera, Plus,
-  PartyPopper, Trash2,
+  PartyPopper, Trash2, Pencil,
 } from 'lucide-react'
 import { GoogleButton } from '../components/GoogleButton'
 import { EmailVerifyField } from '../components/EmailVerifyField'
+import { DateWheel } from '../components/DateWheel'
 import { PasswordField, isStrongPassword } from '../components/PasswordField'
 import { saveAccount } from '../lib/accountRepository'
 
@@ -34,6 +35,9 @@ const STEP_USER = 0
 const STEP_PET = 1
 const STEP_BRANCH = 2
 
+/* 오늘 날짜 (생년월일 미래 선택 방지용) */
+const TODAY = new Date().toISOString().slice(0, 10)
+
 /* 빈 펫 객체 — 초기값 & Reset 용 */
 const emptyPet = () => ({
   name: '',
@@ -43,6 +47,8 @@ const emptyPet = () => ({
   birthDate: '',
   weightKg: '',
   heightCm: '',
+  circumference: '', // (선택) 고양이: 갈비뼈 둘레 / 강아지: 골반 둘레 (cm)
+  legLength: '',     // (선택) 하퇴골 길이 (cm) — 체지방률 계산용
   photo: '',     // Base64 미리보기 문자열
   notes: '',
 })
@@ -66,6 +72,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
     nickname: '',
   })
   const [emailVerified, setEmailVerified] = useState(false) // 이메일 인증 완료 여부
+  const [provider, setProvider] = useState('email')         // 'email' | 'google'
   const [petList, setPetList] = useState([])   // 누적되는 펫 배열
   const [pet, setPet] = useState(emptyPet())   // 현재 입력 중인 펫 draft
 
@@ -92,6 +99,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
       userId: p.userId || profile.email.split('@')[0],
     }))
     setEmailVerified(true) // 구글이 인증한 이메일 → 별도 인증번호 불필요
+    setProvider('google')
   }
 
   /* ── 현재 단계에서 비었거나 잘못된 항목 수집 ── */
@@ -109,6 +117,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
       return [
         { key: 'name', bad: !pet.name.trim(), msg: '펫 이름을 입력해 주세요.' },
         { key: 'breed', bad: !pet.breed.trim(), msg: '품종을 입력해 주세요.' },
+        { key: 'birthDate', bad: !!pet.birthDate && pet.birthDate > TODAY, msg: '생년월일은 오늘 이후로 선택할 수 없어요.' },
       ]
     }
     return []
@@ -159,12 +168,22 @@ export default function Signup({ onComplete, onBackToLogin }) {
 
   const removePet = (idx) => setPetList((list) => list.filter((_, i) => i !== idx))
 
+  /* 등록된 펫 박스 탭 → 해당 펫을 다시 수정 (draft 로 꺼내고 펫 입력 단계로) */
+  const editPet = (idx) => {
+    setErr('')
+    setFieldErrors({})
+    setPet(petList[idx])
+    setPetList((list) => list.filter((_, i) => i !== idx))
+    setStep(STEP_PET)
+  }
+
   /* 최종 가입: 페이로드 조립 → console + localStorage */
   const finish = () => {
     if (petList.length === 0) { setErr('최소 한 마리의 펫을 등록해 주세요.'); return }
 
     const { passwordConfirm, ...user } = userInfo // 확인용 필드는 페이로드에서 제외
     const payload = {
+      provider, // 'email' | 'google'
       user,
       pets: petList,
       createdAt: new Date().toISOString(),
@@ -180,9 +199,14 @@ export default function Signup({ onComplete, onBackToLogin }) {
     setScreen('done')
   }
 
+  /* ───────── 환영 로딩 화면 ───────── */
+  if (screen === 'welcome') {
+    return <WelcomeSplash nickname={finalPayload?.user?.nickname} onDone={onComplete} />
+  }
+
   /* ───────── 완료(가상 대시보드) 화면 ───────── */
   if (screen === 'done' && finalPayload) {
-    return <DonePanel payload={finalPayload} onGo={onComplete} />
+    return <DonePanel payload={finalPayload} onGo={() => setScreen('welcome')} />
   }
 
   /* ───────── 회원가입 단계 화면 ───────── */
@@ -226,7 +250,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
             />
           )}
           {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={petList.length} errors={fieldErrors} />}
-          {step === STEP_BRANCH && <BranchStep petList={petList} onAdd={addAnotherPet} onRemove={removePet} />}
+          {step === STEP_BRANCH && <BranchStep petList={petList} onAdd={addAnotherPet} onRemove={removePet} onEdit={editPet} />}
 
           {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
         </div>
@@ -234,8 +258,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
 
       {/* 하단 고정: 네비게이션 */}
       <div
-        className="shrink-0 flex gap-3 px-5 pt-3 pb-6 sm:px-8 pb-safe"
-        style={{ background: C.bg, borderTop: `1px solid ${C.border}` }}
+        className="shrink-0 flex gap-3 px-5 pt-4 sm:px-8"
+        style={{ background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.75rem)' }}
       >
         {step > 0 && (
           <button
@@ -422,12 +446,21 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         <SegBtn active={pet.gender === 'F'} onClick={() => setPetField('gender', 'F')} label="♀ 암컷" />
       </div>
 
-      <Field icon={<Calendar className="w-5 h-5" />} label="생년월일" value={pet.birthDate}
-        onChange={(v) => setPetField('birthDate', v)} type="date" />
+      <FieldLabel>생년월일</FieldLabel>
+      <div className="mt-1.5">
+        <DateWheel value={pet.birthDate} onChange={(v) => setPetField('birthDate', v)} />
+      </div>
       <Field icon={<Scale className="w-5 h-5" />} label="몸무게 (kg)" value={pet.weightKg}
         onChange={(v) => setPetField('weightKg', v)} placeholder="예: 4.2" type="number" />
       <Field icon={<Ruler className="w-5 h-5" />} label="키 (cm)" value={pet.heightCm}
         onChange={(v) => setPetField('heightCm', v)} placeholder="예: 25" type="number" />
+      <Field icon={<Ruler className="w-5 h-5" />} label={`${pet.species === 'CAT' ? '갈비뼈 둘레' : '골반 둘레'} (cm)`} value={pet.circumference}
+        onChange={(v) => setPetField('circumference', v)} placeholder="선택 · 예: 32" type="number" />
+      <Field icon={<Ruler className="w-5 h-5" />} label="하퇴골 길이 (cm)" value={pet.legLength}
+        onChange={(v) => setPetField('legLength', v)} placeholder="선택 · 예: 12" type="number" />
+      <p className="mt-1.5 text-xs pl-1" style={{ color: C.mute }}>
+        둘레·하퇴골 길이를 입력하면 체지방률이 자동 계산돼요. (선택)
+      </p>
 
       {/* 특이사항 */}
       <FieldLabel>특이사항</FieldLabel>
@@ -444,16 +477,20 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
 }
 
 /* ─────────────── Step 3 · 추가 등록 분기 ─────────────── */
-function BranchStep({ petList, onAdd, onRemove }) {
+function BranchStep({ petList, onAdd, onRemove, onEdit }) {
   return (
     <div>
       <SectionTitle icon={<PawPrint className="w-5 h-5" />} title={`총 ${petList.length}마리 등록됨`} />
+      <p className="mt-1 text-sm" style={{ color: C.mute }}>항목을 누르면 다시 수정할 수 있어요.</p>
 
-      <div className="mt-5 space-y-2.5">
+      <div className="mt-4 space-y-2.5">
         {petList.map((p, i) => (
           <div
             key={i}
-            className="flex items-center gap-3 rounded-2xl px-3.5 py-3"
+            role="button"
+            tabIndex={0}
+            onClick={() => onEdit(i)}
+            className="flex items-center gap-3 rounded-2xl px-3.5 py-3 cursor-pointer transition-colors active:brightness-95"
             style={{ background: C.input, border: `1.5px solid ${C.border}` }}
           >
             <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center shrink-0"
@@ -468,7 +505,12 @@ function BranchStep({ petList, onAdd, onRemove }) {
                 {p.species === 'DOG' ? '강아지' : '고양이'} · {p.breed || '품종 미입력'}
               </p>
             </div>
-            <button type="button" onClick={() => onRemove(i)} className="p-2.5 rounded-xl active:brightness-95">
+            <Pencil className="w-4 h-4 shrink-0" style={{ color: C.mute }} />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(i) }}
+              className="p-2.5 rounded-xl active:brightness-95"
+            >
               <Trash2 className="w-5 h-5" style={{ color: C.danger }} />
             </button>
           </div>
@@ -487,6 +529,52 @@ function BranchStep({ petList, onAdd, onRemove }) {
       <p className="mt-4 text-center text-sm" style={{ color: C.mute }}>
         등록을 마쳤다면 아래 <b>가입 완료</b> 버튼을 눌러주세요 🐾
       </p>
+    </div>
+  )
+}
+
+/* ─────────────── 환영 로딩 스플래시 ─────────────── */
+const WELCOME_MESSAGES = [
+  '집사님 맞이할 준비 중…',
+  '사료 그릇 반짝반짝 닦는 중 🍚',
+  '포근한 낮잠 자리 데우는 중 😴',
+  '꼬리 흔드는 연습 중 🐾',
+  '거의 다 왔어요! 🐶🐱',
+]
+
+function WelcomeSplash({ nickname, onDone }) {
+  const [msgIdx, setMsgIdx] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMsgIdx((i) => (i + 1) % WELCOME_MESSAGES.length)
+    }, 650)
+    const done = setTimeout(onDone, 2800)
+    return () => { clearInterval(interval); clearTimeout(done) }
+  }, [onDone])
+
+  return (
+    <div className="font-cute flex-1 flex flex-col items-center justify-center h-[100dvh] px-8 text-center" style={{ background: C.bg }}>
+      <style>{`@keyframes wmFill{from{width:0%}to{width:100%}}`}</style>
+
+      {/* 통통 튀는 발바닥 */}
+      <div className="text-7xl animate-bounce">🐾</div>
+
+      <h1 className="mt-6 font-display text-3xl font-bold" style={{ color: C.brown }}>
+        {nickname ? `${nickname}님, 환영해요!` : '환영해요!'}
+      </h1>
+
+      {/* 회전 문구 */}
+      <p className="mt-2 text-sm font-semibold h-5" style={{ color: C.mute }}>
+        {WELCOME_MESSAGES[msgIdx]}
+      </p>
+
+      {/* 진행 바 */}
+      <div className="mt-7 w-full max-w-[240px] h-2.5 rounded-full overflow-hidden" style={{ background: C.border }}>
+        <div className="h-full rounded-full" style={{ background: C.primary, animation: 'wmFill 2.8s ease-out forwards' }} />
+      </div>
+
+      <p className="mt-4 text-xs" style={{ color: C.mute }}>잠시만 기다려 주세요 🐈</p>
     </div>
   )
 }
@@ -558,7 +646,7 @@ function FieldLabel({ children }) {
   return <span className="mt-5 block text-sm font-bold pl-1" style={{ color: C.mute }}>{children}</span>
 }
 
-function Field({ icon, label, value, onChange, type = 'text', placeholder, invalid }) {
+function Field({ icon, label, value, onChange, type = 'text', placeholder, invalid, max }) {
   return (
     <label className="mt-5 block">
       <span className="text-sm font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>{label}</span>
@@ -570,6 +658,7 @@ function Field({ icon, label, value, onChange, type = 'text', placeholder, inval
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          max={max}
           className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
           style={{ color: C.brown }}
         />

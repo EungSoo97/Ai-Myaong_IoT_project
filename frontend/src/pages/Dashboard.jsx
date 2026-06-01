@@ -15,7 +15,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
-import { useAccount, petAge, speciesLabel, addPet } from '../lib/accountRepository'
+import { useAccount, petAgeLabel, speciesLabel, addPet } from '../lib/accountRepository'
 import { AddPetModal } from '../components/AddPetModal'
 
 const RECENT = [
@@ -44,8 +44,8 @@ function petView(p) {
   const name = p?.name || '미야옹'
   const species = p ? speciesLabel(p.species) : '고양이'
   const breed = p?.breed || '코숏'
-  const age = p ? petAge(p.birthDate) : 3
-  const ageBreed = [age != null ? `${age}살` : null, breed].filter(Boolean).join(' · ')
+  const ageLabel = p ? petAgeLabel(p.birthDate) : '3살'
+  const ageBreed = [ageLabel, breed].filter(Boolean).join(' · ')
   return { name, species, ageBreed, photo: p?.photo }
 }
 
@@ -89,9 +89,9 @@ export function Dashboard() {
         right={
           <button
             type="button"
-            onClick={() => navigate('/wifi-setup')}
+            onClick={() => navigate('/settings')}
             className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
-            aria-label="네트워크 설정"
+            aria-label="설정"
           >
             <Wifi className="w-5 h-5 text-brand-success" />
           </button>
@@ -146,7 +146,6 @@ export function Dashboard() {
                         <Badge tone="success">건강 양호</Badge>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-brand-mute shrink-0 self-center" />
                   </button>
                 )
               })}

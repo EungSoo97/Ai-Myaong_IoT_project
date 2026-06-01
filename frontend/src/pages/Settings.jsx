@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Wifi,
   Bell,
   Power,
   RotateCw,
+  ChevronLeft,
   ChevronRight,
   Info,
   ShieldCheck,
@@ -20,6 +22,7 @@ const DEFAULT_ESP32_SETUP_URL = import.meta.env.VITE_ESP32_SETUP_URL || 'http://
 const DEFAULT_ESP32_MQTT_HOST = import.meta.env.VITE_ESP32_MQTT_HOST || '10.1.82.103'
 
 export function Settings() {
+  const navigate = useNavigate()
   const [pushOn, setPushOn] = useState(true)
   const [motionAlert, setMotionAlert] = useState(true)
   const [strangerAlert, setStrangerAlert] = useState(true)
@@ -187,7 +190,21 @@ export function Settings() {
 
   return (
     <div className="px-5 pb-6">
-      <PageHeader title="설정" subtitle="기기와 알림을 관리해요" />
+      {/* 헤더 + 뒤로가기 */}
+      <header className="flex items-center gap-2.5 pt-5 pb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">설정</h1>
+          <p className="text-sm text-brand-mute truncate">기기와 알림을 관리해요</p>
+        </div>
+      </header>
 
       <section id="network" className="scroll-mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">네트워크</h3>

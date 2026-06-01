@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, PawPrint, Dog, Cat, Camera } from 'lucide-react'
+import { DateWheel } from './DateWheel'
 
 /* Warm-tone 팔레트 */
 const C = {
@@ -12,18 +13,23 @@ const C = {
   danger: '#E26D5C',
 }
 
+const TODAY = new Date().toISOString().slice(0, 10) // 미래 생일 선택 방지
+
 const emptyPet = () => ({
   name: '', species: 'DOG', breed: '', gender: 'M',
-  birthDate: '', weightKg: '', heightCm: '', photo: '', notes: '',
+  birthDate: '', weightKg: '', heightCm: '',
+  circumference: '', legLength: '', // (선택) 체지방률 계산용
+  photo: '', notes: '',
 })
 
 /**
- * 펫 추가 모달 (로그인 후 반려동물 추가 등록).
- * - 회원가입 펫 입력과 동일한 필드
- * - onSave(pet) 로 전달 → 호출부에서 accountRepository.addPet
+ * 펫 추가/수정 바텀 시트.
+ * - 회원가입 펫 입력과 동일한 필드 (몸무게/키 포함 → BMI 계산에 사용)
+ * - initial 이 있으면 수정 모드(프리필)
+ * - onSave(pet) 로 전달 → 호출부에서 addPet / updatePet
  */
-export function AddPetModal({ onClose, onSave }) {
-  const [pet, setPet] = useState(emptyPet())
+export function AddPetModal({ onClose, onSave, initial = null, title = '반려동물 추가', submitLabel = '추가하기' }) {
+  const [pet, setPet] = useState(() => ({ ...emptyPet(), ...(initial || {}) }))
   const [err, setErr] = useState('')
   const [show, setShow] = useState(false) // 바텀 시트 슬라이드 인/아웃
   const fileRef = useRef(null)
@@ -52,6 +58,7 @@ export function AddPetModal({ onClose, onSave }) {
     e.preventDefault()
     if (!pet.name.trim()) { setErr('이름을 입력해 주세요.'); return }
     if (!pet.breed.trim()) { setErr('품종을 입력해 주세요.'); return }
+    if (pet.birthDate && pet.birthDate > TODAY) { setErr('생년월일은 오늘 이후로 선택할 수 없어요.'); return }
     dismiss(() => onSave(pet))
   }
 
@@ -75,7 +82,7 @@ export function AddPetModal({ onClose, onSave }) {
       >
         <div className="mx-auto w-10 h-1.5 rounded-full mb-4" style={{ background: C.border }} />
         <div className="flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold" style={{ color: C.brown }}>반려동물 추가</h3>
+          <h3 className="font-display text-lg font-bold" style={{ color: C.brown }}>{title}</h3>
           <button type="button" onClick={() => dismiss(onClose)} aria-label="닫기" style={{ color: C.mute }}><X className="w-5 h-5" /></button>
         </div>
 
@@ -113,9 +120,15 @@ export function AddPetModal({ onClose, onSave }) {
           <Seg active={pet.gender === 'F'} onClick={() => set('gender', 'F')} label="♀ 암컷" />
         </div>
 
-        <Field label="생년월일" value={pet.birthDate} onChange={(v) => set('birthDate', v)} type="date" />
+        <Label>생년월일</Label>
+        <div className="mt-1.5">
+          <DateWheel value={pet.birthDate} onChange={(v) => set('birthDate', v)} />
+        </div>
         <Field label="몸무게 (kg)" value={pet.weightKg} onChange={(v) => set('weightKg', v)} placeholder="예: 4.2" type="number" />
         <Field label="키 (cm)" value={pet.heightCm} onChange={(v) => set('heightCm', v)} placeholder="예: 25" type="number" />
+        <Field label={`${pet.species === 'CAT' ? '갈비뼈 둘레' : '골반 둘레'} (cm)`} value={pet.circumference}
+          onChange={(v) => set('circumference', v)} placeholder="선택 · 체지방률 계산용" type="number" />
+        <Field label="하퇴골 길이 (cm)" value={pet.legLength} onChange={(v) => set('legLength', v)} placeholder="선택 · 체지방률 계산용" type="number" />
 
         <Label>특이사항</Label>
         <textarea
@@ -136,7 +149,7 @@ export function AddPetModal({ onClose, onSave }) {
           </button>
           <button type="submit"
             className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white shadow-soft" style={{ background: C.primary }}>
-            추가하기
+            {submitLabel}
           </button>
         </div>
       </form>
@@ -148,7 +161,7 @@ function Label({ children }) {
   return <span className="mt-4 block text-sm font-bold pl-1" style={{ color: C.mute }}>{children}</span>
 }
 
-function Field({ icon, label, value, onChange, type = 'text', placeholder }) {
+function Field({ icon, label, value, onChange, type = 'text', placeholder, max }) {
   return (
     <label className="mt-4 block">
       <span className="text-sm font-bold pl-1" style={{ color: C.mute }}>{label}</span>
@@ -159,6 +172,7 @@ function Field({ icon, label, value, onChange, type = 'text', placeholder }) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          max={max}
           className="flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
           style={{ color: C.brown }}
         />

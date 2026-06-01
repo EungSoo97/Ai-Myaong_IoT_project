@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, PawPrint, Calendar, Scale, Ruler, Activity, Heart } from 'lucide-react'
+import { ChevronLeft, PawPrint, Calendar, Scale, Ruler, Activity, Heart, Pencil } from 'lucide-react'
 import { Card } from '../components/ui'
-import { useAccount, petAge, speciesLabel, petBmi, bmiGrade } from '../lib/accountRepository'
+import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet } from '../lib/accountRepository'
+import { AddPetModal } from '../components/AddPetModal'
 
 const C = {
   cream: '#FBEFDD',
@@ -18,10 +20,16 @@ export function PetDetail() {
   const account = useAccount()
   const pets = account?.pets ?? []
   const pet = pets[Number(idx)] || null
+  const [showEdit, setShowEdit] = useState(false)
+
+  const handleEdit = (updated) => {
+    updatePet(Number(idx), updated)
+    setShowEdit(false)
+  }
 
   return (
     <div className="px-5 pb-6">
-      {/* 헤더 + 뒤로가기 */}
+      {/* 헤더 + 뒤로가기 + 수정 */}
       <header className="flex items-center gap-2.5 pt-5 pb-3">
         <button
           type="button"
@@ -31,7 +39,16 @@ export function PetDetail() {
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">반려동물 정보</h1>
+        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown leading-tight">반려동물 정보</h1>
+        {pet && (
+          <button
+            type="button"
+            onClick={() => setShowEdit(true)}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-2xl bg-brand-cream text-brand-brown text-sm font-bold shadow-soft touch-active shrink-0"
+          >
+            <Pencil className="w-4 h-4" /> 수정
+          </button>
+        )}
       </header>
 
       {!pet ? (
@@ -41,12 +58,22 @@ export function PetDetail() {
       ) : (
         <PetBody pet={pet} />
       )}
+
+      {showEdit && pet && (
+        <AddPetModal
+          initial={pet}
+          title="반려동물 수정"
+          submitLabel="저장"
+          onClose={() => setShowEdit(false)}
+          onSave={handleEdit}
+        />
+      )}
     </div>
   )
 }
 
 function PetBody({ pet }) {
-  const age = petAge(pet.birthDate)
+  const ageLabel = petAgeLabel(pet.birthDate)
   const bmi = petBmi(pet.weightKg, pet.heightCm)
   const grade = bmiGrade(bmi)
 
@@ -67,7 +94,7 @@ function PetBody({ pet }) {
 
       {/* 기본 정보 */}
       <div className="mt-4 grid grid-cols-2 gap-2.5">
-        <InfoCell icon={<Calendar className="w-4 h-4" />} label="나이" value={age != null ? `${age}살` : '-'} />
+        <InfoCell icon={<Calendar className="w-4 h-4" />} label="나이" value={ageLabel || '-'} />
         <InfoCell icon={<Calendar className="w-4 h-4" />} label="생년월일" value={pet.birthDate || '-'} />
         <InfoCell icon={<Scale className="w-4 h-4" />} label="몸무게" value={pet.weightKg ? `${pet.weightKg}kg` : '-'} />
         <InfoCell icon={<Ruler className="w-4 h-4" />} label="키" value={pet.heightCm ? `${pet.heightCm}cm` : '-'} />
