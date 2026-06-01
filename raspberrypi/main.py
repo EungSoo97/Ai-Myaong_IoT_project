@@ -157,20 +157,21 @@ def start_wifi_http_server() -> None:
 
 
 def _run_wifi_http_server(host: str, port: int) -> None:
-    from flask import Flask, jsonify, request
+    import uvicorn
+    from fastapi import FastAPI, HTTPException
 
-    app = Flask(__name__)
+    app = FastAPI(title="Ai-Myaong Raspberry Pi Agent", version="0.1.0")
 
     @app.get("/api/wifi/scan")
     def wifi_scan():
         try:
-            return jsonify({"networks": scan_wifi_networks(), "source": "raspberrypi"})
+            return {"networks": scan_wifi_networks(), "source": "raspberrypi"}
         except RuntimeError as exc:
-            return jsonify({"error": str(exc)}), 500
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.post("/api/wifi/connect")
-    def wifi_connect():
-        body = request.get_json(silent=True) or {}
+    def wifi_connect(body: dict | None = None):
+        body = body or {}
         ssid = str(body.get("ssid", "")).strip()
         password = str(body.get("password", ""))
         mqtt_host = str(body.get("mqttHost") or body.get("mqtt_host") or "auto").strip() or "auto"
@@ -179,9 +180,9 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         pi_ap_fallback = bool(body.get("piApFallback") or body.get("pi_ap_fallback") or False)
 
         if not ssid:
-            return jsonify({"error": "SSID is required."}), 400
+            raise HTTPException(status_code=400, detail="SSID is required.")
         if not SETUP_WIFI_SCRIPT.exists():
-            return jsonify({"error": "Wi-Fi setup script was not found."}), 500
+            raise HTTPException(status_code=500, detail="Wi-Fi setup script was not found.")
 
         env = os.environ.copy()
         env["MQTT_BROKER_HOST"] = mqtt_host
@@ -201,23 +202,29 @@ def _run_wifi_http_server(host: str, port: int) -> None:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            return jsonify({
-                "error": "Wi-Fi setup timed out.",
-                "stdout": exc.stdout or "",
-                "stderr": exc.stderr or "",
-            }), 504
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "message": "Wi-Fi setup timed out.",
+                    "stdout": exc.stdout or "",
+                    "stderr": exc.stderr or "",
+                },
+            ) from exc
 
         if result.returncode != 0:
-            return jsonify({
-                "error": "Wi-Fi setup failed.",
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }), 500
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Wi-Fi setup failed.",
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+            )
 
-        return jsonify({"ok": True, "stdout": result.stdout, "stderr": result.stderr})
+        return {"ok": True, "stdout": result.stdout, "stderr": result.stderr}
 
     print(f"[raspberrypi] Wi-Fi HTTP API listening on {host}:{port}")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 def scan_wifi_networks() -> list[dict[str, object]]:
