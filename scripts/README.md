@@ -9,6 +9,7 @@
 - `rebuild-env.bat`
 - `start-backend.sh`
 - `start-frontend.sh`
+- `start-mqtt-broker.sh`
 - `start-raspberrypi.sh`
 - `setup-dev-env.sh`
 - `setup-toolchain.sh`
@@ -36,6 +37,7 @@ bash ./rebuild-env.sh all
 bash ./check-versions.sh all
 bash ./scripts/start-backend.sh
 bash ./scripts/start-frontend.sh
+bash ./scripts/start-mqtt-broker.sh
 bash ./scripts/start-raspberrypi.sh
 ```
 
@@ -63,5 +65,6 @@ bash ./check-versions.sh desktop
 bash ./rebuild-env.sh desktop
 bash ./scripts/start-backend.sh
 bash ./scripts/start-frontend.sh
+bash ./scripts/start-mqtt-broker.sh
 bash ./scripts/start-raspberrypi.sh
 ```
