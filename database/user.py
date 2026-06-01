@@ -23,3 +23,5 @@ class User(Base):
     detection_logs = relationship("DetectionLog",    back_populates="pet")
     feed_logs      = relationship("FeedLog",         back_populates="pet")
     health_reports = relationship("PetHealthReport", back_populates="pet")
+
+
