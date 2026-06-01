@@ -50,11 +50,11 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const nx = Math.max(-1, Math.min(1, (clientX - cx) / (rect.width / 2)))
       const ny = Math.max(-1, Math.min(1, (clientY - cy) / (rect.height / 2)))
 
-      // 머리: 작게 갸웃 (±3px translate, ±5deg rotate)
+      // 고양이: 커서 향해 갸웃 (translate + rotate)
       if (headRef.current) {
-        const tx = nx * 3
-        const ty = ny * 2
-        const rotZ = nx * 5
+        const tx = nx * 7
+        const ty = ny * 5
+        const rotZ = nx * 8
         headRef.current.style.transform = `translate(${tx}px, ${ty}px) rotate(${rotZ}deg)`
       }
       // 눈동자: 살짝 따라감 (±3px / ±2px)
@@ -132,15 +132,10 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         </p>
       </div>
 
-      {/* 둥글둥글 눈뜬 주황 고양이 (반응형) */}
+      {/* 반응형 고양이 이미지 */}
       <div className="mt-4 sm:mt-6 flex justify-center">
-        <div className="w-full max-w-[260px]">
-          <ChubbyCat
-            headRef={headRef}
-            tailRef={tailRef}
-            eyeLRef={eyeLRef}
-            eyeRRef={eyeRRef}
-          />
+        <div className="w-full max-w-[240px]">
+          <ReactiveCat headRef={headRef} />
         </div>
       </div>
 
@@ -251,6 +246,31 @@ function WarmField({ icon, label, value, onChange, type = 'text', placeholder, a
         />
       </div>
     </label>
+  )
+}
+
+/* ─────────────── 반응형 고양이 이미지 (public/AAA.png) ───────────────
+ * - headRef 래퍼: 커서 방향으로 기울기/이동 (Login 의 mousemove 핸들러가 제어)
+ * - cat-bob: 가만히 있을 때 둥실 떠 있는 애니메이션
+ * - img: 마우스 올리면 살짝 커지고, 누르면 살짝 작아짐
+ * (세 가지를 각각 다른 요소에 둬서 transform 충돌 없이 합성)
+ */
+function ReactiveCat({ headRef }) {
+  return (
+    <div
+      ref={headRef}
+      style={{ transformOrigin: 'center bottom', transition: 'transform 200ms ease-out', willChange: 'transform' }}
+    >
+      <div className="cat-bob">
+        <img
+          src="/AAA.png"
+          alt="고양이"
+          draggable={false}
+          className="w-full h-auto select-none transition-transform duration-300 hover:scale-105 active:scale-95"
+          style={{ filter: 'drop-shadow(0 16px 22px rgba(92,61,31,0.18))' }}
+        />
+      </div>
+    </div>
   )
 }
 
