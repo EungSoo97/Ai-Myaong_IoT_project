@@ -6,11 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.mqtt.mqtt_client import MqttClient
-<<<<<<< HEAD
-from app.routers import feed, robot, stream, ws 
-=======
-from app.routers import feed, network, robot, stream
->>>>>>> e58f1632f6526c589588141887f8dadf634d7b3e
+from app.routers import feed, network, robot, stream, ws
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.robot_service import RobotService
