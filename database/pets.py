@@ -13,9 +13,9 @@ class Pet(Base):
     birth_date     = Column(Date,        nullable=True)
     weight_kg      = Column(Float,       nullable=True)
     height_cm      = Column(Float,       nullable=True)
-    bmi            = Column(Float,       nullable=True)
-    obesity_grade  = Column(String(20),  nullable=True)
-    activity_goal  = Column(Float,       nullable=True)
+    # bmi            = Column(Float,       nullable=True)
+    # obesity_grade  = Column(String(20),  nullable=True)
+    # activity_goal  = Column(Float,       nullable=True)
     photo_path     = Column(String(500), nullable=True)
 
     user   = relationship("User",  back_populates="pets")

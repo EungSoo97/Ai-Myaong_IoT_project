@@ -11,7 +11,7 @@ class Settings(Base):
     away_mode     = Column(String(1),   default="N")
     wifi_ssid     = Column(String(100), nullable=True)
     wifi_password = Column(String(255), nullable=True)
-    device_type   = Column(String(20),  nullable=True)
+    # device_type   = Column(String(20),  nullable=True)
     updated_at    = Column(DateTime,    default=datetime.utcnow,
                            onupdate=datetime.utcnow)
 

@@ -9,7 +9,6 @@ class DetectionLog(Base):
     log_id         = Column(Integer, primary_key=True, autoincrement=True)
     user_id        = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     pet_id         = Column(Integer, ForeignKey("PETS.pet_id"),   nullable=False)
-    species        = Column(String(50),  nullable=True)
     pose           = Column(String(50),  nullable=True)
     activity_level = Column(Float,       nullable=True)
     confidence     = Column(Float,       nullable=True)

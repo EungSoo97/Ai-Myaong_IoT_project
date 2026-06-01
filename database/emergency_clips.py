@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, datetime
 from sqlalchemy.orm import relationship
 from database.base import Base
 
@@ -8,5 +8,6 @@ class EmergencyClip(Base):
     clip_id    = Column(Integer, primary_key=True, autoincrement=True)
     alert_id   = Column(Integer, ForeignKey("ALERTS.alert_id"), nullable=False)
     file_path  = Column(String(500), nullable=False)
-
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
     alert = relationship("Alert", back_populates="emergency_clips")
