@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Wifi,
   Bell,
@@ -7,20 +7,172 @@ import {
   ChevronRight,
   Info,
   ShieldCheck,
+  Search,
+  Lock,
+  Signal,
 } from 'lucide-react'
-import { Card, CreamCard, PageHeader, ToggleSwitch, Badge } from '../components/ui'
+import { Card, CreamCard, PageHeader, ToggleSwitch, Badge, PrimaryButton, GhostButton } from '../components/ui'
+import { api } from '../api/api'
+
+const ESP32_SETUP_URL_KEY = 'aimyaong:esp32SetupUrl'
+const ESP32_MQTT_HOST_KEY = 'aimyaong:esp32MqttHost'
+const DEFAULT_ESP32_SETUP_URL = import.meta.env.VITE_ESP32_SETUP_URL || 'http://192.168.4.1'
+const DEFAULT_ESP32_MQTT_HOST = import.meta.env.VITE_ESP32_MQTT_HOST || '10.1.82.103'
 
 export function Settings() {
   const [pushOn, setPushOn] = useState(true)
   const [motionAlert, setMotionAlert] = useState(true)
   const [strangerAlert, setStrangerAlert] = useState(true)
   const [feedAlert, setFeedAlert] = useState(false)
+  const [setupUrl, setSetupUrl] = useState(() => readLocal(ESP32_SETUP_URL_KEY, DEFAULT_ESP32_SETUP_URL))
+  const [mqttHost, setMqttHost] = useState(() => readLocal(ESP32_MQTT_HOST_KEY, DEFAULT_ESP32_MQTT_HOST))
+  const [wifiStatus, setWifiStatus] = useState(null)
+  const [networks, setNetworks] = useState([])
+  const [selectedSsid, setSelectedSsid] = useState('')
+  const [wifiPassword, setWifiPassword] = useState('')
+  const [networkBusy, setNetworkBusy] = useState(false)
+  const [networkMessage, setNetworkMessage] = useState('')
+  const [piNetworkStatus, setPiNetworkStatus] = useState(null)
+  const [piApFallback, setPiApFallback] = useState(false)
+
+  useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl])
+  useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost])
+
+  useEffect(() => {
+    refreshWifiStatus()
+    refreshPiNetworkStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function esp32Request(path, options = {}) {
+    const base = setupUrl.replace(/\/$/, '')
+    const response = await fetch(`${base}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      ...options,
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || `ESP32 API error: ${response.status}`)
+    }
+    return data
+  }
+
+  async function refreshWifiStatus({ silent = false } = {}) {
+    try {
+      if (!silent) setNetworkMessage('')
+      const data = await esp32Request('/api/wifi/status')
+      setWifiStatus(data)
+      if (data.mqttHost) setMqttHost(data.mqttHost)
+    } catch {
+      setWifiStatus(null)
+      if (!silent) setNetworkMessage('ESP32 설정 주소에 연결할 수 없습니다.')
+    }
+  }
+
+  async function scanWifi() {
+    setNetworkBusy(true)
+    setNetworkMessage('라즈베리파이에서 주변 Wi-Fi를 검색하는 중입니다.')
+    try {
+      let data
+      try {
+        data = await api.scanPiWifi()
+      } catch {
+        setNetworkMessage('라즈베리파이 스캔 실패. ESP32 스캔으로 다시 시도합니다.')
+        data = await esp32Request('/api/wifi/scan')
+      }
+      const nextNetworks = data.networks || []
+      setNetworks(nextNetworks)
+      setNetworkMessage(nextNetworks.length ? '검색 완료. 연결할 Wi-Fi를 선택하세요.' : '검색된 Wi-Fi가 없습니다.')
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || 'Wi-Fi 검색에 실패했습니다.')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
+
+  async function connectWifi() {
+    if (!selectedSsid) {
+      setNetworkMessage('연결할 Wi-Fi를 선택해 주세요.')
+      return
+    }
+
+    setNetworkBusy(true)
+    setNetworkMessage('ESP32에 Wi-Fi 설정을 저장하는 중입니다.')
+    try {
+      const data = await esp32Request('/api/wifi/connect', {
+        method: 'POST',
+        body: JSON.stringify({ ssid: selectedSsid, password: wifiPassword, mqttHost, reboot: false }),
+      })
+      setNetworkMessage(data.rebooting ? '저장 완료. ESP32가 재부팅됩니다.' : data.connected ? `연결됨. ${data.ip}` : '저장 완료.')
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || 'ESP32 Wi-Fi 설정 저장에 실패했습니다.')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
+
+  async function refreshPiNetworkStatus() {
+    try {
+      const data = await api.getNetworkStatus()
+      setPiNetworkStatus(data)
+      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      if (host) setMqttHost(host)
+    } catch {
+      setPiNetworkStatus(null)
+    }
+  }
+
+  async function applySharedWifi() {
+    if (!selectedSsid) {
+      setNetworkMessage('같이 적용할 Wi-Fi를 선택해 주세요.')
+      return
+    }
+
+    setNetworkBusy(true)
+    setNetworkMessage('라즈베리파이와 ESP32 설정을 같이 적용하는 중입니다.')
+    try {
+      let data
+      try {
+        data = await api.configurePiWifi({
+          ssid: selectedSsid,
+          password: wifiPassword,
+          mqttHost: mqttHost.trim() || 'auto',
+          mqttPort: 1883,
+          esp32SetupUrl: setupUrl,
+          piApFallback,
+        })
+      } catch {
+        data = await api.configureSharedWifi({
+          ssid: selectedSsid,
+          password: wifiPassword,
+          mqttHost: mqttHost.trim() || 'auto',
+          mqttPort: 1883,
+          esp32SetupUrl: setupUrl,
+          piApFallback,
+        })
+      }
+      const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      if (nextHost) setMqttHost(nextHost)
+      setNetworkMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
+      await refreshPiNetworkStatus()
+      await refreshWifiStatus({ silent: true })
+    } catch (error) {
+      setNetworkMessage(error.message || '공통 Wi-Fi 설정에 실패했습니다.')
+    } finally {
+      setNetworkBusy(false)
+    }
+  }
 
   return (
     <div className="px-5 pb-6">
       <PageHeader title="설정" subtitle="기기와 알림을 관리해요" />
 
-      {/* 네트워크 */}
       <section id="network" className="scroll-mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">네트워크</h3>
         <Card className="px-4 py-4">
@@ -29,18 +181,104 @@ export function Settings() {
               <Wifi className="w-5 h-5" />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-brand-brown truncate">AiMyaong-Home</p>
-              <p className="text-xs text-brand-mute">신호 강도 우수 · 5GHz</p>
+              <p className="text-sm font-bold text-brand-brown truncate">
+                {wifiStatus?.ssid || wifiStatus?.savedSsid || 'ESP32_FEEDER_SETUP'}
+              </p>
+              <p className="text-xs text-brand-mute truncate">
+                {piNetworkStatus?.wifiSsid
+                  ? `Pi ${piNetworkStatus.wifiSsid} · ${piNetworkStatus.raspberrypiEnv?.MQTT_BROKER_HOST || mqttHost}`
+                  : wifiStatus?.ip ? `${wifiStatus.ip} · MQTT ${wifiStatus.mqttConnected ? '연결됨' : '대기'}` : setupUrl}
+              </p>
             </div>
-            <Badge tone="success">연결됨</Badge>
+            <Badge tone={wifiStatus?.stationConnected ? 'success' : 'warn'}>
+              {wifiStatus?.stationConnected ? '연결됨' : '설정 모드'}
+            </Badge>
           </div>
-          <button className="mt-3 w-full py-2.5 rounded-2xl bg-brand-cream text-brand-brown text-sm font-bold touch-active shadow-soft">
-            와이파이 변경
-          </button>
+
+          <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+            <input
+              value={setupUrl}
+              onChange={(event) => setSetupUrl(event.target.value)}
+              className="min-w-0 rounded-2xl border border-brand-line bg-brand-cream px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="ESP32 설정 주소"
+            />
+            <GhostButton className="px-3 py-2 text-sm rounded-2xl" onClick={refreshWifiStatus}>
+              <RotateCw className="w-4 h-4" />
+            </GhostButton>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <PrimaryButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={scanWifi} disabled={networkBusy}>
+              <Search className="w-4 h-4" />
+              스캔
+            </PrimaryButton>
+            <GhostButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={connectWifi} disabled={networkBusy}>
+              ESP32
+            </GhostButton>
+          </div>
+
+          <div className="mt-3">
+            <input
+              value={selectedSsid}
+              onChange={(event) => setSelectedSsid(event.target.value)}
+              className="w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="SSID"
+            />
+            <input
+              value={wifiPassword}
+              onChange={(event) => setWifiPassword(event.target.value)}
+              type="password"
+              className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="비밀번호"
+            />
+            <input
+              value={mqttHost}
+              onChange={(event) => setMqttHost(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="MQTT 호스트 IP 또는 비우면 자동"
+            />
+          </div>
+
+          <PrimaryButton className="mt-3 w-full py-2.5 rounded-2xl text-sm" onClick={applySharedWifi} disabled={networkBusy}>
+            <Wifi className="w-4 h-4" />
+            라즈베리파이 + ESP32 같이 적용
+          </PrimaryButton>
+
+          <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-brand-cream px-3 py-2.5">
+            <span className="text-xs font-bold text-brand-brown">실패 시 Pi AP 모드</span>
+            <input
+              type="checkbox"
+              checked={piApFallback}
+              onChange={(event) => setPiApFallback(event.target.checked)}
+              className="h-4 w-4 accent-brand-primary"
+            />
+          </label>
+
+          {networkMessage && <p className="mt-3 text-xs font-semibold text-brand-mute">{networkMessage}</p>}
+
+          {networks.length > 0 && (
+            <div className="mt-3 max-h-64 overflow-y-auto rounded-2xl border border-brand-line divide-y divide-brand-line">
+              {networks.map((network, index) => (
+                <button
+                  key={`${network.ssid}-${network.channel}-${index}`}
+                  className={`w-full flex items-center gap-3 px-3 py-3 text-left touch-active ${selectedSsid === network.ssid ? 'bg-brand-primary/10' : 'bg-white'}`}
+                  onClick={() => setSelectedSsid(network.ssid)}
+                >
+                  <span className="w-9 h-9 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+                    {network.secure ? <Lock className="w-4 h-4" /> : <Signal className="w-4 h-4" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-brand-brown truncate">{network.ssid || '숨겨진 네트워크'}</span>
+                    <span className="block text-xs text-brand-mute">신호 {network.rssi} dBm · CH {network.channel}</span>
+                  </span>
+                  {selectedSsid === network.ssid && <Badge tone="primary">선택</Badge>}
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
       </section>
 
-      {/* 알림 제어 */}
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">알림 제어</h3>
         <CreamCard className="divide-y divide-brand-line">
@@ -71,7 +309,6 @@ export function Settings() {
         </CreamCard>
       </section>
 
-      {/* 기기 제어 */}
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">기기 제어</h3>
         <div className="grid grid-cols-2 gap-3">
@@ -90,7 +327,6 @@ export function Settings() {
         </div>
       </section>
 
-      {/* 정보 */}
       <section className="mt-6">
         <Card className="divide-y divide-brand-line">
           <LinkRow icon={<ShieldCheck className="w-5 h-5 text-brand-success" />} title="보안 및 권한" />
@@ -128,6 +364,14 @@ function LinkRow({ icon, title }) {
       <ChevronRight className="w-4 h-4 text-brand-mute" />
     </button>
   )
+}
+
+function readLocal(key, fallback) {
+  try { return localStorage.getItem(key) || fallback } catch { return fallback }
+}
+
+function writeLocal(key, value) {
+  try { localStorage.setItem(key, value) } catch { /* ignore */ }
 }
 
 export default Settings

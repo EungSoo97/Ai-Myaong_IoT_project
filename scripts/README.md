@@ -10,6 +10,7 @@
 - `start-backend.sh`
 - `start-frontend.sh`
 - `start-mqtt-broker.sh`
+- `setup-raspberrypi-wifi.sh`
 - `start-raspberrypi.sh`
 - `setup-dev-env.sh`
 - `setup-toolchain.sh`

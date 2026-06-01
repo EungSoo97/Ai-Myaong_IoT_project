@@ -112,3 +112,4 @@ recordings/
 
 # 캡처 이미지 폴더 제외 추가
 captures/
+recordings/*.swp

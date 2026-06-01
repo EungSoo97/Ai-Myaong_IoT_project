@@ -6,12 +6,12 @@ const TABS = [
   { to: '/vision', label: '로봇 비전', icon: Video },
   { to: '/dispenser', label: '디스펜서', icon: UtensilsCrossed },
   { to: '/settings', label: '설정', icon: SettingsIcon },
-  { to: '/mypage', label: '마이', icon: User },
+  { to: '/mypage', label: '마이 페이지', icon: User },
 ]
 
 export function BottomTabBar() {
   return (
-    <nav className="sticky bottom-0 left-0 right-0 z-40 bg-brand-card/95 backdrop-blur-md border-t border-brand-line pb-safe">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-50 bg-brand-card/95 backdrop-blur-md border-t border-brand-line pb-safe">
       <ul className="flex justify-around items-stretch px-2 pt-1.5">
         {TABS.map(({ to, label, icon: Icon, end }) => (
           <li key={to} className="flex-1">
@@ -32,7 +32,7 @@ export function BottomTabBar() {
                       strokeWidth={isActive ? 2.4 : 2}
                     />
                   </span>
-                  <span className={`text-[11px] font-semibold ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}>
+                  <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}>
                     {label}
                   </span>
                 </>
