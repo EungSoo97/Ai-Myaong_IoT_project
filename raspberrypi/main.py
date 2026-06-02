@@ -186,6 +186,18 @@ def _run_wifi_http_server(host: str, port: int) -> None:
             "source": "raspberrypi",
         }
 
+    @app.post("/api/wifi/desktop-backend")
+    def save_desktop_backend(body: dict | None = None):
+        body = body or {}
+        desktop_backend_url = str(body.get("desktopBackendUrl") or body.get("desktop_backend_url") or "").strip().rstrip("/")
+        if not desktop_backend_url:
+            raise HTTPException(status_code=400, detail="desktopBackendUrl is required.")
+
+        os.environ["DESKTOP_BACKEND_URL"] = desktop_backend_url
+        set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", desktop_backend_url)
+        print(f"[device] desktop backend URL saved: {desktop_backend_url}")
+        return {"ok": True, "desktopBackendUrl": desktop_backend_url}
+
     @app.post("/api/wifi/connect")
     def wifi_connect(body: dict | None = None):
         body = body or {}

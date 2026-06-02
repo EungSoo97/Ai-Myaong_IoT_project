@@ -236,6 +236,7 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 _remember_pi_agent_url(pi_agent_base_url)
+                _send_desktop_backend_url_to_pi(pi_agent_base_url)
                 if isinstance(data, dict) and data.get("ip"):
                     _sync_backend_env_from_pi_ip(str(data["ip"]))
                 return data
@@ -288,6 +289,25 @@ def _desktop_backend_url_for_pi() -> str:
     host = _primary_private_ip()
     port = runtime_env("BACKEND_PUBLIC_PORT", "8000").strip() or "8000"
     return f"http://{host}:{port}" if host else ""
+
+
+def _send_desktop_backend_url_to_pi(pi_agent_base_url: str) -> None:
+    desktop_backend_url = _desktop_backend_url_for_pi()
+    if not desktop_backend_url:
+        return
+
+    body = json.dumps({"desktopBackendUrl": desktop_backend_url}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{pi_agent_base_url}/api/wifi/desktop-backend",
+        data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=1.5) as response:
+            response.read()
+    except Exception:
+        pass
 
 
 def _primary_private_ip() -> str:
