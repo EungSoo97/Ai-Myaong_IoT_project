@@ -32,6 +32,15 @@ const DAILY_FOOD = [
   { label: '야식', g: 5 },
 ]
 
+/* 오늘(일간) 시간대별 급수량(ml) */
+const DAILY_WATER = [
+  { label: '아침', ml: 60 },
+  { label: '점심', ml: 40 },
+  { label: '오후', ml: 50 },
+  { label: '저녁', ml: 70 },
+  { label: '야식', ml: 20 },
+]
+
 export function Dispenser() {
   const navigate = useNavigate()
   const [foodAmount, setFoodAmount] = useState(15)
@@ -87,7 +96,9 @@ export function Dispenser() {
   const waterLow = waterRemain < 25
 
   const todayTotal = DAILY_FOOD.reduce((s, d) => s + d.g, 0)
+  const todayWater = DAILY_WATER.reduce((s, d) => s + d.ml, 0)
   const maxFood = Math.max(...DAILY_FOOD.map((d) => d.g))
+  const maxWater = Math.max(...DAILY_WATER.map((d) => d.ml))
 
   return (
     <div className="px-5 pb-6">
@@ -245,25 +256,45 @@ export function Dispenser() {
       <section className="mt-6">
         <div className="flex items-center justify-between px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">오늘 급여 통계</h3>
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.food}26`, color: COLORS.food }}>
-            총 {todayTotal}g
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.food}26`, color: COLORS.food }}>
+              사료 {todayTotal}g
+            </span>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.water}26`, color: COLORS.water }}>
+              물 {todayWater}ml
+            </span>
+          </div>
         </div>
 
         <Card className="p-4">
-          <p className="text-xs text-brand-mute font-semibold mb-3">시간대별 급여량 (g)</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-brand-mute font-semibold">시간대별 급여 · 급수</p>
+            <div className="flex items-center gap-3 text-[11px] font-bold">
+              <Legend color={COLORS.food} label="사료(g)" />
+              <Legend color={COLORS.water} label="물(ml)" />
+            </div>
+          </div>
           <div className="flex items-end justify-between gap-2 h-32">
-            {DAILY_FOOD.map((d, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
-                <span className="text-[10px] font-bold text-brand-mute">{d.g}</span>
-                <div
-                  className="w-2/3 rounded-t-lg transition-all"
-                  style={{ height: `${(d.g / maxFood) * 100}%`, background: COLORS.food }}
-                  title={`${d.label} ${d.g}g`}
-                />
-                <span className="text-[10px] font-semibold text-brand-mute">{d.label}</span>
-              </div>
-            ))}
+            {DAILY_FOOD.map((d, i) => {
+              const w = DAILY_WATER[i]
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1.5 h-full">
+                  <div className="flex-1 w-full flex items-end justify-center gap-1">
+                    <div
+                      className="w-1/3 rounded-t-md transition-all"
+                      style={{ height: `${(d.g / maxFood) * 100}%`, background: COLORS.food }}
+                      title={`${d.label} 사료 ${d.g}g`}
+                    />
+                    <div
+                      className="w-1/3 rounded-t-md transition-all"
+                      style={{ height: `${(w.ml / maxWater) * 100}%`, background: COLORS.water }}
+                      title={`${d.label} 물 ${w.ml}ml`}
+                    />
+                  </div>
+                  <span className="text-[10px] font-semibold text-brand-mute">{d.label}</span>
+                </div>
+              )
+            })}
           </div>
         </Card>
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import {
@@ -33,12 +33,23 @@ const WEEKLY = [
   { label: '토', food: 40, water: 310 },
   { label: '일', food: 48, water: 350 },
 ]
-// 월간: 올해 월별 합계
-const MONTHLY = [
-  { label: '1월', food: 1240, water: 9200 }, { label: '2월', food: 1120, water: 8600 }, { label: '3월', food: 1310, water: 9600 },
-  { label: '4월', food: 1280, water: 9300 }, { label: '5월', food: 1360, water: 9900 }, { label: '6월', food: 1295, water: 9400 },
-  { label: '7월', food: 1410, water: 10200 }, { label: '8월', food: 1380, water: 10000 }, { label: '9월', food: 1330, water: 9700 },
-]
+// 월간: 현재 달이 가장 오른쪽 · 과거로 길게 (드래그 스크롤)
+function buildMonthly(count = 24) {
+  const now = new Date()
+  const arr = []
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const y = d.getFullYear()
+    const m = d.getMonth() + 1
+    // 결정적(seed 기반) mock — 렌더마다 값이 바뀌지 않도록
+    const seed = y * 12 + m
+    const food = 1280 + Math.round(Math.sin(seed) * 130) + (m % 3) * 35
+    const water = 9400 + Math.round(Math.cos(seed) * 650) + (m % 4) * 110
+    arr.push({ label: `${String(y).slice(2)}.${m}`, food, water })
+  }
+  return arr
+}
+const MONTHLY = buildMonthly(24)
 
 const PERIODS = [
   { id: 'day', label: '일간' },
@@ -100,24 +111,28 @@ export function Feeding() {
             <Legend2 color={COLORS.water} label="급수(ml)" />
           </div>
         </div>
-        <div style={{ width: '100%', height: 260 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={period === 'day' ? DAILY : period === 'week' ? WEEKLY : MONTHLY}
-              margin={{ top: 8, right: 0, left: -18, bottom: 0 }}
-              barGap={2}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="food" tick={{ fontSize: 11, fill: COLORS.food }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="water" orientation="right" tick={{ fontSize: 11, fill: COLORS.water }} axisLine={false} tickLine={false} width={36} />
-              <Tooltip {...tooltipProps} cursor={{ fill: `${COLORS.mute}14` }}
-                formatter={(v, name) => [name === '사료' ? `${v}g` : `${v}ml`, name]} />
-              <Bar yAxisId="food" dataKey="food" name="사료" fill={COLORS.food} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
-              <Bar yAxisId="water" dataKey="water" name="급수" fill={COLORS.water} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {period === 'month' ? (
+          <MonthlyPanChart all={MONTHLY} />
+        ) : (
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={period === 'day' ? DAILY : WEEKLY}
+                margin={{ top: 8, right: 0, left: -18, bottom: 0 }}
+                barGap={2}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="food" tick={{ fontSize: 11, fill: COLORS.food }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="water" orientation="right" tick={{ fontSize: 11, fill: COLORS.water }} axisLine={false} tickLine={false} width={36} />
+                <Tooltip {...tooltipProps} cursor={{ fill: `${COLORS.mute}14` }}
+                  formatter={(v, name) => [name === '사료' ? `${v}g` : `${v}ml`, name]} />
+                <Bar yAxisId="food" dataKey="food" name="사료" fill={COLORS.food} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
+                <Bar yAxisId="water" dataKey="water" name="급수" fill={COLORS.water} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </Card>
     </div>
   )
@@ -133,6 +148,80 @@ const tooltipProps = {
     boxShadow: '0 8px 24px -6px rgba(75,54,33,0.15)',
   },
   labelStyle: { color: COLORS.mute, fontWeight: 700 },
+}
+
+/* 월간 차트 — 현재 달이 오른쪽 끝, 좌우 드래그로 과거 보기 (주식 차트 느낌) */
+function MonthlyPanChart({ all, visible = 6 }) {
+  const maxOffset = Math.max(0, all.length - visible)
+  const [offset, setOffset] = useState(0) // 0 = 최신(현재 달이 오른쪽)
+  const drag = useRef(null)
+
+  const start = Math.max(0, all.length - visible - offset)
+  const data = all.slice(start, start + visible)
+
+  const STEP = 46 // 한 칸(=한 달) 이동에 필요한 드래그 px
+  const onDown = (e) => {
+    drag.current = { x: e.clientX, offset, moved: false }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+  const onMove = (e) => {
+    if (!drag.current) return
+    const dx = e.clientX - drag.current.x
+    if (Math.abs(dx) > 4) drag.current.moved = true
+    // 오른쪽으로 끌면(dx>0) 과거(offset↑)
+    const next = Math.max(0, Math.min(maxOffset, drag.current.offset + Math.round(dx / STEP)))
+    setOffset(next)
+  }
+  const onUp = (e) => {
+    drag.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
+
+  const first = data[0]?.label
+  const last = data[data.length - 1]?.label
+
+  return (
+    <div>
+      <div
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        className="select-none touch-none cursor-grab active:cursor-grabbing"
+        style={{ width: '100%', height: 260 }}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 0, left: -18, bottom: 0 }} barGap={2}>
+            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="food" tick={{ fontSize: 11, fill: COLORS.food }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="water" orientation="right" tick={{ fontSize: 11, fill: COLORS.water }} axisLine={false} tickLine={false} width={36} />
+            <Tooltip {...tooltipProps} cursor={{ fill: `${COLORS.mute}14` }}
+              formatter={(v, name) => [name === '사료' ? `${v}g` : `${v}ml`, name]} />
+            <Bar yAxisId="food" dataKey="food" name="사료" fill={COLORS.food} radius={[6, 6, 0, 0]} maxBarSize={20} isAnimationActive={false} />
+            <Bar yAxisId="water" dataKey="water" name="급수" fill={COLORS.water} radius={[6, 6, 0, 0]} maxBarSize={20} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* 범위 + 드래그 안내 */}
+      <div className="mt-1 flex items-center justify-between px-1 text-[11px] text-brand-mute font-semibold">
+        <span>{first} ~ {last}</span>
+        <span className="flex items-center gap-1">
+          {offset < maxOffset ? '◀ 드래그해서 과거 보기' : '최근'}
+          {offset > 0 && (
+            <button
+              type="button"
+              onClick={() => setOffset(0)}
+              className="ml-1 px-2 py-0.5 rounded-full bg-brand-cream text-brand-brown font-bold touch-active"
+            >
+              현재로
+            </button>
+          )}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 /* ───── 보조 컴포넌트 ───── */
