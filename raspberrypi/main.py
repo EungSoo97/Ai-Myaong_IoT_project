@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -157,20 +158,29 @@ def start_wifi_http_server() -> None:
 
 
 def _run_wifi_http_server(host: str, port: int) -> None:
-    from flask import Flask, jsonify, request
+    import uvicorn
+    from fastapi import FastAPI, HTTPException
 
-    app = Flask(__name__)
+    app = FastAPI(title="Ai-Myaong Raspberry Pi Agent", version="0.1.0")
 
     @app.get("/api/wifi/scan")
     def wifi_scan():
         try:
-            return jsonify({"networks": scan_wifi_networks(), "source": "raspberrypi"})
+            return {"networks": scan_wifi_networks(), "source": "raspberrypi"}
         except RuntimeError as exc:
-            return jsonify({"error": str(exc)}), 500
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get("/api/wifi/status")
+    def wifi_status():
+        return {
+            "ssid": current_wifi_ssid(),
+            "ip": current_wifi_ip(),
+            "source": "raspberrypi",
+        }
 
     @app.post("/api/wifi/connect")
-    def wifi_connect():
-        body = request.get_json(silent=True) or {}
+    def wifi_connect(body: dict | None = None):
+        body = body or {}
         ssid = str(body.get("ssid", "")).strip()
         password = str(body.get("password", ""))
         mqtt_host = str(body.get("mqttHost") or body.get("mqtt_host") or "auto").strip() or "auto"
@@ -179,9 +189,9 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         pi_ap_fallback = bool(body.get("piApFallback") or body.get("pi_ap_fallback") or False)
 
         if not ssid:
-            return jsonify({"error": "SSID is required."}), 400
+            raise HTTPException(status_code=400, detail="SSID is required.")
         if not SETUP_WIFI_SCRIPT.exists():
-            return jsonify({"error": "Wi-Fi setup script was not found."}), 500
+            raise HTTPException(status_code=500, detail="Wi-Fi setup script was not found.")
 
         env = os.environ.copy()
         env["MQTT_BROKER_HOST"] = mqtt_host
@@ -201,29 +211,168 @@ def _run_wifi_http_server(host: str, port: int) -> None:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            return jsonify({
-                "error": "Wi-Fi setup timed out.",
-                "stdout": exc.stdout or "",
-                "stderr": exc.stderr or "",
-            }), 504
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "message": "Wi-Fi setup timed out.",
+                    "stdout": exc.stdout or "",
+                    "stderr": exc.stderr or "",
+                },
+            ) from exc
 
         if result.returncode != 0:
-            return jsonify({
-                "error": "Wi-Fi setup failed.",
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }), 500
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Wi-Fi setup failed.",
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+            )
 
-        return jsonify({"ok": True, "stdout": result.stdout, "stderr": result.stderr})
+        return {"ok": True, "stdout": result.stdout, "stderr": result.stderr}
 
     print(f"[raspberrypi] Wi-Fi HTTP API listening on {host}:{port}")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 def scan_wifi_networks() -> list[dict[str, object]]:
+    iwlist_error = ""
+    if _command_exists("iwlist"):
+        try:
+            networks = _scan_with_iwlist()
+            if networks:
+                return networks
+        except RuntimeError as exc:
+            iwlist_error = str(exc)
+
     if _command_exists("nmcli"):
         return _scan_with_nmcli()
-    raise RuntimeError("nmcli was not found. Install NetworkManager or scan Wi-Fi directly on the Raspberry Pi.")
+
+    detail = "iwlist and nmcli were not found."
+    if iwlist_error:
+        detail = f"iwlist failed: {iwlist_error}"
+    raise RuntimeError(f"{detail} Install wireless-tools or NetworkManager on the Raspberry Pi.")
+
+
+def current_wifi_ssid() -> str:
+    if _command_exists("iwgetid"):
+        ssid = _command_output(["iwgetid", "-r"])
+        if ssid:
+            return ssid
+
+    if _command_exists("nmcli"):
+        ssid = _command_output(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"]).splitlines()
+        for line in ssid:
+            if line.startswith("yes:"):
+                return line.split(":", 1)[1].replace("\\:", ":")
+
+    return ""
+
+
+def current_wifi_ip() -> str:
+    if _command_exists("nmcli"):
+        ip = _command_output(["nmcli", "-g", "IP4.ADDRESS", "device", "show", "wlan0"])
+        if ip:
+            return ip.splitlines()[0].split("/", 1)[0]
+
+    if _command_exists("ip"):
+        output = _command_output(["ip", "-4", "addr", "show", "wlan0"])
+        match = re.search(r"\binet\s+([0-9.]+)/", output)
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def _scan_with_iwlist() -> list[dict[str, object]]:
+    interface = os.getenv("WIFI_SCAN_INTERFACE", "wlan0").strip() or "wlan0"
+    iwlist_path = _command_path("iwlist") or "iwlist"
+    commands = [
+        ["sudo", "-n", iwlist_path, interface, "scan"],
+        [iwlist_path, interface, "scan"],
+    ]
+    best_networks: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    for command in commands:
+        if command[0] == "sudo" and not _command_exists("sudo"):
+            continue
+        result = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode == 0:
+            networks = _parse_iwlist_scan(result.stdout)
+            if len(networks) > len(best_networks):
+                best_networks = networks
+            continue
+        errors.append(result.stderr.strip() or result.stdout.strip() or "scan failed")
+
+    if best_networks:
+        return best_networks
+
+    raise RuntimeError("; ".join(error for error in errors if error) or "Failed to scan Wi-Fi networks.")
+
+
+def _parse_iwlist_scan(output: str) -> list[dict[str, object]]:
+    cells = re.split(r"\n\s*Cell \d+ - Address:", output)
+    networks_by_key: dict[tuple[str, int], dict[str, object]] = {}
+
+    for cell in cells:
+        if "ESSID:" not in cell:
+            continue
+
+        ssid_match = re.search(r'ESSID:"((?:\\.|[^"])*)"', cell)
+        ssid = _unescape_iwlist_ssid(ssid_match.group(1)) if ssid_match else ""
+
+        channel = 0
+        channel_match = re.search(r"\(Channel\s+(\d+)\)", cell) or re.search(r"\bChannel:(\d+)", cell)
+        if channel_match:
+            channel = int(channel_match.group(1))
+
+        frequency = 0.0
+        frequency_match = re.search(r"Frequency:([0-9.]+)\s*GHz", cell)
+        if frequency_match:
+            frequency = float(frequency_match.group(1))
+
+        rssi = 0
+        signal_match = re.search(r"Signal level=(-?\d+)", cell)
+        quality_match = re.search(r"Quality=(\d+)/(\d+)", cell)
+        if signal_match:
+            rssi = int(signal_match.group(1))
+        elif quality_match:
+            quality = int(quality_match.group(1))
+            total = max(1, int(quality_match.group(2)))
+            rssi = round((quality / total) * 100)
+
+        encryption_match = re.search(r"Encryption key:(on|off)", cell)
+        secure = encryption_match is None or encryption_match.group(1) == "on"
+        security = _iwlist_security(cell, secure)
+        esp32_compatible = _esp32_wifi_compatible(channel, frequency)
+
+        network = {
+            "ssid": ssid,
+            "rssi": rssi,
+            "secure": secure,
+            "security": security,
+            "channel": channel,
+            "frequency": frequency,
+            "band": _wifi_band(channel, frequency),
+            "esp32Compatible": esp32_compatible,
+            "compatible": esp32_compatible,
+            "unsupportedReason": "" if esp32_compatible else "ESP32 supports 2.4GHz Wi-Fi only.",
+        }
+
+        key = (ssid, channel)
+        previous = networks_by_key.get(key)
+        if previous is None or int(previous["rssi"]) < rssi:
+            networks_by_key[key] = network
+
+    return sorted(networks_by_key.values(), key=lambda item: int(item["rssi"]), reverse=True)
 
 
 def _scan_with_nmcli() -> list[dict[str, object]]:
@@ -263,6 +412,11 @@ def _scan_with_nmcli() -> list[dict[str, object]]:
             "secure": bool(security and security != "--"),
             "security": "" if security == "--" else security,
             "channel": channel,
+            "frequency": 0,
+            "band": _wifi_band(channel, 0),
+            "esp32Compatible": _esp32_wifi_compatible(channel, 0),
+            "compatible": _esp32_wifi_compatible(channel, 0),
+            "unsupportedReason": "" if _esp32_wifi_compatible(channel, 0) else "ESP32 supports 2.4GHz Wi-Fi only.",
         }
         previous = networks_by_key.get(key)
         if previous is None or int(previous["rssi"]) < rssi:
@@ -290,9 +444,62 @@ def _split_nmcli_line(line: str, expected_parts: int) -> list[str]:
     return parts
 
 
+def _unescape_iwlist_ssid(value: str) -> str:
+    return value.replace(r"\"", '"').replace(r"\\", "\\")
+
+
+def _iwlist_security(cell: str, secure: bool) -> str:
+    if not secure:
+        return ""
+
+    security: list[str] = []
+    if "WPA3" in cell:
+        security.append("WPA3")
+    if "WPA2" in cell or "IEEE 802.11i" in cell:
+        security.append("WPA2")
+    if "WPA Version" in cell:
+        security.append("WPA")
+    return "/".join(dict.fromkeys(security)) or "WEP"
+
+
+def _wifi_band(channel: int, frequency: float) -> str:
+    if 1 <= channel <= 14 or 2.3 <= frequency < 2.6:
+        return "2.4GHz"
+    if channel >= 32 or 4.9 <= frequency < 6.0:
+        return "5GHz"
+    if frequency >= 6.0:
+        return "6GHz"
+    return "unknown"
+
+
+def _esp32_wifi_compatible(channel: int, frequency: float) -> bool:
+    if 1 <= channel <= 14:
+        return True
+    if frequency:
+        return 2.3 <= frequency < 2.6
+    return channel == 0
+
+
 def _command_exists(command: str) -> bool:
     result = subprocess.run(["bash", "-lc", f"command -v {command}"], capture_output=True, text=True)
     return result.returncode == 0
+
+
+def _command_output(command: list[str]) -> str:
+    try:
+        result = subprocess.run(command, text=True, capture_output=True, timeout=5, check=False)
+    except Exception:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _command_path(command: str) -> str:
+    result = subprocess.run(["bash", "-lc", f"command -v {command}"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip().splitlines()[0]
 
 
 if __name__ == "__main__":

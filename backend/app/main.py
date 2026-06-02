@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.mqtt.mqtt_client import MqttClient
-from app.routers import feed, network, robot, stream
+from app.routers import feed, network, robot, stream, ws
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.robot_service import RobotService
@@ -16,6 +16,18 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 app = FastAPI(title="Ai-Myaong Backend", version="0.1.0")
 
+default_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOW_ORIGINS", ",".join(default_cors_origins)).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -24,6 +36,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
+    allow_origin_regex=r"http://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+):(?:3000|5173)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +55,7 @@ app.state.feed_service = FeedService(mqtt_client, database, simulator)
 app.include_router(robot.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
+app.include_router(ws.router)  
 app.include_router(network.router)
 
 

@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from "react-router-dom";
+import { useWebSocket } from "../hooks/useWebSocket";
+
 import {
   Wifi,
-  Play,
   PhoneCall,
   Camera,
   PawPrint,
@@ -11,60 +11,93 @@ import {
   UserX,
   Plane,
   ChevronRight,
-} from 'lucide-react'
-import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
-import { useAccount, petAgeLabel, speciesLabel } from '../lib/accountRepository'
+} from "lucide-react";
+import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
+import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
 
 const RECENT = [
-  { id: 1, icon: UtensilsCrossed, tone: 'primary', title: '자동 배식 완료', desc: '15g · 정기 스케줄', time: '방금 전' },
-  { id: 2, icon: AlertTriangle, tone: 'warn', title: '이상 행동 감지', desc: '거실 카메라', time: '12분 전' },
-  { id: 3, icon: UserX, tone: 'danger', title: '외부인 감지', desc: '현관 카메라', time: '1시간 전' },
-  { id: 4, icon: PawPrint, tone: 'brown', title: '발자국 활동 기록', desc: '12회', time: '오늘' },
-]
+  {
+    id: 1,
+    icon: UtensilsCrossed,
+    tone: "primary",
+    title: "자동 배식 완료",
+    desc: "15g · 정기 스케줄",
+    time: "방금 전",
+  },
+  {
+    id: 2,
+    icon: AlertTriangle,
+    tone: "warn",
+    title: "이상 행동 감지",
+    desc: "거실 카메라",
+    time: "12분 전",
+  },
+  {
+    id: 3,
+    icon: UserX,
+    tone: "danger",
+    title: "외부인 감지",
+    desc: "현관 카메라",
+    time: "1시간 전",
+  },
+  {
+    id: 4,
+    icon: PawPrint,
+    tone: "brown",
+    title: "발자국 활동 기록",
+    desc: "12회",
+    time: "오늘",
+  },
+];
 
 const TONE = {
-  primary: 'bg-brand-primary/15 text-brand-primary',
-  warn: 'bg-brand-warning/20 text-[#A06B1A]',
-  danger: 'bg-brand-danger/15 text-brand-danger',
-  brown: 'bg-brand-brown/10 text-brand-brown',
-}
+  primary: "bg-brand-primary/15 text-brand-primary",
+  warn: "bg-brand-warning/20 text-[#A06B1A]",
+  danger: "bg-brand-danger/15 text-brand-danger",
+  brown: "bg-brand-brown/10 text-brand-brown",
+};
 
 const SHORTCUTS = [
-  { id: 'feed', label: '빠른 배식', icon: UtensilsCrossed },
-  { id: 'away', label: '외출 모드', icon: Plane },
-  { id: 'call', label: '음성 호출', icon: PhoneCall },
-  { id: 'cap', label: '캡처', icon: Camera },
-]
-
-/* 펫 1마리 표시용 값 (null이면 샘플 fallback) */
-function petView(p) {
-  const name = p?.name || '미야옹'
-  const species = p ? speciesLabel(p.species) : '고양이'
-  const breed = p?.breed || '코숏'
-  const ageLabel = p ? petAgeLabel(p.birthDate) : '3살'
-  const ageBreed = [ageLabel, breed].filter(Boolean).join(' · ')
-  return { name, species, ageBreed, photo: p?.photo }
-}
+  {
+    id: "feed",
+    label: "빠른 배식",
+    icon: UtensilsCrossed,
+    tone: "bg-brand-primary text-white",
+  },
+  {
+    id: "away",
+    label: "외출 모드",
+    icon: Plane,
+    tone: "bg-brand-cream text-brand-brown",
+  },
+  {
+    id: "call",
+    label: "음성 호출",
+    icon: PhoneCall,
+    tone: "bg-brand-cream text-brand-brown",
+  },
+  {
+    id: "cap",
+    label: "캡처",
+    icon: Camera,
+    tone: "bg-brand-cream text-brand-brown",
+  },
+];
 
 export function Dashboard() {
-  const navigate = useNavigate()
-  const account = useAccount()
+  const navigate = useNavigate();
+  const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
+  const account = useAccount();
 
-  // 가입 데이터 기반 값 (없으면 샘플 fallback) · 펫 1마리
-  const nickname = account?.user?.nickname || '냥이집사'
-  const pet = account?.pets?.[0] || null
-  const petInfo = petView(pet)
-
-  // 빠른 작업: 외출 모드는 토글, 나머지는 클릭 시 잠깐 강조
-  const [awayMode, setAwayMode] = useState(false)
-  const [pressedId, setPressedId] = useState(null)
-  const pressTimer = useRef(null)
-  const onShortcut = (id) => {
-    if (id === 'away') { setAwayMode((v) => !v); return }
-    setPressedId(id)
-    clearTimeout(pressTimer.current)
-    pressTimer.current = setTimeout(() => setPressedId(null), 150)
-  }
+  // 가입 데이터 기반 값 (없으면 샘플 fallback)
+  const nickname = account?.user?.nickname || "묘냥집사";
+  const pets = account?.pets ?? [];
+  const pet = pets[0] || null;
+  const petName = pet?.name || "미야옹";
+  const petBreed = pet?.breed || "코숏";
+  const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
+  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
+  const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   return (
     <div className="px-5 pb-6">
@@ -74,45 +107,56 @@ export function Dashboard() {
         right={
           <button
             type="button"
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate("/settings")}
             className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
             aria-label="설정"
           >
-            <Wifi className="w-5 h-5 text-brand-success" />
+            <Wifi
+              className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
+            />
           </button>
         }
       />
 
-      {/* 1) 펫 프로필 (1마리 · 탭하면 상세) */}
+      {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
       <button
         type="button"
-        onClick={() => pet && navigate('/pet/0')}
+        onClick={() => navigate("/pet/0")}
         className="w-full text-left touch-active"
       >
         <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
-          <div className="relative shrink-0">
+          <div className="relative">
             <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-              {petInfo.photo
-                ? <img src={petInfo.photo} alt={petInfo.name} className="w-full h-full object-cover" />
-                : <PawPrint className="w-9 h-9 text-brand-primary" />}
+              {pet?.photo ? (
+                <img
+                  src={pet.photo}
+                  alt={petName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <PawPrint className="w-9 h-9 text-brand-primary" />
+              )}
             </div>
             <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-brand-mute font-semibold">우리집 {petInfo.species}</p>
-            <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight truncate">{petInfo.name}</h2>
+            <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+            <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+              {petName}
+            </h2>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {petInfo.ageBreed && <Badge tone="brown">{petInfo.ageBreed}</Badge>}
+              {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
               <Badge tone="success">건강 양호</Badge>
             </div>
           </div>
+          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
         </Card>
       </button>
 
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
         type="button"
-        onClick={() => navigate('/vision')}
+        onClick={() => navigate("/vision")}
         className="mt-4 w-full text-left touch-active"
       >
         <Card className="overflow-hidden">
@@ -135,38 +179,40 @@ export function Dashboard() {
         </Card>
       </button>
 
-      {/* 4) 숏컷 (Grid) */}
+      {/* 3) 숏컷 (Grid) */}
       <section className="mt-5">
-        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">빠른 작업</h3>
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
+          빠른 작업
+        </h3>
         <div className="grid grid-cols-4 gap-3">
-          {SHORTCUTS.map(({ id, label, icon: Icon }) => {
-            const active = id === 'away' ? awayMode : pressedId === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onShortcut(id)}
-                className="flex flex-col items-center gap-2 touch-active"
+          {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => (
+            <button
+              key={id}
+              type="button"
+              className="flex flex-col items-center gap-2 touch-active"
+            >
+              <span
+                className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft ${tone}`}
               >
-                <span className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft transition-colors ${active ? 'bg-brand-primary text-white' : 'bg-brand-cream text-brand-brown'}`}>
-                  <Icon className="w-6 h-6" />
-                </span>
-                <span className={`text-[11px] font-semibold text-center leading-tight ${active ? 'text-brand-primary' : 'text-brand-brown'}`}>
-                  {id === 'away' ? (awayMode ? '외출모드 ON' : '외출모드 OFF') : label}
-                </span>
-              </button>
-            )
-          })}
+                <Icon className="w-6 h-6" />
+              </span>
+              <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
+                {label}
+              </span>
+            </button>
+          ))}
         </div>
       </section>
 
-      {/* 3) 최근 활동 */}
+      {/* 4) 최근 활동 */}
       <section className="mt-6">
         <div className="flex items-center justify-between px-1 mb-3">
-          <h3 className="font-display text-base font-bold text-brand-brown">최근 활동</h3>
+          <h3 className="font-display text-base font-bold text-brand-brown">
+            최근 활동
+          </h3>
           <button
             type="button"
-            onClick={() => navigate('/activity')}
+            onClick={() => navigate("/activity")}
             className="text-xs text-brand-mute font-semibold flex items-center touch-active"
           >
             전체보기 <ChevronRight className="w-3.5 h-3.5" />
@@ -175,23 +221,29 @@ export function Dashboard() {
         <CreamCard className="divide-y divide-brand-line">
           {RECENT.map(({ id, icon: Icon, tone, title, desc, time }) => (
             <div key={id} className="flex items-center gap-3 px-4 py-3.5">
-              <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}>
+              <span
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+              >
                 <Icon className="w-5 h-5" />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
+                <p className="text-sm font-bold text-brand-brown truncate">
+                  {title}
+                </p>
                 <p className="text-xs text-brand-mute truncate">{desc}</p>
               </div>
-              <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
+              <span className="text-[11px] text-brand-mute shrink-0">
+                {time}
+              </span>
             </div>
           ))}
         </CreamCard>
       </section>
 
-      {/* 급여 통계 바로가기 (최하단) */}
+      {/* 5) 급여 통계 바로가기 (최하단) */}
       <button
         type="button"
-        onClick={() => navigate('/feeding')}
+        onClick={() => navigate("/feeding")}
         className="mt-6 w-full text-left touch-active"
       >
         <Card className="px-5 py-4 flex items-center gap-3">
@@ -206,7 +258,7 @@ export function Dashboard() {
         </Card>
       </button>
     </div>
-  )
+  );
 }
 
-export default Dashboard
+export default Dashboard;

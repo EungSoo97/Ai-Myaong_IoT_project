@@ -14,7 +14,7 @@ constexpr const char* PREF_NAMESPACE = "wifi";
 constexpr const char* PREF_SSID = "ssid";
 constexpr const char* PREF_PASSWORD = "password";
 constexpr const char* PREF_MQTT_HOST = "mqtt_host";
-constexpr const char* DEFAULT_MQTT_HOST = "10.1.82.103";
+constexpr const char* DEFAULT_MQTT_HOST = "localhost";
 constexpr uint16_t MQTT_PORT = 1883;
 constexpr uint8_t CONFIG_BUTTON_PIN = 0;
 constexpr unsigned long CONFIG_BUTTON_HOLD_MS = 3000;
@@ -434,7 +434,7 @@ inline void handleRoot() {
   <div class="card">
     <input id="ssid" placeholder="SSID">
     <input id="password" type="password" placeholder="Password">
-    <input id="mqttHost" placeholder="MQTT host" value="10.1.82.103">
+    <input id="mqttHost" placeholder="MQTT host" value="localhost">
     <button onclick="connectWifi()">Save and connect</button>
     <p id="result" class="muted"></p>
   </div>

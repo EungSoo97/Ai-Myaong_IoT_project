@@ -1,22 +1,35 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://10.1.82.109:8000/";
+const API_BASE = API_BASE_URL.replace(/\/$/, "");
+const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+
+function resolveStreamUrl(url) {
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  if (url.startsWith("/")) return `${API_BASE}${url}`;
+  return url;
+}
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+  } catch {
+    throw new Error(`백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`);
+  }
 
   if (!response.ok) {
     const message = await response.text();
     let errorMessage = message || `API error: ${response.status}`;
     try {
       const parsed = JSON.parse(message);
-      if (typeof parsed.detail === "string") errorMessage = parsed.detail;
-      else if (parsed.detail?.message) errorMessage = parsed.detail.message;
+      errorMessage = extractErrorMessage(parsed) || errorMessage;
     } catch {
       /* keep raw message */
     }
@@ -26,10 +39,33 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+function extractErrorMessage(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value.detail) return extractErrorMessage(value.detail);
+  if (typeof value.stderr === "string" && value.stderr.trim()) return value.stderr.trim();
+  if (typeof value.stdout === "string" && value.stdout.trim()) return value.stdout.trim();
+  if (typeof value.message === "string") return value.message;
+  return "";
+}
+
 export const api = {
   getDashboard: () => request("/api/robot/dashboard"),
   getStatus: () => request("/api/robot/status"),
-  getStreamUrl: () => request("/api/stream/url"),
+  getStreamUrl: async () => {
+    try {
+      const data = await request("/api/stream/url");
+      return {
+        ...data,
+        url: resolveStreamUrl(data.url),
+      };
+    } catch (error) {
+      if (STREAM_URL) {
+        return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
+      }
+      throw error;
+    }
+  },
   moveRobot: (command) =>
     request("/api/robot/move", {
       method: "POST",
