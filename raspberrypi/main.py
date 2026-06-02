@@ -250,10 +250,10 @@ def scan_wifi_networks() -> list[dict[str, object]]:
 def _scan_with_iwlist() -> list[dict[str, object]]:
     interface = os.getenv("WIFI_SCAN_INTERFACE", "wlan0").strip() or "wlan0"
     commands = [
-        ["iwlist", interface, "scan"],
         ["sudo", "-n", "iwlist", interface, "scan"],
+        ["iwlist", interface, "scan"],
     ]
-    result = None
+    best_networks: list[dict[str, object]] = []
     errors: list[str] = []
 
     for command in commands:
@@ -267,8 +267,14 @@ def _scan_with_iwlist() -> list[dict[str, object]]:
             check=False,
         )
         if result.returncode == 0:
-            return _parse_iwlist_scan(result.stdout)
+            networks = _parse_iwlist_scan(result.stdout)
+            if len(networks) > len(best_networks):
+                best_networks = networks
+            continue
         errors.append(result.stderr.strip() or result.stdout.strip() or "scan failed")
+
+    if best_networks:
+        return best_networks
 
     raise RuntimeError("; ".join(error for error in errors if error) or "Failed to scan Wi-Fi networks.")
 
