@@ -13,6 +13,7 @@ class MqttClient:
 
     def start(self) -> None:
         if self.simulation_mode:
+            print("[mqtt:simulated] SIMULATION_MODE=true; MQTT publish is disabled")
             self.connected = True
             return
 
@@ -23,7 +24,10 @@ class MqttClient:
             self._client.connect(self.host, self.port, keepalive=30)
             self._client.loop_start()
             self.connected = True
-        except Exception:
+            print(f"[mqtt] connected to {self.host}:{self.port}")
+        except Exception as error:
+            print(f"[mqtt] connect failed {self.host}:{self.port} - {error}")
+            self._client = None
             self.connected = False
 
     def stop(self) -> None:
@@ -34,9 +38,15 @@ class MqttClient:
 
     def publish(self, topic: str, payload: dict[str, Any]) -> bool:
         message = json.dumps(payload, ensure_ascii=False)
-        if self.simulation_mode or not self._client:
+        if self.simulation_mode:
             print(f"[mqtt:simulated] {topic} {message}")
             return True
 
+        if not self._client:
+            print(f"[mqtt:unavailable] {topic} {message}")
+            return False
+
         result = self._client.publish(topic, message)
+        if result.rc != 0:
+            print(f"[mqtt] publish failed rc={result.rc} {topic} {message}")
         return result.rc == 0

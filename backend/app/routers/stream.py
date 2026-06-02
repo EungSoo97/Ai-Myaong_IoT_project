@@ -22,15 +22,19 @@ def stream_url():
     if camera_stream_url and os.getenv("CAMERA_PROXY", "false").lower() != "true":
         return {"url": camera_stream_url, "mode": "external"}
 
-    base_url = os.getenv("STREAM_BASE_URL", "http://localhost:8000/api/stream").rstrip("/")
+    base_url = os.getenv("STREAM_BASE_URL", "").strip().rstrip("/")
+    if base_url.endswith("/api/stream"):
+        stream_prefix = base_url
+    else:
+        stream_prefix = f"{base_url}/api/stream" if base_url else "/api/stream"
 
     if camera_stream_url or os.getenv("SIMULATION_MODE", "true").lower() != "true":
-        return {"url": f"{base_url}/live.mjpg", "mode": "live"}
+        return {"url": f"{stream_prefix}/live.mjpg", "mode": "live"}
 
     if os.getenv("SIMULATION_MODE", "true").lower() == "true":
-        return {"url": f"{base_url}/simulated.mjpg", "mode": "simulated"}
+        return {"url": f"{stream_prefix}/simulated.mjpg", "mode": "simulated"}
 
-    return {"url": f"{base_url}/live.mjpg", "mode": "live"}
+    return {"url": f"{stream_prefix}/live.mjpg", "mode": "live"}
 
 
 @router.get("/live.mjpg")

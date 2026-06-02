@@ -5,6 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: true
+    host: true,
+    proxy: {
+      '/api': {
+        target: 'https://ai-myaongiotproject-production.up.railway.app',
+        changeOrigin: true,
+      },
+    },
   },
 })
