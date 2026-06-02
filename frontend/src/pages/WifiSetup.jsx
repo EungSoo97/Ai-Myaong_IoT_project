@@ -216,7 +216,11 @@ export function WifiSetup() {
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
       if (nextHost) setMqttHost(nextHost)
       setSelectedNetwork(pendingNetwork)
-      showMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
+      if (data.pendingReconnect) {
+        showMessage('Wi-Fi 변경을 시작했습니다. 라즈베리파이가 새 네트워크로 이동하는 동안 잠시 기다려 주세요.')
+      } else {
+        showMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
+      }
       closeModalSilently()
       await refreshPiStatus()
       await refreshStatus({ silent: true })

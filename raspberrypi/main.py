@@ -12,9 +12,8 @@ from dotenv import load_dotenv
 
 from comm.serial_comm import SerialComm
 
-load_dotenv()
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(REPO_ROOT / "raspberrypi" / ".env", override=True)
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 
 ROBOT_COMMANDS = {
@@ -202,45 +201,16 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         if esp32_setup_url:
             env["ESP32_SETUP_URL"] = esp32_setup_url
 
-        try:
-            result = subprocess.run(
-                ["bash", str(SETUP_WIFI_SCRIPT), ssid, password],
-                cwd=REPO_ROOT,
-                env=env,
-                text=True,
-                capture_output=True,
-                timeout=120,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise HTTPException(
-                status_code=504,
-                detail={
-                    "message": "Wi-Fi setup timed out.",
-                    "stdout": exc.stdout or "",
-                    "stderr": exc.stderr or "",
-                },
-            ) from exc
-
-        if result.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": "Wi-Fi setup failed.",
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                },
-            )
-
-        restart_agent_after_wifi_change()
+        threading.Thread(
+            target=run_wifi_setup_job,
+            args=(ssid, password, env),
+            daemon=True,
+        ).start()
         return {
             "ok": True,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "raspberrypiEnv": read_env_values(
-                REPO_ROOT / "raspberrypi" / ".env",
-                ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_HTTP_PORT"),
-            ),
+            "pendingReconnect": True,
+            "message": "Wi-Fi change started. Raspberry Pi network may disconnect briefly.",
+            "ssid": ssid,
         }
 
     print(f"[raspberrypi] Wi-Fi HTTP API listening on {host}:{port}")
@@ -525,6 +495,39 @@ def read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
         if key in keys:
             values[key] = value
     return values
+
+
+def run_wifi_setup_job(ssid: str, password: str, env: dict[str, str]) -> None:
+    print(f"[wifi] background Wi-Fi setup started: {ssid}")
+    try:
+        result = subprocess.run(
+            ["bash", str(SETUP_WIFI_SCRIPT), ssid, password],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=90,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        print("[wifi] background Wi-Fi setup timed out.")
+        if exc.stdout:
+            print(exc.stdout)
+        if exc.stderr:
+            print(exc.stderr)
+        return
+
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
+
+    if result.returncode != 0:
+        print(f"[wifi] background Wi-Fi setup failed: {result.returncode}")
+        return
+
+    print("[wifi] background Wi-Fi setup completed.")
+    restart_agent_after_wifi_change()
 
 
 def restart_agent_after_wifi_change() -> None:
