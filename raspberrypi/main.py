@@ -627,8 +627,6 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
     if configured:
         discovered = discover_desktop_backend()
         if discovered and discovered != configured:
-            os.environ["DESKTOP_BACKEND_URL"] = discovered
-            set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", discovered)
             print(f"[device] desktop backend rediscovered: {discovered}")
 
     return False
@@ -641,8 +639,6 @@ def desktop_backend_url() -> str:
 
     discovered = discover_desktop_backend()
     if discovered:
-        os.environ["DESKTOP_BACKEND_URL"] = discovered
-        set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", discovered)
         print(f"[device] desktop backend discovered: {discovered}")
         return discovered
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.runtime_config import read_env_values, runtime_env
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/api/device", tags=["device"])
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_ENV = REPO_ROOT / "backend" / ".env"
+DESKTOP_ENV = REPO_ROOT / "desktop" / ".env"
 DEVICES: dict[str, dict[str, str]] = {}
 
 
@@ -23,7 +24,7 @@ class DeviceRegister(BaseModel):
 
 
 @router.post("/register")
-def register_device(data: DeviceRegister):
+def register_device(data: DeviceRegister, request: Request):
     now = datetime.now().isoformat(timespec="seconds")
     DEVICES[data.device_id] = {
         "ip": data.ip,
@@ -36,6 +37,9 @@ def register_device(data: DeviceRegister):
 
     if data.role in {"raspberrypi", "robot"}:
         _sync_backend_env_from_device(data)
+        mqtt_client = getattr(request.app.state, "mqtt_client", None)
+        if mqtt_client:
+            mqtt_client.reconnect_if_config_changed()
 
     return {
         "ok": True,
@@ -44,6 +48,10 @@ def register_device(data: DeviceRegister):
         "backendEnv": read_env_values(
             BACKEND_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+        ),
+        "desktopEnv": read_env_values(
+            DESKTOP_ENV,
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "MJPEG_STREAM_URL"),
         ),
     }
 
@@ -62,6 +70,9 @@ def _sync_backend_env_from_device(data: DeviceRegister) -> None:
     _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{data.ip}:{data.agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{data.ip}:{data.stream_port}/stream.mjpg")
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", data.ip)
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{data.ip}:{data.stream_port}/stream.mjpg")
 
 
 def _set_env_value(path: Path, key: str, value: str) -> None:

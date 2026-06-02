@@ -61,7 +61,6 @@ def pi_wifi_connect(payload: SharedWifiRequest):
             "mqttPort": payload.mqtt_port,
             "esp32SetupUrl": payload.esp32_setup_url,
             "piApFallback": payload.pi_ap_fallback,
-            "desktopBackendUrl": _desktop_backend_url_for_pi(),
         },
     )
     _sync_backend_env_from_pi_result(result)
@@ -236,7 +235,8 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 _remember_pi_agent_url(pi_agent_base_url)
-                _send_desktop_backend_url_to_pi(pi_agent_base_url)
+                if path == "/api/wifi/scan":
+                    _send_desktop_backend_url_to_pi(pi_agent_base_url)
                 if isinstance(data, dict) and data.get("ip"):
                     _sync_backend_env_from_pi_ip(str(data["ip"]))
                 return data

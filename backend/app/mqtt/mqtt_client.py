@@ -56,6 +56,9 @@ class MqttClient:
             print(f"[mqtt] publish failed rc={result.rc} {topic} {message}")
         return result.rc == 0
 
+    def reconnect_if_config_changed(self) -> None:
+        self._restart_if_config_changed()
+
     def _refresh_config(self) -> tuple[str, int, bool]:
         self.host = runtime_env("MQTT_BROKER_HOST", "localhost")
         self.port = int(runtime_env("MQTT_BROKER_PORT", "1883"))
