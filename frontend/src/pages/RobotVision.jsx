@@ -41,11 +41,32 @@ export function RobotVision() {
   const [recording, setRecording] = useState(false)
   const [selectedClip, setSelectedClip] = useState(null)
   const [controlBusy, setControlBusy] = useState(false)
+  const [streamInfo, setStreamInfo] = useState({ url: '', mode: 'loading' })
+  const [streamError, setStreamError] = useState('')
   const controlBusyRef = useRef(false)
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false)
   const fsRef = useRef(null)
+
+  useEffect(() => {
+    let mounted = true
+    api.getStreamUrl()
+      .then((data) => {
+        if (!mounted) return
+        setStreamInfo({ url: data.url, mode: data.mode || 'live' })
+        setStreamError('')
+      })
+      .catch((error) => {
+        if (!mounted) return
+        console.error('[RobotVision] stream URL failed:', error)
+        setStreamError('스트림 주소를 불러오지 못했습니다')
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Fullscreen API ↔ React 상태 동기화 (ESC 해제 포함)
   useEffect(() => {
@@ -167,17 +188,18 @@ export function RobotVision() {
                 recording={recording}
                 irOn={irOn}
                 setIrOn={setIrOn}
+                streamUrl={streamInfo.url}
+                streamError={streamError}
               />
             </div>
           ) : (
             <>
-              <div className="absolute inset-0 flex items-center justify-center text-white/80">
-                <div className="text-center">
-                  <Video className="w-12 h-12 mx-auto mb-1.5 opacity-80" />
-                  <p className="text-sm font-semibold">스트리밍 영역</p>
-                  <p className="text-xs opacity-70">WebRTC / RTSP placeholder</p>
-                </div>
-              </div>
+              <StreamFrame
+                src={streamInfo.url}
+                mode={streamInfo.mode}
+                error={streamError}
+                className="absolute inset-0"
+              />
               <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-[11px] font-bold">
                 <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
               </span>
@@ -329,7 +351,7 @@ export function RobotVision() {
  *
  * 양손 엄지 동선을 고려해 컨트롤은 하단 좌우, 토글은 상단에 배치.
  */
-function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
+function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
   const [micOn, setMicOn] = useState(false)
   const toggleMic = () => {
     setMicOn((v) => {
@@ -341,12 +363,12 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
   return (
     <>
       {/* 배경 비디오 스트림 (전체화면) */}
-      <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/60">
-        <div className="text-center">
-          <Video className="w-16 h-16 mx-auto mb-2 opacity-70" />
-          <p className="text-sm font-semibold tracking-wider">LANDSCAPE · 실시간 스트림</p>
-        </div>
-      </div>
+      <StreamFrame
+        src={streamUrl}
+        error={streamError}
+        className="absolute inset-0"
+        fullscreen
+      />
 
       {/* 상단 좌측: LIVE / REC 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
@@ -389,6 +411,42 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
         muted
       />
     </>
+  )
+}
+
+function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
+  const [imageError, setImageError] = useState(false)
+
+  useEffect(() => {
+    setImageError(false)
+  }, [src])
+
+  const showFallback = !src || error || imageError
+
+  return (
+    <div className={`${className} bg-black flex items-center justify-center overflow-hidden`}>
+      {src && !imageError && (
+        <img
+          src={src}
+          alt="Robot camera live stream"
+          onError={() => setImageError(true)}
+          className="w-full h-full object-cover"
+        />
+      )}
+      {showFallback && (
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/75">
+          <div className="text-center px-6">
+            <Video className={`${fullscreen ? 'w-16 h-16' : 'w-12 h-12'} mx-auto mb-2 opacity-75`} />
+            <p className="text-sm font-semibold">
+              {error || imageError ? '카메라 스트림 연결 대기 중' : '스트림 준비 중'}
+            </p>
+            <p className="mt-1 text-xs opacity-70">
+              {mode === 'simulated' ? '시뮬레이션 스트림' : 'MJPEG 실시간 캠'}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

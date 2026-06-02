@@ -6,6 +6,7 @@ PROJECT_PATH="$SCRIPT_DIR/../raspberrypi"
 PORT="${MQTT_BROKER_PORT:-1883}"
 BIND_ADDRESS="${MQTT_BROKER_BIND_ADDRESS:-0.0.0.0}"
 BROKER_PID=""
+STREAM_PID=""
 CONFIG_DIR=""
 
 cleanup() {
@@ -13,6 +14,12 @@ cleanup() {
     echo "[mqtt-broker] stopping bundled broker..."
     kill "$BROKER_PID" >/dev/null 2>&1 || true
     wait "$BROKER_PID" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$STREAM_PID" ]] && kill -0 "$STREAM_PID" >/dev/null 2>&1; then
+    echo "[camera] stopping MJPEG stream server..."
+    kill "$STREAM_PID" >/dev/null 2>&1 || true
+    wait "$STREAM_PID" >/dev/null 2>&1 || true
   fi
 
   if [[ -n "$CONFIG_DIR" ]]; then
@@ -77,13 +84,23 @@ start_broker_if_needed
 cd "$PROJECT_PATH"
 
 if [[ -x ".venv/bin/python" ]]; then
-  .venv/bin/python ./main.py
+  PYTHON_BIN=".venv/bin/python"
+elif command -v python3.11 >/dev/null 2>&1; then
+  PYTHON_BIN="python3.11"
+else
+  PYTHON_BIN="python3"
+fi
+
+if [[ "${START_CAMERA_STREAM:-true}" != "false" ]]; then
+  STREAM_PORT="${STREAM_PORT:-8080}"
+  echo "[camera] starting MJPEG stream server on 0.0.0.0:$STREAM_PORT..."
+  "$PYTHON_BIN" ./camera/mjpeg_server.py &
+  STREAM_PID="$!"
+fi
+
+if [[ -x ".venv/bin/python" ]]; then
+  "$PYTHON_BIN" ./main.py
   exit $?
 fi
 
-if command -v python3.11 >/dev/null 2>&1; then
-  python3.11 ./main.py
-  exit $?
-fi
-
-python3 ./main.py
+"$PYTHON_BIN" ./main.py
