@@ -217,7 +217,7 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
     timeout = 35 if path == "/api/wifi/scan" else 8 if payload is not None else 5
     body = None
     method = "GET"
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "Connection": "close"}
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         method = "POST"
@@ -300,7 +300,7 @@ def _send_desktop_backend_url_to_pi(pi_agent_base_url: str) -> None:
     request = urllib.request.Request(
         f"{pi_agent_base_url}/api/wifi/desktop-backend",
         data=body,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "Connection": "close"},
         method="POST",
     )
     try:
@@ -333,7 +333,10 @@ def _reachable_pi_agent_urls() -> list[str]:
 
 
 def _is_pi_agent_reachable(base_url: str) -> bool:
-    request = urllib.request.Request(f"{base_url}/api/wifi/status", headers={"Accept": "application/json"})
+    request = urllib.request.Request(
+        f"{base_url}/api/wifi/status",
+        headers={"Accept": "application/json", "Connection": "close"},
+    )
     try:
         with urllib.request.urlopen(request, timeout=0.6) as response:
             data = json.loads(response.read().decode("utf-8"))

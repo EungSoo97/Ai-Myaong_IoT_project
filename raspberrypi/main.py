@@ -570,9 +570,9 @@ def restart_agent_after_wifi_change() -> None:
 
 def start_backend_registration_loop() -> None:
     def loop() -> None:
-        register_to_desktop_backend(retries=20, delay=3)
+        register_to_desktop_backend(retries=5, delay=5)
         while True:
-            time.sleep(30)
+            time.sleep(float(os.getenv("DESKTOP_BACKEND_REGISTER_INTERVAL", "300")))
             register_to_desktop_backend(retries=1, delay=0)
 
     threading.Thread(target=loop, daemon=True).start()
@@ -601,7 +601,11 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                 request = urllib.request.Request(
                     f"{backend_url}/api/device/register",
                     data=body,
-                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Connection": "close",
+                    },
                     method="POST",
                 )
                 with urllib.request.urlopen(request, timeout=5) as response:
@@ -676,7 +680,7 @@ def desktop_backend_candidates() -> list[str]:
 
 def is_backend_url(url: str) -> bool:
     try:
-        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+        request = urllib.request.Request(url, headers={"Accept": "application/json", "Connection": "close"})
         with urllib.request.urlopen(request, timeout=0.6) as response:
             data = json.loads(response.read().decode("utf-8"))
             return data.get("name") == "Ai-Myaong"
