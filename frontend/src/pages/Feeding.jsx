@@ -2,41 +2,42 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Card } from '../components/ui'
 
 const COLORS = {
   food: '#F08D86',
+  water: '#5BA4D9',
   brown: '#4B3621',
   mute: '#9C8A78',
   line: '#EFE3D2',
 }
 
-/* ───── Mock 통계 데이터 ───── */
-// 일간: 오늘 시간대별 급여량(g)
+/* ───── Mock 통계 데이터 (사료 food=g / 급수 water=ml) ───── */
+// 일간: 오늘 시간대별
 const DAILY = [
-  { label: '아침', g: 15 },
-  { label: '점심', g: 10 },
-  { label: '오후', g: 8 },
-  { label: '저녁', g: 15 },
-  { label: '야식', g: 5 },
+  { label: '아침', food: 15, water: 90 },
+  { label: '점심', food: 10, water: 60 },
+  { label: '오후', food: 8, water: 70 },
+  { label: '저녁', food: 15, water: 100 },
+  { label: '야식', food: 5, water: 40 },
 ]
-// 주간: 최근 7일 일별 총 급여량(g)
+// 주간: 최근 7일 일별 합계
 const WEEKLY = [
-  { label: '월', g: 42 },
-  { label: '화', g: 38 },
-  { label: '수', g: 50 },
-  { label: '목', g: 45 },
-  { label: '금', g: 53 },
-  { label: '토', g: 40 },
-  { label: '일', g: 48 },
+  { label: '월', food: 42, water: 320 },
+  { label: '화', food: 38, water: 300 },
+  { label: '수', food: 50, water: 360 },
+  { label: '목', food: 45, water: 330 },
+  { label: '금', food: 53, water: 380 },
+  { label: '토', food: 40, water: 310 },
+  { label: '일', food: 48, water: 350 },
 ]
-// 월간: 올해 월별 총 급여량(g)
+// 월간: 올해 월별 합계
 const MONTHLY = [
-  { label: '1월', g: 1240 }, { label: '2월', g: 1120 }, { label: '3월', g: 1310 },
-  { label: '4월', g: 1280 }, { label: '5월', g: 1360 }, { label: '6월', g: 1295 },
-  { label: '7월', g: 1410 }, { label: '8월', g: 1380 }, { label: '9월', g: 1330 },
+  { label: '1월', food: 1240, water: 9200 }, { label: '2월', food: 1120, water: 8600 }, { label: '3월', food: 1310, water: 9600 },
+  { label: '4월', food: 1280, water: 9300 }, { label: '5월', food: 1360, water: 9900 }, { label: '6월', food: 1295, water: 9400 },
+  { label: '7월', food: 1410, water: 10200 }, { label: '8월', food: 1380, water: 10000 }, { label: '9월', food: 1330, water: 9700 },
 ]
 
 const PERIODS = [
@@ -51,9 +52,9 @@ export function Feeding() {
 
   /* 요약 통계 */
   const summary = useMemo(() => {
-    const todayTotal = DAILY.reduce((s, d) => s + d.g, 0)
-    const weekAvg = Math.round(WEEKLY.reduce((s, d) => s + d.g, 0) / WEEKLY.length)
-    return { todayTotal, weekAvg, lastFeed: '오후 6:10' }
+    const todayFood = DAILY.reduce((s, d) => s + d.food, 0)
+    const todayWater = DAILY.reduce((s, d) => s + d.water, 0)
+    return { todayFood, todayWater, lastFeed: '오후 6:10' }
   }, [])
 
   return (
@@ -81,38 +82,40 @@ export function Feeding() {
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-3 gap-2.5">
-        <SummaryCard label="오늘 총 급여량" value={`${summary.todayTotal}g`} />
-        <SummaryCard label="주간 평균" value={`${summary.weekAvg}g`} />
+        <SummaryCard label="오늘 사료" value={`${summary.todayFood}g`} dot={COLORS.food} />
+        <SummaryCard label="오늘 급수" value={`${summary.todayWater}ml`} dot={COLORS.water} />
         <SummaryCard label="마지막 급여" value={summary.lastFeed} small />
       </div>
 
-      {/* 차트 */}
+      {/* 차트 (사료 + 급수 한눈에) */}
       <Card className="mt-3 p-4">
-        <p className="text-xs text-brand-mute font-semibold mb-3">
-          {period === 'day' && '오늘 시간대별 급여량 (g)'}
-          {period === 'week' && '최근 7일 일별 급여량 (g)'}
-          {period === 'month' && '올해 월별 총 급여량 (g)'}
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-brand-mute font-semibold">
+            {period === 'day' && '오늘 시간대별'}
+            {period === 'week' && '최근 7일 일별'}
+            {period === 'month' && '올해 월별'} 사료·급수
+          </p>
+          <div className="flex items-center gap-3 text-[11px] font-bold">
+            <Legend2 color={COLORS.food} label="사료(g)" />
+            <Legend2 color={COLORS.water} label="급수(ml)" />
+          </div>
+        </div>
         <div style={{ width: '100%', height: 260 }}>
           <ResponsiveContainer width="100%" height="100%">
-            {period === 'week' ? (
-              <LineChart data={WEEKLY} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: COLORS.mute }} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipProps} formatter={(v) => [`${v}g`, '급여량']} />
-                <Line type="monotone" dataKey="g" stroke={COLORS.food} strokeWidth={3}
-                  dot={{ r: 4, fill: COLORS.food }} activeDot={{ r: 6 }} animationDuration={500} />
-              </LineChart>
-            ) : (
-              <BarChart data={period === 'day' ? DAILY : MONTHLY} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: COLORS.mute }} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipProps} cursor={{ fill: `${COLORS.food}1a` }} formatter={(v) => [`${v}g`, '급여량']} />
-                <Bar dataKey="g" fill={COLORS.food} radius={[8, 8, 0, 0]} maxBarSize={36} animationDuration={500} />
-              </BarChart>
-            )}
+            <BarChart
+              data={period === 'day' ? DAILY : period === 'week' ? WEEKLY : MONTHLY}
+              margin={{ top: 8, right: 0, left: -18, bottom: 0 }}
+              barGap={2}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.mute }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="food" tick={{ fontSize: 11, fill: COLORS.food }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="water" orientation="right" tick={{ fontSize: 11, fill: COLORS.water }} axisLine={false} tickLine={false} width={36} />
+              <Tooltip {...tooltipProps} cursor={{ fill: `${COLORS.mute}14` }}
+                formatter={(v, name) => [name === '사료' ? `${v}g` : `${v}ml`, name]} />
+              <Bar yAxisId="food" dataKey="food" name="사료" fill={COLORS.food} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
+              <Bar yAxisId="water" dataKey="water" name="급수" fill={COLORS.water} radius={[6, 6, 0, 0]} maxBarSize={20} animationDuration={500} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </Card>
@@ -153,12 +156,24 @@ function PeriodTabs({ value, onChange }) {
   )
 }
 
-function SummaryCard({ label, value, small }) {
+function SummaryCard({ label, value, small, dot }) {
   return (
     <Card className="px-3 py-3.5 text-center">
-      <p className="text-[11px] text-brand-mute font-semibold truncate">{label}</p>
+      <p className="text-[11px] text-brand-mute font-semibold truncate flex items-center justify-center gap-1">
+        {dot && <span className="w-2 h-2 rounded-full" style={{ background: dot }} />}
+        {label}
+      </p>
       <p className={`font-display font-bold text-brand-brown mt-1 leading-none ${small ? 'text-base' : 'text-xl'}`}>{value}</p>
     </Card>
+  )
+}
+
+function Legend2({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-brand-brown">
+      <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
   )
 }
 

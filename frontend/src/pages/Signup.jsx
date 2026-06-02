@@ -29,11 +29,9 @@ const C = {
 const STEPS = [
   { key: 'user', label: '정보 입력' },
   { key: 'pet', label: '펫 정보' },
-  { key: 'branch', label: '등록 확인' },
 ]
 const STEP_USER = 0
 const STEP_PET = 1
-const STEP_BRANCH = 2
 
 /* 오늘 날짜 (생년월일 미래 선택 방지용) */
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -73,8 +71,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
   })
   const [emailVerified, setEmailVerified] = useState(false) // 이메일 인증 완료 여부
   const [provider, setProvider] = useState('email')         // 'email' | 'google'
-  const [petList, setPetList] = useState([])   // 누적되는 펫 배열
-  const [pet, setPet] = useState(emptyPet())   // 현재 입력 중인 펫 draft
+  const [pet, setPet] = useState(emptyPet())   // 펫 1마리
 
   const [finalPayload, setFinalPayload] = useState(null) // 완료 화면용
   const [err, setErr] = useState('')
@@ -134,58 +131,31 @@ export default function Signup({ onComplete, onBackToLogin }) {
     }
     setFieldErrors({})
     setErr('')
-
-    // 펫 입력 → 분기 진입 시 현재 draft 를 배열에 commit
-    if (step === STEP_PET) {
-      setPetList((list) => [...list, pet])
-      setPet(emptyPet())
-    }
     setStep((s) => Math.min(s + 1, STEPS.length - 1))
   }
 
   const prev = () => {
     setErr('')
     setFieldErrors({})
-    // 분기에서 뒤로 → 마지막에 commit 한 펫을 다시 draft 로 꺼내 수정 가능
-    if (step === STEP_BRANCH) {
-      setPetList((list) => {
-        const copy = [...list]
-        const last = copy.pop()
-        if (last) setPet(last)
-        return copy
-      })
-    }
     setStep((s) => Math.max(s - 1, 0))
-  }
-
-  /* 분기: "예, 추가 등록" → 폼 Reset 후 펫 입력으로 */
-  const addAnotherPet = () => {
-    setErr('')
-    setFieldErrors({})
-    setPet(emptyPet())
-    setStep(STEP_PET)
-  }
-
-  const removePet = (idx) => setPetList((list) => list.filter((_, i) => i !== idx))
-
-  /* 등록된 펫 박스 탭 → 해당 펫을 다시 수정 (draft 로 꺼내고 펫 입력 단계로) */
-  const editPet = (idx) => {
-    setErr('')
-    setFieldErrors({})
-    setPet(petList[idx])
-    setPetList((list) => list.filter((_, i) => i !== idx))
-    setStep(STEP_PET)
   }
 
   /* 최종 가입: 페이로드 조립 → console + localStorage */
   const finish = () => {
-    if (petList.length === 0) { setErr('최소 한 마리의 펫을 등록해 주세요.'); return }
+    const failing = getStepIssues().filter((c) => c.bad) // 펫 단계 검증
+    if (failing.length) {
+      const fe = {}
+      failing.forEach((c) => { fe[c.key] = true })
+      setFieldErrors(fe)
+      setErr(failing.length > 1 ? '입력하지 않았거나 올바르지 않은 항목이 있어요.' : failing[0].msg)
+      return
+    }
 
     const { passwordConfirm, ...user } = userInfo // 확인용 필드는 페이로드에서 제외
     const payload = {
       provider, // 'email' | 'google'
       user,
-      pets: petList,
+      pets: [pet], // 펫 1마리
       createdAt: new Date().toISOString(),
     }
 
@@ -249,8 +219,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
               errors={fieldErrors}
             />
           )}
-          {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={petList.length} errors={fieldErrors} />}
-          {step === STEP_BRANCH && <BranchStep petList={petList} onAdd={addAnotherPet} onRemove={removePet} onEdit={editPet} />}
+          {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
 
           {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
         </div>
@@ -272,7 +241,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
           </button>
         )}
 
-        {step < STEP_BRANCH && (
+        {step < STEP_PET && (
           <button
             type="button"
             onClick={next}
@@ -283,7 +252,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
           </button>
         )}
 
-        {step === STEP_BRANCH && (
+        {step === STEP_PET && (
           <button
             type="button"
             onClick={finish}
@@ -472,63 +441,6 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         className="font-sans mt-1.5 w-full rounded-2xl px-4 py-4 text-base outline-none resize-none placeholder:opacity-60"
         style={{ background: C.input, border: `1.5px solid ${C.border}`, color: C.brown }}
       />
-    </div>
-  )
-}
-
-/* ─────────────── Step 3 · 추가 등록 분기 ─────────────── */
-function BranchStep({ petList, onAdd, onRemove, onEdit }) {
-  return (
-    <div>
-      <SectionTitle icon={<PawPrint className="w-5 h-5" />} title={`총 ${petList.length}마리 등록됨`} />
-      <p className="mt-1 text-sm" style={{ color: C.mute }}>항목을 누르면 다시 수정할 수 있어요.</p>
-
-      <div className="mt-4 space-y-2.5">
-        {petList.map((p, i) => (
-          <div
-            key={i}
-            role="button"
-            tabIndex={0}
-            onClick={() => onEdit(i)}
-            className="flex items-center gap-3 rounded-2xl px-3.5 py-3 cursor-pointer transition-colors active:brightness-95"
-            style={{ background: C.input, border: `1.5px solid ${C.border}` }}
-          >
-            <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center shrink-0"
-              style={{ background: '#fff', border: `1px solid ${C.border}` }}>
-              {p.photo
-                ? <img src={p.photo} alt={p.name} className="w-full h-full object-cover" />
-                : <PawPrint className="w-6 h-6" style={{ color: C.mute }} />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-base font-bold truncate" style={{ color: C.brown }}>{p.name}</p>
-              <p className="text-sm" style={{ color: C.mute }}>
-                {p.species === 'DOG' ? '강아지' : '고양이'} · {p.breed || '품종 미입력'}
-              </p>
-            </div>
-            <Pencil className="w-4 h-4 shrink-0" style={{ color: C.mute }} />
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onRemove(i) }}
-              className="p-2.5 rounded-xl active:brightness-95"
-            >
-              <Trash2 className="w-5 h-5" style={{ color: C.danger }} />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={onAdd}
-        className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-colors active:brightness-95"
-        style={{ background: C.input, color: C.primaryDeep, border: `1.5px dashed ${C.primary}` }}
-      >
-        <Plus className="w-5 h-5" /> 다른 반려동물도 등록하기
-      </button>
-
-      <p className="mt-4 text-center text-sm" style={{ color: C.mute }}>
-        등록을 마쳤다면 아래 <b>가입 완료</b> 버튼을 눌러주세요 🐾
-      </p>
     </div>
   )
 }
