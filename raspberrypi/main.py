@@ -8,6 +8,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from ipaddress import IPv4Network
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,10 +17,10 @@ from dotenv import load_dotenv
 from comm.serial_comm import SerialComm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PI_ENV = REPO_ROOT / "raspberrypi" / ".env"
 load_dotenv(REPO_ROOT / "raspberrypi" / ".env", override=True)
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 DEVICE_ID = os.getenv("DEVICE_ID", "myaong-pi-01")
-DESKTOP_BACKEND_URL = os.getenv("DESKTOP_BACKEND_URL", "").rstrip("/")
 
 ROBOT_COMMANDS = {
     "FORWARD",
@@ -549,10 +551,6 @@ def restart_agent_after_wifi_change() -> None:
 
 
 def start_backend_registration_loop() -> None:
-    if not DESKTOP_BACKEND_URL:
-        print("[device] DESKTOP_BACKEND_URL is empty. Skipping backend registration.")
-        return
-
     def loop() -> None:
         register_to_desktop_backend(retries=20, delay=3)
         while True:
@@ -563,7 +561,9 @@ def start_backend_registration_loop() -> None:
 
 
 def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
-    if not DESKTOP_BACKEND_URL:
+    backend_url = desktop_backend_url()
+    if not backend_url:
+        print("[device] desktop backend was not found. Set DESKTOP_BACKEND_URL if auto-discovery fails.")
         return False
 
     for attempt in range(retries):
@@ -580,7 +580,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
             try:
                 body = json.dumps(payload).encode("utf-8")
                 request = urllib.request.Request(
-                    f"{DESKTOP_BACKEND_URL}/api/device/register",
+                    f"{backend_url}/api/device/register",
                     data=body,
                     headers={"Content-Type": "application/json", "Accept": "application/json"},
                     method="POST",
@@ -596,6 +596,130 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
             time.sleep(delay)
 
     return False
+
+
+def desktop_backend_url() -> str:
+    configured = os.getenv("DESKTOP_BACKEND_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+
+    discovered = discover_desktop_backend()
+    if discovered:
+        os.environ["DESKTOP_BACKEND_URL"] = discovered
+        set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", discovered)
+        print(f"[device] desktop backend discovered: {discovered}")
+        return discovered
+
+    return ""
+
+
+def discover_desktop_backend() -> str:
+    candidates = desktop_backend_candidates()
+    if not candidates:
+        return ""
+
+    with ThreadPoolExecutor(max_workers=64) as executor:
+        futures = {executor.submit(is_backend_url, url): url for url in candidates}
+        for future in as_completed(futures):
+            if future.result():
+                return futures[future]
+    return ""
+
+
+def desktop_backend_candidates() -> list[str]:
+    port = os.getenv("DESKTOP_BACKEND_PORT", "8000").strip() or "8000"
+    urls: list[str] = []
+    for ip in arp_table_ips():
+        urls.append(f"http://{ip}:{port}")
+
+    for ip in local_subnet_ips(limit=254):
+        urls.append(f"http://{ip}:{port}")
+
+    deduped: list[str] = []
+    for url in urls:
+        if url not in deduped:
+            deduped.append(url)
+    return deduped
+
+
+def is_backend_url(url: str) -> bool:
+    try:
+        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=0.6) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return data.get("name") == "Ai-Myaong"
+    except Exception:
+        return False
+
+
+def arp_table_ips() -> list[str]:
+    try:
+        result = subprocess.run(["arp", "-a"], text=True, capture_output=True, timeout=3, check=False)
+    except Exception:
+        return []
+    if result.returncode != 0:
+        return []
+
+    ips: list[str] = []
+    for token in result.stdout.replace("(", " ").replace(")", " ").split():
+        if looks_like_private_ipv4(token) and token not in ips:
+            ips.append(token)
+    return ips
+
+
+def local_subnet_ips(limit: int) -> list[str]:
+    local_ip = primary_ip()
+    if not local_ip:
+        return []
+
+    try:
+        cidr = os.getenv("DESKTOP_BACKEND_DISCOVERY_CIDR", "").strip() or f"{local_ip}/24"
+        network = IPv4Network(cidr, strict=False)
+    except ValueError:
+        return []
+
+    ips: list[str] = []
+    for host in network.hosts():
+        ip = str(host)
+        if ip != local_ip:
+            ips.append(ip)
+        if len(ips) >= limit:
+            break
+    return ips
+
+
+def looks_like_private_ipv4(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        octets = [int(part) for part in parts]
+    except ValueError:
+        return False
+    return (
+        octets[0] == 10
+        or (octets[0] == 172 and 16 <= octets[1] <= 31)
+        or (octets[0] == 192 and octets[1] == 168)
+    )
+
+
+def set_env_value(path: Path, key: str, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    next_lines: list[str] = []
+    replaced = False
+
+    for line in lines:
+        if line.startswith(f"{key}="):
+            next_lines.append(f"{key}={value}")
+            replaced = True
+        else:
+            next_lines.append(line)
+
+    if not replaced:
+        next_lines.append(f"{key}={value}")
+
+    path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
 
 
 def primary_ip() -> str:
