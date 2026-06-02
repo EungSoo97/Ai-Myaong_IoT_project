@@ -78,6 +78,15 @@ body {
   user-select: none;
 }
 
+/* 스크롤바 숨김 (휠 피커 등) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .touch-active {
   transition: transform 120ms ease, opacity 120ms ease;
 }
@@ -101,6 +110,19 @@ body {
 /* Cute handwriting accent */
 .font-hand {
   font-family: 'Gaegu', 'Jua', 'Pretendard', system-ui, sans-serif;
+}
+
+/* 로그인 고양이 둥실 애니메이션 */
+@keyframes catBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.cat-bob {
+  animation: catBob 3s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cat-bob { animation: none; }
 }
 
 /* Soft 3D card */

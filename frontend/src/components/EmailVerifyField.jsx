@@ -118,45 +118,45 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
     <div className="mt-5">
       <span className="text-sm font-bold pl-1" style={{ color: invalid && !verified ? C.danger : C.mute }}>{label}</span>
 
-      {/* 이메일 입력 + 인증/완료 버튼 */}
-      <div className="mt-1.5 flex gap-2">
-        <div
-          className="flex-1 flex items-center gap-2.5 rounded-2xl px-4 py-4"
-          style={{ background: invalid && !verified ? '#FDECE9' : C.input, border: `1.5px solid ${verified ? C.ok : invalid ? C.danger : C.border}` }}
-        >
-          <Mail className="w-5 h-5" style={{ color: C.mute }} />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => changeEmail(e.target.value)}
-            disabled={verified}
-            placeholder="example@aimyaong.com"
-            className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60 disabled:opacity-70"
-            style={{ color: C.brown }}
-          />
-        </div>
-        {verified ? (
-          <span
-            className="shrink-0 inline-flex items-center justify-center gap-1 rounded-2xl px-4 py-4 text-sm font-bold text-white whitespace-nowrap min-w-[72px]"
-            style={{ background: C.ok, border: `1.5px solid ${C.ok}` }}
-          >
-            <Check className="w-4 h-4" /> 완료
+      {/* 이메일 입력 (전체폭) */}
+      <div
+        className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
+        style={{ background: invalid && !verified ? '#FDECE9' : C.input, border: `1.5px solid ${verified ? C.ok : invalid ? C.danger : C.border}` }}
+      >
+        <Mail className="w-5 h-5" style={{ color: C.mute }} />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => changeEmail(e.target.value)}
+          disabled={verified}
+          placeholder="example@aimyaong.com"
+          className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60 disabled:opacity-70"
+          style={{ color: C.brown }}
+        />
+        {verified && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-sm font-bold" style={{ color: C.ok }}>
+            <Check className="w-4 h-4" /> 인증완료
           </span>
-        ) : (
-          <button
-            type="button"
-            onClick={sendCode}
-            disabled={sending}
-            className="shrink-0 inline-flex items-center justify-center rounded-2xl px-4 py-4 text-sm font-bold text-white whitespace-nowrap min-w-[72px] transition-colors active:brightness-90 disabled:opacity-60"
-            style={{ background: C.primary, border: `1.5px solid ${C.primary}` }}
-          >
-            {sending ? '전송중…' : sentCode ? '재전송' : '인증'}
-          </button>
         )}
       </div>
 
       {hint && !sentCode && !verified && (
         <p className="mt-1.5 text-xs pl-1" style={{ color: C.mute }}>{hint}</p>
+      )}
+
+      {/* 인증번호 받기 버튼 (입력칸 아래 · 우측 · 작게) */}
+      {!verified && (
+        <div className="mt-2.5 flex justify-end">
+          <button
+            type="button"
+            onClick={sendCode}
+            disabled={sending}
+            className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-bold text-white transition-colors active:brightness-90 disabled:opacity-60"
+            style={{ background: C.primary }}
+          >
+            {sending ? '전송 중…' : sentCode ? '인증번호 재전송' : '인증번호 받기'}
+          </button>
+        </div>
       )}
 
       {/* 인증번호 입력 (전체폭으로 정돈) */}

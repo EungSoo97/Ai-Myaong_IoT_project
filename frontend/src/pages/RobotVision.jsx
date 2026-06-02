@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Maximize2,
   Minimize2,
@@ -9,6 +10,8 @@ import {
   PawPrint,
   Mic,
   MicOff,
+  Moon,
+  ChevronLeft,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
 import { api } from '../api/api'
@@ -18,6 +21,7 @@ const EVENT_LOG = [
   { id: 2, type: '배식 동작', time: '13:00:00', clip: 'clip-002' },
   { id: 3, type: '음성 호출', time: '11:45:12', clip: 'clip-003' },
   { id: 4, type: '외부인 감지', time: '09:11:55', clip: 'clip-004' },
+  { id: 5, type: '수면 감지', time: '03:20:41', clip: 'clip-005' },
 ]
 
 const MOVE_COMMANDS = {
@@ -36,16 +40,38 @@ const CAMERA_COMMANDS = {
 }
 
 export function RobotVision() {
+  const navigate = useNavigate()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [irOn, setIrOn] = useState(false)
   const [recording, setRecording] = useState(false)
   const [selectedClip, setSelectedClip] = useState(null)
   const [controlBusy, setControlBusy] = useState(false)
+  const [streamInfo, setStreamInfo] = useState({ url: '', mode: 'loading' })
+  const [streamError, setStreamError] = useState('')
   const controlBusyRef = useRef(false)
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false)
   const fsRef = useRef(null)
+
+  useEffect(() => {
+    let mounted = true
+    api.getStreamUrl()
+      .then((data) => {
+        if (!mounted) return
+        setStreamInfo({ url: data.url, mode: data.mode || 'live' })
+        setStreamError('')
+      })
+      .catch((error) => {
+        if (!mounted) return
+        console.error('[RobotVision] stream URL failed:', error)
+        setStreamError('스트림 주소를 불러오지 못했습니다')
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Fullscreen API ↔ React 상태 동기화 (ESC 해제 포함)
   useEffect(() => {
@@ -150,8 +176,16 @@ export function RobotVision() {
 
   return (
     <div className="px-5 pt-5 pb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="font-display text-2xl font-bold text-brand-brown">로봇 비전</h1>
+      <div className="flex items-center gap-2.5 mb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown">로봇 비전</h1>
         <Badge tone="success">연결됨</Badge>
       </div>
 
@@ -167,17 +201,18 @@ export function RobotVision() {
                 recording={recording}
                 irOn={irOn}
                 setIrOn={setIrOn}
+                streamUrl={streamInfo.url}
+                streamError={streamError}
               />
             </div>
           ) : (
             <>
-              <div className="absolute inset-0 flex items-center justify-center text-white/80">
-                <div className="text-center">
-                  <Video className="w-12 h-12 mx-auto mb-1.5 opacity-80" />
-                  <p className="text-sm font-semibold">스트리밍 영역</p>
-                  <p className="text-xs opacity-70">WebRTC / RTSP placeholder</p>
-                </div>
-              </div>
+              <StreamFrame
+                src={streamInfo.url}
+                mode={streamInfo.mode}
+                error={streamError}
+                className="absolute inset-0"
+              />
               <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-[11px] font-bold">
                 <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
               </span>
@@ -198,6 +233,23 @@ export function RobotVision() {
           )}
         </div>
       </Card>
+
+      {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
+      <section className="mt-5">
+        <h3 className="font-display text-base font-bold text-brand-brown mb-3">조종 패드</h3>
+        <Card className="px-4 py-6">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col items-center gap-2">
+              <DPad label="이동" onPress={onMove} tone="light" />
+              <span className="text-[11px] font-bold text-brand-mute">기기 이동</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <DPad label="카메라" onPress={onPan} centerAction="center" muted tone="light" />
+              <span className="text-[11px] font-bold text-brand-mute">카메라 회전</span>
+            </div>
+          </div>
+        </Card>
+      </section>
 
       {/* 컨트롤 (IR / 녹화 / 캡처) */}
       <section className="mt-5">
@@ -243,8 +295,8 @@ export function RobotVision() {
               onClick={() => setSelectedClip(e)}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
             >
-              <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
-                <Video className="w-4 h-4" />
+              <span className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${e.type === '수면 감지' ? 'bg-brand-brown/10 text-brand-brown' : 'bg-brand-primary/15 text-brand-primary'}`}>
+                {e.type === '수면 감지' ? <Moon className="w-4 h-4" /> : <Video className="w-4 h-4" />}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-brand-brown">{e.type}</p>
@@ -329,7 +381,7 @@ export function RobotVision() {
  *
  * 양손 엄지 동선을 고려해 컨트롤은 하단 좌우, 토글은 상단에 배치.
  */
-function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
+function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
   const [micOn, setMicOn] = useState(false)
   const toggleMic = () => {
     setMicOn((v) => {
@@ -341,12 +393,12 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
   return (
     <>
       {/* 배경 비디오 스트림 (전체화면) */}
-      <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/60">
-        <div className="text-center">
-          <Video className="w-16 h-16 mx-auto mb-2 opacity-70" />
-          <p className="text-sm font-semibold tracking-wider">LANDSCAPE · 실시간 스트림</p>
-        </div>
-      </div>
+      <StreamFrame
+        src={streamUrl}
+        error={streamError}
+        className="absolute inset-0"
+        fullscreen
+      />
 
       {/* 상단 좌측: LIVE / REC 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
@@ -392,6 +444,42 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
   )
 }
 
+function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
+  const [imageError, setImageError] = useState(false)
+
+  useEffect(() => {
+    setImageError(false)
+  }, [src])
+
+  const showFallback = !src || error || imageError
+
+  return (
+    <div className={`${className} bg-black flex items-center justify-center overflow-hidden`}>
+      {src && !imageError && (
+        <img
+          src={src}
+          alt="Robot camera live stream"
+          onError={() => setImageError(true)}
+          className="w-full h-full object-cover"
+        />
+      )}
+      {showFallback && (
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/75">
+          <div className="text-center px-6">
+            <Video className={`${fullscreen ? 'w-16 h-16' : 'w-12 h-12'} mx-auto mb-2 opacity-75`} />
+            <p className="text-sm font-semibold">
+              {error || imageError ? '카메라 스트림 연결 대기 중' : '스트림 준비 중'}
+            </p>
+            <p className="mt-1 text-xs opacity-70">
+              {mode === 'simulated' ? '시뮬레이션 스트림' : 'MJPEG 실시간 캠'}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /**
  * 표준 십자(Cross) D-Pad.
  *  - 외형: 평범한 cross 레이아웃 (전체 패드는 발바닥 모양 아님).
@@ -399,26 +487,28 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn }) {
  *  - 영상 위 시인성을 위해 반투명 배경 + 블러.
  *  - 누름 피드백: scale 변화 없이 배경색만 brand-brown 으로 즉시 전환.
  */
-function DPad({ centerAction = null, className = '', label, onPress, muted = false }) {
-  const baseBg = muted ? 'bg-white/12' : 'bg-white/18'
+function DPad({ centerAction = null, className = '', label, onPress, muted = false, tone = 'dark' }) {
+  const light = tone === 'light'
+  const baseBg = light ? 'bg-brand-cream' : muted ? 'bg-white/12' : 'bg-white/18'
+  const labelBox = light ? 'bg-brand-primary/15 text-brand-primary' : 'bg-black/35 backdrop-blur-sm text-white/85'
   return (
     <div className={className}>
       <div className="relative">
         <div className="grid grid-cols-3 gap-1.5 w-[148px]">
           <span />
-          <DBtn onClick={() => onPress('up')} bg={baseBg} aria="Up" />
+          <DBtn onClick={() => onPress('up')} bg={baseBg} tone={tone} aria="Up" />
           <span />
-          <DBtn onClick={() => onPress('left')} bg={baseBg} aria="Left" rotate="rotate-[270deg]" />
+          <DBtn onClick={() => onPress('left')} bg={baseBg} tone={tone} aria="Left" rotate="rotate-[270deg]" />
           {centerAction ? (
-            <CenterBtn onClick={() => onPress(centerAction)} />
+            <CenterBtn onClick={() => onPress(centerAction)} tone={tone} />
           ) : (
-            <div className="w-12 h-12 rounded-2xl bg-black/35 backdrop-blur-sm flex items-center justify-center">
-              <span className="text-[10px] font-bold tracking-wider text-white/85">{label}</span>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${labelBox}`}>
+              <span className="text-[10px] font-bold tracking-wider">{label}</span>
             </div>
           )}
-          <DBtn onClick={() => onPress('right')} bg={baseBg} aria="Right" rotate="rotate-90" />
+          <DBtn onClick={() => onPress('right')} bg={baseBg} tone={tone} aria="Right" rotate="rotate-90" />
           <span />
-          <DBtn onClick={() => onPress('down')} bg={baseBg} aria="Down" rotate="rotate-180" />
+          <DBtn onClick={() => onPress('down')} bg={baseBg} tone={tone} aria="Down" rotate="rotate-180" />
           <span />
         </div>
       </div>
@@ -426,7 +516,7 @@ function DPad({ centerAction = null, className = '', label, onPress, muted = fal
   )
 }
 
-function DBtn({ onClick, bg, aria, rotate = '' }) {
+function DBtn({ onClick, bg, aria, rotate = '', tone = 'dark' }) {
   const repeatTimerRef = useRef(null)
   const repeatDelayTimerRef = useRef(null)
 
@@ -462,11 +552,12 @@ function DBtn({ onClick, bg, aria, rotate = '' }) {
       aria-label={aria}
       className={`
         w-12 h-12 rounded-2xl
-        ${bg} backdrop-blur-sm
-        text-white shadow-md
+        ${bg}
         flex items-center justify-center
         transition-colors duration-75
-        active:bg-brand-brown
+        ${tone === 'light'
+          ? 'text-brand-brown shadow-soft active:bg-brand-primary active:text-white'
+          : 'backdrop-blur-sm text-white shadow-md active:bg-brand-brown'}
       `}
     >
       <PawPrint className={`w-5 h-5 ${rotate}`} strokeWidth={2.2} />
@@ -474,22 +565,23 @@ function DBtn({ onClick, bg, aria, rotate = '' }) {
   )
 }
 
-function CenterBtn({ onClick }) {
+function CenterBtn({ onClick, tone = 'dark' }) {
+  const light = tone === 'light'
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Center"
-      className="
+      className={`
         w-12 h-12 rounded-2xl
-        bg-black/45 backdrop-blur-sm
-        text-white shadow-md
         flex items-center justify-center
         transition-colors duration-75
-        active:bg-brand-brown
-      "
+        ${light
+          ? 'bg-brand-primary/15 text-brand-primary shadow-soft active:bg-brand-primary active:text-white'
+          : 'bg-black/45 backdrop-blur-sm text-white shadow-md active:bg-brand-brown'}
+      `}
     >
-      <span className="text-[9px] font-bold tracking-wider text-white/90">CENTER</span>
+      <span className="text-[9px] font-bold tracking-wider">CENTER</span>
     </button>
   )
 }

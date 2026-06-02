@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -18,13 +19,18 @@ SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 
 @router.get("/status")
 def network_status():
+    pi_status = _pi_agent_status()
+    local_wifi_ip = _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"])
+    local_wifi_ssid = _command_output(["bash", "-lc", "iwgetid -r"])
+
     return {
         "raspberrypiEnv": _read_env_values(
             PI_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
-        "wifiIp": _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"]),
-        "wifiSsid": _command_output(["bash", "-lc", "iwgetid -r"]),
+        "wifiIp": pi_status.get("ip") or local_wifi_ip,
+        "wifiSsid": pi_status.get("ssid") or local_wifi_ssid,
+        "source": pi_status.get("source") or "local",
     }
 
 
@@ -52,6 +58,14 @@ def pi_wifi_connect(payload: SharedWifiRequest):
 def configure_shared_wifi(payload: SharedWifiRequest):
     if not SETUP_WIFI_SCRIPT.exists():
         raise HTTPException(status_code=500, detail="Wi-Fi setup script was not found.")
+    if shutil.which("bash") is None:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Wi-Fi setup script can only run on Raspberry Pi/Linux with bash. Use the Raspberry Pi agent endpoint instead.",
+                "script": str(SETUP_WIFI_SCRIPT),
+            },
+        )
 
     env = os.environ.copy()
     env["MQTT_BROKER_HOST"] = (payload.mqtt_host or "auto").strip() or "auto"
@@ -70,6 +84,14 @@ def configure_shared_wifi(payload: SharedWifiRequest):
             timeout=120,
             check=False,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "bash was not found, so the Wi-Fi setup script could not run.",
+                "script": str(SETUP_WIFI_SCRIPT),
+            },
+        ) from exc
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(
             status_code=504,
@@ -133,7 +155,8 @@ def _command_output(command: list[str]) -> str:
 
 
 def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
-    pi_agent_base_url = os.getenv("PI_AGENT_BASE_URL", "http://10.1.82.103:8765").rstrip("/")
+    pi_agent_base_url = _pi_agent_base_url()
+    timeout = 45 if path == "/api/wifi/scan" else 120 if payload is not None else 15
     body = None
     method = "GET"
     headers = {"Accept": "application/json"}
@@ -149,7 +172,7 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail_text = exc.read().decode("utf-8", "replace")
@@ -167,3 +190,20 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
                 "error": str(exc),
             },
         ) from exc
+
+
+def _pi_agent_base_url() -> str:
+    configured_url = os.getenv("PI_AGENT_BASE_URL", "").strip()
+    if configured_url:
+        return configured_url.rstrip("/")
+
+    host = os.getenv("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
+    port = os.getenv("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
+    return f"http://{host}:{port}"
+
+
+def _pi_agent_status() -> dict:
+    try:
+        return _pi_agent_json_request("/api/wifi/status")
+    except HTTPException:
+        return {}

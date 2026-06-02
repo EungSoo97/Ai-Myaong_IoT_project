@@ -1,16 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   PawPrint,
-  Pencil,
+  ChevronLeft,
   ChevronRight,
   LogOut,
-  UserMinus,
-  Link as LinkIcon,
   Calendar,
   AlertTriangle,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
-import { useAccount, petAge, speciesLabel, clearAccount } from '../lib/accountRepository'
+import { useAccount, petAgeLabel, speciesLabel, clearAccount, updateUser } from '../lib/accountRepository'
+import { GoogleButton } from '../components/GoogleButton'
 
 function handleLogout() {
   try { sessionStorage.removeItem('aimyaong:auth') } catch { /* ignore */ }
@@ -38,21 +38,42 @@ function fmtDate(iso) {
 }
 
 export function MyPage() {
+  const navigate = useNavigate()
   const [showWithdraw, setShowWithdraw] = useState(false)
   const account = useAccount()
   const user = account?.user || null
   const pet = account?.pets?.[0] || FALLBACK_PET
+  const hasPet = Boolean(account?.pets?.[0])
 
   const nickname = user?.nickname || '묘냥집사'
   const email = user?.email || 'nyce18711@gmail.com'
   const initial = nickname.trim().charAt(0) || '집'
-
-  const age = petAge(pet.birthDate)
   const registeredAt = fmtDate(account?.createdAt) === '-' ? '2024-09-01' : fmtDate(account.createdAt)
+
+  // 구글 연동 상태
+  const googleLinked = account?.provider === 'google' || Boolean(user?.googleLinked)
+  const googleEmail = user?.googleEmail || (account?.provider === 'google' ? user?.email : null)
+  const handleGoogleLink = (profile) => {
+    updateUser({ googleLinked: true, googleEmail: profile.email })
+  }
 
   return (
     <div className="px-5 pb-6">
-      <PageHeader title="마이페이지" subtitle="펫 프로필과 계정을 관리해요" />
+      {/* 헤더 + 뒤로가기 */}
+      <header className="flex items-center gap-2.5 pt-5 pb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">마이페이지</h1>
+          <p className="text-sm text-brand-mute truncate">펫 프로필과 계정을 관리해요</p>
+        </div>
+      </header>
 
       {/* 유저 카드 */}
       <Card className="px-5 py-5 flex items-center gap-4">
@@ -63,58 +84,71 @@ export function MyPage() {
           <p className="font-display text-lg font-bold text-brand-brown">{nickname}</p>
           <p className="text-xs text-brand-mute truncate">{email}</p>
         </div>
-        <button className="px-3 py-1.5 rounded-2xl bg-brand-cream text-brand-brown text-xs font-bold touch-active shadow-soft">
+        <button
+          type="button"
+          onClick={() => navigate('/profile/edit')}
+          className="px-3 py-1.5 rounded-2xl bg-brand-cream text-brand-brown text-xs font-bold touch-active shadow-soft"
+        >
           편집
         </button>
       </Card>
 
-      {/* 펫 프로필 */}
+      {/* 펫 프로필 (1마리 · 탭하면 상세) */}
       <section className="mt-5">
-        <div className="flex items-center justify-between px-1 mb-2">
-          <h3 className="font-display text-base font-bold text-brand-brown">펫 프로필</h3>
-          <button className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active">
-            <Pencil className="w-3.5 h-3.5" /> 수정
-          </button>
-        </div>
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">펫 프로필</h3>
 
-        <Card className="paw-watermark px-5 py-5">
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-              {pet.photo
-                ? <img src={pet.photo} alt={pet.name} className="w-full h-full object-cover" />
-                : <PawPrint className="w-10 h-10 text-brand-primary" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-display text-2xl font-bold text-brand-brown leading-tight">{pet.name}</p>
-              <p className="text-xs text-brand-mute">{pet.breed || speciesLabel(pet.species)}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {age != null && <Badge tone="brown">{age}살</Badge>}
-                {pet.weightKg && <Badge tone="primary">{pet.weightKg}kg</Badge>}
+        <button
+          type="button"
+          onClick={() => hasPet && navigate('/pet/0')}
+          disabled={!hasPet}
+          className="w-full text-left touch-active disabled:cursor-default"
+        >
+          <Card className="paw-watermark px-5 py-5">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden shrink-0">
+                {pet.photo
+                  ? <img src={pet.photo} alt={pet.name} className="w-full h-full object-cover" />
+                  : <PawPrint className="w-10 h-10 text-brand-primary" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-display text-2xl font-bold text-brand-brown leading-tight truncate">{pet.name}</p>
+                <p className="text-xs text-brand-mute truncate">{pet.breed || speciesLabel(pet.species)}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {petAgeLabel(pet.birthDate) && <Badge tone="brown">{petAgeLabel(pet.birthDate)}</Badge>}
+                  {pet.weightKg && <Badge tone="primary">{pet.weightKg}kg</Badge>}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-4 pt-4 border-t border-brand-line grid grid-cols-2 gap-3">
-            <InfoCell label="생일" value={pet.birthDate || '-'} icon={<Calendar className="w-4 h-4" />} />
-            <InfoCell label="등록일" value={registeredAt} />
-          </div>
-        </Card>
+            <div className="mt-4 pt-4 border-t border-brand-line grid grid-cols-2 gap-3">
+              <InfoCell label="생일" value={pet.birthDate || '-'} icon={<Calendar className="w-4 h-4" />} />
+              <InfoCell label="등록일" value={registeredAt} />
+            </div>
+          </Card>
+        </button>
       </section>
 
-      {/* 연동/구독 */}
+      {/* 계정 연동 (구글) */}
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">계정 연동</h3>
-        <CreamCard className="divide-y divide-brand-line">
-          <LinkRow
-            icon={<LinkIcon className="w-5 h-5 text-brand-brown" />}
-            title="카카오 계정 연결"
-            right={<Badge tone="success">연결됨</Badge>}
-          />
-          <LinkRow
-            icon={<LinkIcon className="w-5 h-5 text-brand-mute" />}
-            title="Google 계정 연결"
-            right={<span className="text-xs font-bold text-brand-primary">연결하기</span>}
-          />
+        <CreamCard className="px-4 py-4">
+          {googleLinked ? (
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-brand-card flex items-center justify-center shrink-0 shadow-soft">
+                <GoogleG />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-brand-brown">Google 계정</p>
+                {googleEmail && <p className="text-xs text-brand-mute truncate">{googleEmail}</p>}
+              </div>
+              <Badge tone="success">연결됨</Badge>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-brand-mute mb-3">Google 계정을 연결하면 더 빠르게 로그인할 수 있어요.</p>
+              <GoogleButton label="Google 계정 연결" onSuccess={handleGoogleLink} />
+            </>
+          )}
         </CreamCard>
       </section>
 
@@ -123,12 +157,6 @@ export function MyPage() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">계정 관리</h3>
         <Card className="divide-y divide-brand-line">
           <ActionRow icon={<LogOut className="w-5 h-5 text-brand-brown" />} title="로그아웃" onClick={handleLogout} />
-          <ActionRow
-            icon={<UserMinus className="w-5 h-5 text-brand-danger" />}
-            title="회원 탈퇴"
-            danger
-            onClick={() => setShowWithdraw(true)}
-          />
         </Card>
       </section>
 
@@ -136,12 +164,24 @@ export function MyPage() {
         AiMyaong v1.0.0 · 사료를 전하고 싶다던가 🐾
       </p>
 
+      {/* 회원 탈퇴 (눈에 띄지 않게, 작게) */}
+      <div className="mt-3 text-center">
+        <button
+          type="button"
+          onClick={() => setShowWithdraw(true)}
+          className="text-[11px] text-brand-mute/60 underline underline-offset-2 hover:text-brand-mute"
+        >
+          회원 탈퇴
+        </button>
+      </div>
+
       {showWithdraw && (
         <WithdrawModal
           onCancel={() => setShowWithdraw(false)}
           onConfirm={handleWithdraw}
         />
       )}
+
     </div>
   )
 }
@@ -149,7 +189,7 @@ export function MyPage() {
 function WithdrawModal({ onCancel, onConfirm }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      className="fixed inset-0 z-[60] flex items-center justify-center px-6"
       style={{ background: 'rgba(45,37,32,0.45)' }}
       onClick={onCancel}
     >
@@ -184,6 +224,18 @@ function WithdrawModal({ onCancel, onConfirm }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/* 펫 삭제 확인 — 부드럽고 공감하는 톤의 바텀 시트 */
+function GoogleG({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 4.1 29.6 2 24 2 12.9 2 4 10.9 4 22s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.5 0 10.4-2.1 14.1-5.5l-6.5-5.5C29.6 34.6 26.9 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.6l6.5 5.5C40.9 36.9 44 31 44 24c0-1.3-.1-2.7-.4-3.5z"/>
+    </svg>
   )
 }
 
