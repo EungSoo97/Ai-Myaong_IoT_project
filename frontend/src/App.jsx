@@ -20,6 +20,7 @@ import { ProfileEdit } from './pages/ProfileEdit'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
 import { WifiSetup } from './pages/WifiSetup'
+import { Notifications } from './pages/Notifications'
 
 const AUTH_KEY = "aimyaong:auth";
 
@@ -89,6 +90,7 @@ function App() {
           <Route path="dispenser" element={<Dispenser />} />
           <Route path="feeding" element={<Feeding />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="pet/:idx" element={<PetDetail />} />
           <Route path="profile/edit" element={<ProfileEdit />} />
           <Route path="settings" element={<Settings />} />

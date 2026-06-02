@@ -86,6 +86,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+  /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
+   * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
+   * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */
+  // 즉시 1회 스냅샷 캡처 — 응답 예: { imageUrl }
+  captureSnapshot: () =>
+    request("/api/robot/capture", { method: "POST" }),
+  // 양방향 음성 호출 시작
+  voiceCall: () =>
+    request("/api/robot/voice-call", { method: "POST" }),
+  // 외출 모드 on/off 서버 동기화
+  setAwayMode: (on) =>
+    request("/api/robot/away-mode", {
+      method: "POST",
+      body: JSON.stringify({ on }),
+    }),
   getNetworkStatus: () => request("/api/network/status"),
   scanPiWifi: () => request("/api/network/pi-wifi-scan"),
   configurePiWifi: ({

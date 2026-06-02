@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
 
 import {
   Wifi,
+  Bell,
   PhoneCall,
   Camera,
   PawPrint,
@@ -16,6 +17,8 @@ import {
 } from "lucide-react";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
+import { useNotifications, addNotification } from "../lib/notificationRepository";
+import { useFeedSettings } from "../lib/dispenserSettings";
 
 const RECENT = [
   {
@@ -90,6 +93,9 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
   const account = useAccount();
+  const notifications = useNotifications();
+  const unread = notifications.filter((n) => !n.read).length;
+  const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
   const [streamUrl, setStreamUrl] = useState("");
@@ -125,22 +131,112 @@ export function Dashboard() {
   const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
+  // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
+  const AWAY_KEY = "aimyaong:awayMode";
+  const [awayMode, setAwayMode] = useState(() => {
+    try {
+      return localStorage.getItem(AWAY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [busyId, setBusyId] = useState(null);
+
+  // 토스트
+  const [toast, setToast] = useState(null);
+  const [toastOn, setToastOn] = useState(false);
+  const toastTimer = useRef(null);
+  const showToast = (msg) => {
+    clearTimeout(toastTimer.current);
+    setToast(msg);
+    requestAnimationFrame(() => setToastOn(true));
+    toastTimer.current = setTimeout(() => {
+      setToastOn(false);
+      setTimeout(() => setToast(null), 300);
+    }, 2200);
+  };
+
+  // 외출 모드 토글 (즉시 반영 + 서버 동기화 시도 · 실패해도 프론트는 동작)
+  const toggleAway = () => {
+    const next = !awayMode;
+    setAwayMode(next);
+    try {
+      localStorage.setItem(AWAY_KEY, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    showToast(next ? "✈️ 외출 모드를 켰어요" : "🏠 외출 모드를 껐어요");
+    api.setAwayMode(next).catch(() => {
+      /* 백엔드 미구현 — 프론트 상태만 유지 */
+    });
+  };
+
+  // 단축 작업 핸들러 (백엔드 있으면 실연결, 없으면 안내)
+  const handleShortcut = async (id) => {
+    if (id === "away") return toggleAway();
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      if (id === "feed") {
+        await api.dispenserFeed(feed.food);
+        showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
+        addNotification({
+          type: "feed",
+          title: "빠른 배식",
+          desc: `사료 ${feed.food}g을 배식했어요`,
+          link: "/feeding",
+        });
+      } else if (id === "call") {
+        await api.voiceCall();
+        showToast("📞 음성 호출을 시작했어요");
+      } else if (id === "cap") {
+        await api.captureSnapshot();
+        showToast("📸 화면을 캡처했어요");
+      }
+    } catch {
+      // 서버 미연결/미구현
+      const msg = {
+        feed: "배식 실패 — 기기 연결을 확인해 주세요",
+        call: "음성 호출은 곧 지원돼요 (기기 연동 준비 중)",
+        cap: "캡처는 곧 지원돼요 (기기 연동 준비 중)",
+      }[id];
+      showToast(msg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="px-5 pb-6">
       <PageHeader
         title={`안녕하세요, ${nickname}님! 🐾`}
         subtitle="오늘도 우리 아이를 살펴봐요"
         right={
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
-            className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
-            aria-label="설정"
-          >
-            <Wifi
-              className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
-            />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/notifications")}
+              className="relative w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
+              aria-label="알림"
+            >
+              <Bell className="w-5 h-5" />
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-danger text-white text-[10px] font-bold flex items-center justify-center border-2 border-brand-bg">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/settings")}
+              className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
+              aria-label="설정"
+            >
+              <Wifi
+                className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
+              />
+            </button>
+          </div>
         }
       />
 
@@ -224,22 +320,29 @@ export function Dashboard() {
           빠른 작업
         </h3>
         <div className="grid grid-cols-4 gap-3">
-          {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => (
-            <button
-              key={id}
-              type="button"
-              className="flex flex-col items-center gap-2 touch-active"
-            >
-              <span
-                className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft ${tone}`}
+          {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
+            const active = id === "away" && awayMode;
+            const isBusy = busyId === id;
+            const toneCls = active ? "bg-brand-primary text-white" : tone;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => handleShortcut(id)}
+                disabled={isBusy}
+                className="flex flex-col items-center gap-2 touch-active disabled:opacity-60"
               >
-                <Icon className="w-6 h-6" />
-              </span>
-              <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
-                {label}
-              </span>
-            </button>
-          ))}
+                <span
+                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft transition-colors ${toneCls} ${isBusy ? "animate-pulse" : ""}`}
+                >
+                  <Icon className="w-6 h-6" />
+                </span>
+                <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
+                  {id === "away" ? (awayMode ? "외출 모드 ON" : "외출 모드") : label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -296,6 +399,22 @@ export function Dashboard() {
           <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
         </Card>
       </button>
+
+      {/* 토스트 */}
+      {toast && (
+        <div
+          className="fixed left-1/2 bottom-24 z-50 px-5 py-3 rounded-2xl shadow-soft-lg text-sm font-bold text-white"
+          style={{
+            transform: `translateX(-50%) translateY(${toastOn ? "0" : "10px"})`,
+            opacity: toastOn ? 1 : 0,
+            transition: "all 250ms ease",
+            background: "#4B3621",
+            maxWidth: "88%",
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

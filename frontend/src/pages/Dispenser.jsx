@@ -15,6 +15,9 @@ import {
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, PrimaryButton } from '../components/ui'
 import { TimeWheel } from '../components/TimeWheel'
+import { api } from '../api/api'
+import { useFeedSettings, setFoodAmount, setWaterAmount } from '../lib/dispenserSettings'
+import { addNotification } from '../lib/notificationRepository'
 
 const COLORS = {
   food: '#F08D86',
@@ -43,8 +46,10 @@ const DAILY_WATER = [
 
 export function Dispenser() {
   const navigate = useNavigate()
-  const [foodAmount, setFoodAmount] = useState(15)
-  const [waterAmount, setWaterAmount] = useState(80)
+  // 1회 제공량: 저장소에서 공유 (대시보드 빠른 배식과 동일 값 사용)
+  const feed = useFeedSettings()
+  const foodAmount = feed.food
+  const waterAmount = feed.water
 
   const [schedule, setSchedule] = useState([
     { id: 1, time: '08:00', type: 'food', amount: 15, on: true },
@@ -66,6 +71,37 @@ export function Dispenser() {
       setToastOn(false)
       setTimeout(() => setToast(null), 300)
     }, 2000)
+  }
+
+  const [busy, setBusy] = useState(false)
+
+  // 수동 배식 — 저장된 제공량으로 실제 배식 시도 + 토스트 + 알림
+  const doFeed = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api.dispenserFeed(foodAmount)
+      showToast(`🍚 사료 ${foodAmount}g 배식 완료`)
+      addNotification({ type: 'feed', title: '수동 배식', desc: `사료 ${foodAmount}g을 배식했어요`, link: '/feeding' })
+    } catch {
+      showToast('배식 실패 — 기기 연결을 확인해 주세요')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doWater = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api.dispenserWater(waterAmount)
+      showToast(`💧 물 ${waterAmount}ml 급수 완료`)
+      addNotification({ type: 'water_low', title: '수동 급수', desc: `물 ${waterAmount}ml을 급수했어요`, link: '/feeding' })
+    } catch {
+      showToast('급수 실패 — 기기 연결을 확인해 주세요')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const openAdd = () => setEditing({ time: '08:00', type: 'food', amount: 15 })
@@ -147,6 +183,8 @@ export function Dispenser() {
         max={300}
         step={5}
         onChange={setFoodAmount}
+        onSubmit={doFeed}
+        busy={busy}
         button={`지금 ${foodAmount}g 배식하기`}
         icon={<UtensilsCrossed className="w-4 h-4" />}
       />
@@ -160,6 +198,8 @@ export function Dispenser() {
         max={300}
         step={20}
         onChange={setWaterAmount}
+        onSubmit={doWater}
+        busy={busy}
         button={`지금 ${waterAmount}ml 급수하기`}
         icon={<Droplets className="w-4 h-4" />}
       />
@@ -343,7 +383,7 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
   )
 }
 
-function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, button, icon }) {
+function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon }) {
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
   const ratio = (amount - min) / (max - min)
@@ -401,14 +441,16 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
       {isWater ? (
         <button
           type="button"
-          className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-3xl text-white font-bold py-3.5 shadow-soft transition-colors"
+          onClick={onSubmit}
+          disabled={busy}
+          className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-3xl text-white font-bold py-3.5 shadow-soft transition-colors disabled:opacity-60"
           style={{ background: accent }}
         >
           <Play className="w-4 h-4" />
           {button}
         </button>
       ) : (
-        <PrimaryButton className="mt-4 w-full">
+        <PrimaryButton className="mt-4 w-full disabled:opacity-60" onClick={onSubmit} disabled={busy}>
           <Play className="w-4 h-4" />
           {button}
         </PrimaryButton>
