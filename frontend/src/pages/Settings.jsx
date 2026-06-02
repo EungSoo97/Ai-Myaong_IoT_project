@@ -310,7 +310,11 @@ export function Settings() {
           </button>
         </div>
 
-        <CreamCard className="divide-y divide-brand-line">
+        <CreamCard
+          className={`divide-y divide-brand-line ${
+            networks.length > 5 ? "max-h-[296px] overflow-y-auto" : ""
+          }`}
+        >
           {networks.length === 0 ? (
             <button
               type="button"

@@ -8,8 +8,14 @@ const C = {
   danger: '#E26D5C',
 }
 
-/* Google OAuth Client ID — .env 의 VITE_GOOGLE_CLIENT_ID 로 주입 (코드에 하드코딩 X) */
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+/* Google OAuth Client ID.
+ * 우선순위: .env(VITE_GOOGLE_CLIENT_ID) → 없으면 아래 공개 기본값.
+ * 웹 OAuth Client ID는 비밀값이 아니라 공개값이다(어차피 브라우저 번들에 노출됨).
+ * 보안 경계는 "승인된 JavaScript 원본(도메인)"이며, .env 가 없는 배포 빌드(예: Vercel git 빌드)에서도
+ * 구글 로그인이 동작하도록 기본값을 둔다. */
+const DEFAULT_CLIENT_ID =
+  '1034586846978-d24vdc078j1ae041c1d77anqrc3s005j.apps.googleusercontent.com'
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 
 /* Google Identity Services 스크립트 1회 로드 */

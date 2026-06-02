@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { api } from "../api/api";
 
 import {
   Wifi,
@@ -89,6 +91,30 @@ export function Dashboard() {
   const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
   const account = useAccount();
 
+  // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
+  const [streamUrl, setStreamUrl] = useState("");
+  const [streamFailed, setStreamFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getStreamUrl()
+      .then((data) => {
+        if (alive) {
+          setStreamUrl(data.url || "");
+          setStreamFailed(false);
+        }
+      })
+      .catch(() => {
+        if (alive) setStreamFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const showLive = streamUrl && !streamFailed;
+
   // 가입 데이터 기반 값 (없으면 샘플 fallback)
   const nickname = account?.user?.nickname || "묘냥집사";
   const pets = account?.pets ?? [];
@@ -161,16 +187,29 @@ export function Dashboard() {
       >
         <Card className="overflow-hidden">
           <div className="relative aspect-video bg-gradient-to-br from-brand-brown to-brand-brown-soft">
-            <div className="absolute inset-0 flex items-center justify-center text-white/85">
-              <div className="text-center">
-                <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
-                <p className="text-sm font-semibold">실시간 캠 보기</p>
-                <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+            {showLive ? (
+              <img
+                src={streamUrl}
+                alt="실시간 캠"
+                onError={() => setStreamFailed(true)}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white/85">
+                <div className="text-center">
+                  <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
+                  <p className="text-sm font-semibold">
+                    {streamFailed ? "캠 연결 대기 중" : "실시간 캠 보기"}
+                  </p>
+                  <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+                </div>
               </div>
-            </div>
+            )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-              LIVE
+              <span
+                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : "bg-white/50"}`}
+              />
+              {showLive ? "LIVE" : "OFF"}
             </span>
             <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-white/85 text-brand-brown text-[11px] font-bold">
               HD
