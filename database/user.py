@@ -18,5 +18,6 @@ class User(Base):
     settings        = relationship("Settings",      back_populates="user")
     detection_logs = relationship("DetectionLog",    back_populates="user")
     feed_logs      = relationship("FeedLog",         back_populates="user")
+    water_logs     = relationship("WaterLog",        back_populates="user")
     health_reports = relationship("PetHealthReport", back_populates="user")
 
