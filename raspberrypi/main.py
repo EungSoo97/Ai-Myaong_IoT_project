@@ -249,9 +249,10 @@ def scan_wifi_networks() -> list[dict[str, object]]:
 
 def _scan_with_iwlist() -> list[dict[str, object]]:
     interface = os.getenv("WIFI_SCAN_INTERFACE", "wlan0").strip() or "wlan0"
+    iwlist_path = _command_path("iwlist") or "iwlist"
     commands = [
-        ["sudo", "-n", "iwlist", interface, "scan"],
-        ["iwlist", interface, "scan"],
+        ["sudo", "-n", iwlist_path, interface, "scan"],
+        [iwlist_path, interface, "scan"],
     ]
     best_networks: list[dict[str, object]] = []
     errors: list[str] = []
@@ -444,6 +445,13 @@ def _esp32_wifi_compatible(channel: int, frequency: float) -> bool:
 def _command_exists(command: str) -> bool:
     result = subprocess.run(["bash", "-lc", f"command -v {command}"], capture_output=True, text=True)
     return result.returncode == 0
+
+
+def _command_path(command: str) -> str:
+    result = subprocess.run(["bash", "-lc", f"command -v {command}"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip().splitlines()[0]
 
 
 if __name__ == "__main__":
