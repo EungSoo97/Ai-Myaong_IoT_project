@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   PawPrint,
   Pencil,
@@ -6,23 +7,49 @@ import {
   UserMinus,
   Link as LinkIcon,
   Calendar,
+  AlertTriangle,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, Badge } from '../components/ui'
+import { useAccount, petAge, speciesLabel, clearAccount } from '../lib/accountRepository'
 
 function handleLogout() {
   try { sessionStorage.removeItem('aimyaong:auth') } catch { /* ignore */ }
   window.location.href = '/splash'
 }
 
-const PET = {
+function handleWithdraw() {
+  // 회원 탈퇴 (현재: 로컬 데이터 삭제 · 내일 백엔드 붙으면 DELETE /api/me 로 교체)
+  try { sessionStorage.removeItem('aimyaong:auth') } catch { /* ignore */ }
+  clearAccount()
+  window.location.href = '/splash'
+}
+
+const FALLBACK_PET = {
   name: '미야옹',
   breed: '코리안 숏헤어',
-  age: 3,
-  weight: 4.2,
-  birthday: '2023-04-12',
+  birthDate: '2023-04-12',
+  weightKg: 4.2,
+}
+
+function fmtDate(iso) {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 10)
 }
 
 export function MyPage() {
+  const [showWithdraw, setShowWithdraw] = useState(false)
+  const account = useAccount()
+  const user = account?.user || null
+  const pet = account?.pets?.[0] || FALLBACK_PET
+
+  const nickname = user?.nickname || '묘냥집사'
+  const email = user?.email || 'nyce18711@gmail.com'
+  const initial = nickname.trim().charAt(0) || '집'
+
+  const age = petAge(pet.birthDate)
+  const registeredAt = fmtDate(account?.createdAt) === '-' ? '2024-09-01' : fmtDate(account.createdAt)
+
   return (
     <div className="px-5 pb-6">
       <PageHeader title="마이페이지" subtitle="펫 프로필과 계정을 관리해요" />
@@ -30,11 +57,11 @@ export function MyPage() {
       {/* 유저 카드 */}
       <Card className="px-5 py-5 flex items-center gap-4">
         <div className="w-16 h-16 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center shadow-soft-inset">
-          <span className="font-display text-2xl font-bold">집</span>
+          <span className="font-display text-2xl font-bold">{initial}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-display text-lg font-bold text-brand-brown">묘냥집사</p>
-          <p className="text-xs text-brand-mute truncate">nyce18711@gmail.com</p>
+          <p className="font-display text-lg font-bold text-brand-brown">{nickname}</p>
+          <p className="text-xs text-brand-mute truncate">{email}</p>
         </div>
         <button className="px-3 py-1.5 rounded-2xl bg-brand-cream text-brand-brown text-xs font-bold touch-active shadow-soft">
           편집
@@ -52,22 +79,24 @@ export function MyPage() {
 
         <Card className="paw-watermark px-5 py-5">
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset">
-              <PawPrint className="w-10 h-10 text-brand-primary" />
+            <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+              {pet.photo
+                ? <img src={pet.photo} alt={pet.name} className="w-full h-full object-cover" />
+                : <PawPrint className="w-10 h-10 text-brand-primary" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-display text-2xl font-bold text-brand-brown leading-tight">{PET.name}</p>
-              <p className="text-xs text-brand-mute">{PET.breed}</p>
+              <p className="font-display text-2xl font-bold text-brand-brown leading-tight">{pet.name}</p>
+              <p className="text-xs text-brand-mute">{pet.breed || speciesLabel(pet.species)}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <Badge tone="brown">{PET.age}살</Badge>
-                <Badge tone="primary">{PET.weight}kg</Badge>
+                {age != null && <Badge tone="brown">{age}살</Badge>}
+                {pet.weightKg && <Badge tone="primary">{pet.weightKg}kg</Badge>}
               </div>
             </div>
           </div>
 
           <div className="mt-4 pt-4 border-t border-brand-line grid grid-cols-2 gap-3">
-            <InfoCell label="생일" value={PET.birthday} icon={<Calendar className="w-4 h-4" />} />
-            <InfoCell label="등록일" value="2024-09-01" />
+            <InfoCell label="생일" value={pet.birthDate || '-'} icon={<Calendar className="w-4 h-4" />} />
+            <InfoCell label="등록일" value={registeredAt} />
           </div>
         </Card>
       </section>
@@ -98,6 +127,7 @@ export function MyPage() {
             icon={<UserMinus className="w-5 h-5 text-brand-danger" />}
             title="회원 탈퇴"
             danger
+            onClick={() => setShowWithdraw(true)}
           />
         </Card>
       </section>
@@ -105,6 +135,54 @@ export function MyPage() {
       <p className="mt-6 text-center text-[11px] text-brand-mute">
         AiMyaong v1.0.0 · 사료를 전하고 싶다던가 🐾
       </p>
+
+      {showWithdraw && (
+        <WithdrawModal
+          onCancel={() => setShowWithdraw(false)}
+          onConfirm={handleWithdraw}
+        />
+      )}
+    </div>
+  )
+}
+
+function WithdrawModal({ onCancel, onConfirm }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: 'rgba(45,37,32,0.45)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-[360px] rounded-3xl bg-brand-card p-6 shadow-soft-lg text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto w-14 h-14 rounded-full bg-brand-danger/15 flex items-center justify-center">
+          <AlertTriangle className="w-7 h-7 text-brand-danger" />
+        </div>
+        <h3 className="mt-4 font-display text-lg font-bold text-brand-brown">정말 탈퇴하시겠어요?</h3>
+        <p className="mt-2 text-sm text-brand-mute leading-relaxed">
+          탈퇴하면 계정과 등록한 모든 반려동물 정보가 삭제되며,
+          이 작업은 되돌릴 수 없습니다.
+        </p>
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white touch-active"
+            style={{ background: '#E26D5C' }}
+          >
+            탈퇴하기
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

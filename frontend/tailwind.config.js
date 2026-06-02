@@ -24,6 +24,8 @@ export default {
       fontFamily: {
         sans: ['Pretendard', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         display: ['"Gmarket Sans"', 'Pretendard', 'system-ui', 'sans-serif'],
+        cute: ['Jua', 'Pretendard', 'system-ui', 'sans-serif'],
+        hand: ['Gaegu', 'Jua', 'Pretendard', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         '4xl': '2rem',

@@ -36,7 +36,7 @@ export function PrivateLayout() {
   return (
     <MobileShell>
       <div className="h-safe-top bg-brand-bg" />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto pb-24">
         <Outlet />
       </main>
       <BottomTabBar />
