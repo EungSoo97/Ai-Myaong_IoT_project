@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -57,6 +58,14 @@ def pi_wifi_connect(payload: SharedWifiRequest):
 def configure_shared_wifi(payload: SharedWifiRequest):
     if not SETUP_WIFI_SCRIPT.exists():
         raise HTTPException(status_code=500, detail="Wi-Fi setup script was not found.")
+    if shutil.which("bash") is None:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Wi-Fi setup script can only run on Raspberry Pi/Linux with bash. Use the Raspberry Pi agent endpoint instead.",
+                "script": str(SETUP_WIFI_SCRIPT),
+            },
+        )
 
     env = os.environ.copy()
     env["MQTT_BROKER_HOST"] = (payload.mqtt_host or "auto").strip() or "auto"
@@ -75,6 +84,14 @@ def configure_shared_wifi(payload: SharedWifiRequest):
             timeout=120,
             check=False,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "bash was not found, so the Wi-Fi setup script could not run.",
+                "script": str(SETUP_WIFI_SCRIPT),
+            },
+        ) from exc
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(
             status_code=504,

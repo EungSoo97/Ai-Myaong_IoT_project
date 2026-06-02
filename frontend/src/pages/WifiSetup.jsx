@@ -73,10 +73,10 @@ export function WifiSetup() {
         ...options,
       })
     } catch {
-      throw new Error(`ESP32 설정 주소에 연결할 수 없습니다. ${base} 접속 상태를 확인하세요.`)
+      throw new Error(`ESP32 설정 주소에 연결할 수 없습니다: ${base}`)
     }
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || `ESP32 API error: ${response.status}`)
+    if (!response.ok) throw new Error(data.error || `ESP32 API 오류: ${response.status}`)
     return data
   }
 
@@ -140,9 +140,7 @@ export function WifiSetup() {
   }
 
   function closeNetworkModal() {
-    setPendingNetwork(null)
-    setModalSsid('')
-    setModalPassword('')
+    closeModalSilently()
     showMessage('Wi-Fi 연결을 취소했습니다.')
   }
 
@@ -156,6 +154,22 @@ export function WifiSetup() {
       secure,
       compatible,
     }
+  }
+
+  function validateModalPayload({ ssid, password, secure, compatible }) {
+    if (!ssid) {
+      showMessage('SSID를 입력하세요.')
+      return false
+    }
+    if (!compatible) {
+      showMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다.')
+      return false
+    }
+    if (secure && !password) {
+      showMessage('Wi-Fi 비밀번호를 입력하세요.')
+      return false
+    }
+    return true
   }
 
   async function saveEsp32OnlyFromModal() {
@@ -191,26 +205,14 @@ export function WifiSetup() {
     setBusy(true)
     showMessage(`${payload.ssid} 연결을 시작합니다.`)
     try {
-      let data
-      try {
-        data = await api.configurePiWifi({
-          ssid: payload.ssid,
-          password: payload.password,
-          mqttHost: mqttHost.trim() || 'auto',
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
-          piApFallback,
-        })
-      } catch {
-        data = await api.configureSharedWifi({
-          ssid: payload.ssid,
-          password: payload.password,
-          mqttHost: mqttHost.trim() || 'auto',
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
-          piApFallback,
-        })
-      }
+      const data = await api.configurePiWifi({
+        ssid: payload.ssid,
+        password: payload.password,
+        mqttHost: mqttHost.trim() || 'auto',
+        mqttPort: 1883,
+        esp32SetupUrl: setupUrl,
+        piApFallback,
+      })
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
       if (nextHost) setMqttHost(nextHost)
       setSelectedNetwork(pendingNetwork)
@@ -219,26 +221,10 @@ export function WifiSetup() {
       await refreshPiStatus()
       await refreshStatus({ silent: true })
     } catch (error) {
-      showMessage(error.message || '공통 Wi-Fi 설정 적용에 실패했습니다.')
+      showMessage(normalizeWifiError(error.message))
     } finally {
       setBusy(false)
     }
-  }
-
-  function validateModalPayload({ ssid, password, secure, compatible }) {
-    if (!ssid) {
-      showMessage('SSID를 입력하세요.')
-      return false
-    }
-    if (!compatible) {
-      showMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다.')
-      return false
-    }
-    if (secure && !password) {
-      showMessage('비밀번호를 입력하세요.')
-      return false
-    }
-    return true
   }
 
   function closeModalSilently() {
@@ -341,8 +327,9 @@ export function WifiSetup() {
                 <h3 id="wifi-connect-title" className="truncate font-display text-lg font-bold text-brand-brown">
                   선택한 네트워크
                 </h3>
+                <p className="mt-1 truncate text-sm font-bold text-brand-brown">{pendingNetwork.ssid || '숨겨진 네트워크'}</p>
                 <p className="mt-1 text-xs font-semibold text-brand-mute">
-                  CH {pendingNetwork.channel || '-'}{pendingNetwork.band ? ` · ${pendingNetwork.band}` : ''}
+                  신호 {pendingNetwork.rssi ?? '-'} · CH {pendingNetwork.channel || '-'}{pendingNetwork.band ? ` · ${pendingNetwork.band}` : ''}
                 </p>
               </div>
             </div>
@@ -386,15 +373,15 @@ export function WifiSetup() {
               <GhostButton type="button" className="rounded-2xl py-3" onClick={closeNetworkModal} disabled={busy}>
                 취소
               </GhostButton>
-              <PrimaryButton
-                type="button"
-                className="rounded-2xl py-3"
-                onClick={saveSharedWifiFromModal}
-                disabled={busy || (pendingNetwork.secure && !modalPassword)}
-              >
-                확인
+              <PrimaryButton type="button" className="rounded-2xl py-3" onClick={saveSharedWifiFromModal} disabled={busy}>
+                {busy ? '적용 중' : '확인'}
               </PrimaryButton>
             </div>
+            {busy && (
+              <p className="mt-3 rounded-2xl bg-brand-cream px-3 py-2.5 text-center text-xs font-bold text-brand-brown">
+                Wi-Fi 설정을 적용하는 중입니다. 연결이 바뀌는 동안 잠시 기다려 주세요.
+              </p>
+            )}
             <GhostButton type="button" className="mt-2 w-full rounded-2xl py-3" onClick={saveEsp32OnlyFromModal} disabled={busy}>
               <CheckCircle2 className="w-4 h-4" />
               ESP32만 저장
@@ -449,7 +436,7 @@ function NetworkRow({ network, selected, onClick }) {
       <span className="flex-1 min-w-0">
         <span className="block text-sm font-bold text-brand-brown truncate">{network.ssid || '숨겨진 네트워크'}</span>
         <span className="block text-xs text-brand-mute">
-          신호 {network.rssi} · CH {network.channel || '-'}{band ? ` · ${band}` : ''}
+          신호 {network.rssi ?? '-'} · CH {network.channel || '-'}{band ? ` · ${band}` : ''}
           {!compatible ? ' · ESP32 미지원' : ''}
         </span>
       </span>
@@ -468,6 +455,14 @@ function StatusTile({ icon, label, value }) {
       <p className="mt-1 text-sm font-bold text-brand-brown truncate">{value}</p>
     </Card>
   )
+}
+
+function normalizeWifiError(message) {
+  if (!message) return '라즈베리파이 Wi-Fi 설정 적용에 실패했습니다.'
+  if (message.includes('Not authorized to control networking')) {
+    return '라즈베리파이에서 Wi-Fi 변경 권한이 없습니다. Pi에서 scripts/allow-networkmanager-control.sh를 한 번 실행하세요.'
+  }
+  return message
 }
 
 function readLocal(key, fallback) {

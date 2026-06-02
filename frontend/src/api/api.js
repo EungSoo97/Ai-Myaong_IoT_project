@@ -20,7 +20,7 @@ async function request(path, options = {}) {
       },
       ...options,
     });
-  } catch (error) {
+  } catch {
     throw new Error(`백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`);
   }
 
@@ -29,8 +29,7 @@ async function request(path, options = {}) {
     let errorMessage = message || `API error: ${response.status}`;
     try {
       const parsed = JSON.parse(message);
-      if (typeof parsed.detail === "string") errorMessage = parsed.detail;
-      else if (parsed.detail?.message) errorMessage = parsed.detail.message;
+      errorMessage = extractErrorMessage(parsed) || errorMessage;
     } catch {
       /* keep raw message */
     }
@@ -38,6 +37,16 @@ async function request(path, options = {}) {
   }
 
   return response.json();
+}
+
+function extractErrorMessage(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value.detail) return extractErrorMessage(value.detail);
+  if (typeof value.stderr === "string" && value.stderr.trim()) return value.stderr.trim();
+  if (typeof value.stdout === "string" && value.stdout.trim()) return value.stdout.trim();
+  if (typeof value.message === "string") return value.message;
+  return "";
 }
 
 export const api = {
