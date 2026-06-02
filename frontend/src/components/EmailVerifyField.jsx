@@ -4,15 +4,15 @@ import { sendVerificationEmail, emailjsConfigured } from '../lib/sendVerificatio
 
 /* Warm-tone 팔레트 */
 const C = {
-  input: '#FFF6E9',
-  panel: '#FBF1E2',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  primaryDeep: '#D6814A',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
+  input: 'rgb(var(--brand-input))',
+  panel: 'rgb(var(--brand-cream))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  danger: 'rgb(var(--brand-danger))',
+  ok: 'rgb(var(--brand-success))',
 }
 
 const genCode = () => String(Math.floor(100000 + Math.random() * 900000))
@@ -183,7 +183,7 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
             disabled={expired}
             placeholder="● ● ● ● ● ●"
             className="font-sans mt-3 w-full rounded-2xl px-4 py-4 text-center text-lg font-bold tracking-[0.4em] outline-none placeholder:text-base placeholder:tracking-[0.25em] placeholder:font-normal placeholder:opacity-40 disabled:opacity-60"
-            style={{ background: '#FFFFFF', border: `1.5px solid ${expired ? C.danger : C.border}`, color: C.brown }}
+            style={{ background: C.input, border: `1.5px solid ${expired ? C.danger : C.border}`, color: C.brown }}
           />
 
           {/* 확인 버튼 (전체폭) */}

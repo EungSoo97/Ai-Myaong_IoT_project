@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 
 /* Warm-tone 일부 (버튼 테두리용) */
 const C = {
-  brown: '#5C3D1F',
-  border: '#F1DEC2',
-  card: '#FFFFFF',
-  danger: '#E26D5C',
+  brown: 'rgb(var(--brand-brown))',
+  border: 'rgb(var(--brand-line))',
+  card: 'rgb(var(--brand-card))',
+  danger: 'rgb(var(--brand-danger))',
 }
 
 /* Google OAuth Client ID.

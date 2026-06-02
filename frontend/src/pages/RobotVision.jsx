@@ -190,7 +190,7 @@ export function RobotVision() {
       </div>
 
       {/* 일반 모드 비디오 */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="vision-stream">
         <div ref={fsRef} className={isFullscreen ? 'fullscreen-stage' : 'relative w-full aspect-video bg-gradient-to-br from-brand-brown to-black overflow-hidden'}>
           {isFullscreen ? (
             <div className={forceCssLandscape ? 'landscape-rotor' : 'landscape-native'}>
@@ -252,7 +252,7 @@ export function RobotVision() {
       </section>
 
       {/* 컨트롤 (IR / 녹화 / 캡처) */}
-      <section className="mt-5">
+      <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">제어</h3>
         <Card className="px-5 py-5">
           <div className="flex items-center justify-around gap-3">

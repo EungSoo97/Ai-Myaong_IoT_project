@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { BottomTabBar } from './BottomTabBar'
+import { OnboardingTour } from './OnboardingTour'
 
 /**
  * 글로벌 모바일 셸.
@@ -9,7 +10,10 @@ import { BottomTabBar } from './BottomTabBar'
 function MobileShell({ children }) {
   return (
     <div className="min-h-screen w-full flex justify-center bg-brand-brown/10">
-      <div className="relative w-full max-w-[480px] mx-auto min-h-screen overflow-x-hidden bg-brand-bg text-brand-brown flex flex-col shadow-soft-lg">
+      <div
+        data-app-frame
+        className="relative w-full max-w-[480px] mx-auto min-h-screen overflow-x-hidden bg-brand-bg text-brand-brown flex flex-col shadow-soft-lg"
+      >
         {children}
       </div>
     </div>
@@ -40,6 +44,7 @@ export function PrivateLayout() {
         <Outlet />
       </main>
       <BottomTabBar />
+      <OnboardingTour />
     </MobileShell>
   )
 }

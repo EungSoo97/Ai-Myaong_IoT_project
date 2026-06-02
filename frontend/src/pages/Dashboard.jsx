@@ -243,6 +243,7 @@ export function Dashboard() {
       {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
       <button
         type="button"
+        data-tour="dash-pet"
         onClick={() => navigate("/pet/0")}
         className="w-full text-left touch-active"
       >
@@ -278,6 +279,7 @@ export function Dashboard() {
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
         type="button"
+        data-tour="dash-cam"
         onClick={() => navigate("/vision")}
         className="mt-4 w-full text-left touch-active"
       >
@@ -315,7 +317,7 @@ export function Dashboard() {
       </button>
 
       {/* 3) 숏컷 (Grid) */}
-      <section className="mt-5">
+      <section className="mt-5" data-tour="dash-shortcuts">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>

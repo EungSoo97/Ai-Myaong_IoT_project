@@ -22,6 +22,7 @@ import {
   PrimaryButton,
   GhostButton,
 } from "../components/ui";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { api } from "../api/api";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
@@ -397,7 +398,7 @@ export function Settings() {
             <input
               value={mqttHost}
               onChange={(event) => setMqttHost(event.target.value)}
-              className="mt-1 w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              className="mt-1 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
               placeholder="IP 또는 비우면 자동"
             />
 
@@ -492,6 +493,19 @@ export function Settings() {
             }
             disabled={!pushOn}
           />
+        </CreamCard>
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
+          화면 테마
+        </h3>
+        <CreamCard className="px-4 py-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-brand-brown">다크 모드</p>
+            <p className="text-xs text-brand-mute">라이트 · 다크 · 시스템 설정</p>
+          </div>
+          <ThemeToggle />
         </CreamCard>
       </section>
 

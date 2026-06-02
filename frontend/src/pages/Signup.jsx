@@ -12,17 +12,17 @@ import { saveAccount } from '../lib/accountRepository'
 
 /* Warm-tone 팔레트 (Login.jsx 와 동일) */
 const C = {
-  bg: '#FFF3E2',
-  card: '#FFFFFF',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  primaryDeep: '#D6814A',
-  outline: '#2D2520',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  outline: 'rgb(var(--brand-brown))',
+  danger: 'rgb(var(--brand-danger))',
+  ok: 'rgb(var(--brand-success))',
 }
 
 /* 단계 메타 (약관 동의 단계 제거 → 유저 정보부터 시작) */
@@ -176,7 +176,19 @@ export default function Signup({ onComplete, onBackToLogin }) {
 
   /* ───────── 완료(가상 대시보드) 화면 ───────── */
   if (screen === 'done' && finalPayload) {
-    return <DonePanel payload={finalPayload} onGo={() => setScreen('welcome')} />
+    return (
+      <DonePanel
+        payload={finalPayload}
+        onGo={() => setScreen('welcome')}
+        onEdit={() => {
+          // 등록한 값(pet state) 유지한 채 펫 정보 단계로 돌아가 수정
+          setErr('')
+          setFieldErrors({})
+          setScreen('signup')
+          setStep(STEP_PET)
+        }}
+      />
+    )
   }
 
   /* ───────── 회원가입 단계 화면 ───────── */
@@ -492,7 +504,9 @@ function WelcomeSplash({ nickname, onDone }) {
 }
 
 /* ─────────────── 완료(가상 대시보드) ─────────────── */
-function DonePanel({ payload, onGo }) {
+function DonePanel({ payload, onGo, onEdit }) {
+  const pet = payload.pets[0]
+  const chip = 'inline-flex items-center rounded-full px-3 py-1 text-xs font-bold'
   return (
     <div className="font-cute flex-1 flex flex-col h-[100dvh] overflow-y-auto px-5 pt-10 pb-8 sm:px-8" style={{ background: C.bg }}>
       <div className="text-center">
@@ -504,29 +518,70 @@ function DonePanel({ payload, onGo }) {
           {payload.user.nickname} 님, 환영해요!
         </h1>
         <p className="mt-1.5 text-sm font-semibold" style={{ color: C.mute }}>
-          가입이 완료되었어요 · 반려동물 {payload.pets.length}마리
+          반려동물 정보까지 등록이 완료되었어요
         </p>
       </div>
 
-      <div className="mt-6 rounded-3xl p-5 shadow-lg" style={{ background: C.card, border: `1px solid ${C.border}` }}>
+      <div className="mt-6 flex items-center justify-between px-1">
         <p className="text-sm font-bold tracking-widest uppercase" style={{ color: C.primary }}>내 반려동물</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {payload.pets.map((p, i) => (
-            <div key={i} className="rounded-2xl p-4 text-center" style={{ background: C.input, border: `1px solid ${C.border}` }}>
-              <div className="mx-auto w-20 h-20 rounded-full overflow-hidden flex items-center justify-center"
-                style={{ background: '#fff', border: `1px solid ${C.border}` }}>
-                {p.photo
-                  ? <img src={p.photo} alt={p.name} className="w-full h-full object-cover" />
-                  : <PawPrint className="w-7 h-7" style={{ color: C.mute }} />}
-              </div>
-              <p className="mt-2.5 text-base font-bold" style={{ color: C.brown }}>{p.name}</p>
-              <p className="text-sm" style={{ color: C.mute }}>
-                {p.species === 'DOG' ? '강아지' : '고양이'} · {p.weightKg || '?'}kg
-              </p>
-            </div>
-          ))}
-        </div>
+        <span className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: C.mute }}>
+          <Pencil className="w-3.5 h-3.5" /> 눌러서 수정
+        </span>
       </div>
+
+      {pet && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="mt-3 w-full text-left rounded-3xl p-6 shadow-lg transition-transform active:scale-[0.98]"
+          style={{ background: C.card, border: `1px solid ${C.border}` }}
+        >
+          <div className="flex flex-col items-center text-center">
+            <div
+              className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center shadow-md"
+              style={{ background: C.card, border: `2px solid ${C.border}` }}
+            >
+              {pet.photo
+                ? <img src={pet.photo} alt={pet.name} className="w-full h-full object-cover" />
+                : <PawPrint className="w-12 h-12" style={{ color: C.mute }} />}
+            </div>
+            <p className="mt-4 font-display text-2xl font-bold" style={{ color: C.brown }}>{pet.name}</p>
+            <p className="mt-1 text-sm font-semibold" style={{ color: C.mute }}>
+              {pet.species === 'DOG' ? '강아지' : '고양이'}{pet.breed ? ` · ${pet.breed}` : ''}
+            </p>
+
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {pet.gender && (
+                <span className={chip} style={{ background: C.input, color: C.brown, border: `1px solid ${C.border}` }}>
+                  {pet.gender === 'M' ? '♂ 수컷' : '♀ 암컷'}
+                </span>
+              )}
+              {pet.weightKg && (
+                <span className={chip} style={{ background: C.input, color: C.brown, border: `1px solid ${C.border}` }}>
+                  {pet.weightKg}kg
+                </span>
+              )}
+              {pet.heightCm && (
+                <span className={chip} style={{ background: C.input, color: C.brown, border: `1px solid ${C.border}` }}>
+                  {pet.heightCm}cm
+                </span>
+              )}
+              {pet.birthDate && (
+                <span className={chip} style={{ background: C.input, color: C.brown, border: `1px solid ${C.border}` }}>
+                  {pet.birthDate}
+                </span>
+              )}
+            </div>
+
+            <span
+              className="mt-5 inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-sm font-bold"
+              style={{ background: C.input, color: C.primaryDeep, border: `1px solid ${C.border}` }}
+            >
+              <Pencil className="w-4 h-4" /> 정보 수정하기
+            </span>
+          </div>
+        </button>
+      )}
 
       <button
         type="button"

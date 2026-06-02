@@ -122,7 +122,7 @@ function LoopWheel({ items, value, unit, onChange }) {
           <div key={i} className="flex items-center justify-center snap-center" style={{ height: ITEM }}>
             <span
               className={`text-base transition-all ${center ? 'font-bold' : 'font-semibold'}`}
-              style={{ color: '#5C3D1F', opacity: opacityFor(i) }}
+              style={{ color: 'rgb(var(--brand-brown))', opacity: opacityFor(i) }}
             >
               {it}{unit}
             </span>

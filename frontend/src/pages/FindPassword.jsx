@@ -4,12 +4,12 @@ import { Brand, Field, BackLink } from './FindId'
 import { EmailVerifyField } from '../components/EmailVerifyField'
 
 const C = {
-  bg: '#FFF3E2',
-  card: '#FFFFFF',
-  border: '#F1DEC2',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  danger: '#E26D5C',
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  border: 'rgb(var(--brand-line))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  danger: 'rgb(var(--brand-danger))',
 }
 
 /**

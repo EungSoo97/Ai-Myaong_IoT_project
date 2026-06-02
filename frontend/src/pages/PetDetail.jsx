@@ -6,12 +6,12 @@ import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet } fr
 import { AddPetModal } from '../components/AddPetModal'
 
 const C = {
-  cream: '#FBEFDD',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
+  cream: 'rgb(var(--brand-cream))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
 }
 
 export function PetDetail() {

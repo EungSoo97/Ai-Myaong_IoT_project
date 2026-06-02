@@ -15,3 +15,6 @@ CAMERA_SOURCE=0
 CAMERA_WIDTH=640
 CAMERA_HEIGHT=360
 CAMERA_FPS=10
+
+JWT_SECRET_KEY=aimyaong-super-secret-key-change-in-production
+JWT_EXPIRE_DAYS=7

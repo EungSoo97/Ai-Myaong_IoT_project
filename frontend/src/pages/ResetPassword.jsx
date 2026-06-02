@@ -5,14 +5,14 @@ import { PasswordField, isStrongPassword } from '../components/PasswordField'
 import { updatePassword } from '../lib/accountRepository'
 
 const C = {
-  bg: '#FFF3E2',
-  card: '#FFFFFF',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  danger: 'rgb(var(--brand-danger))',
+  ok: 'rgb(var(--brand-success))',
 }
 
 /**

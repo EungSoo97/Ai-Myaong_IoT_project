@@ -174,6 +174,7 @@ export function Dispenser() {
         />
       </section>
 
+      <div data-tour="disp-manual">
       <ManualCard
         kind="food"
         title="수동 배식"
@@ -203,9 +204,10 @@ export function Dispenser() {
         button={`지금 ${waterAmount}ml 급수하기`}
         icon={<Droplets className="w-4 h-4" />}
       />
+      </div>
 
       {/* 스케줄 (CRUD) */}
-      <section className="mt-5">
+      <section className="mt-5" data-tour="disp-schedule">
         <div className="flex items-center justify-between px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">자동 스케줄</h3>
           <button
