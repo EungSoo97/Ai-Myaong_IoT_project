@@ -133,7 +133,7 @@ def _command_output(command: list[str]) -> str:
 
 
 def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
-    pi_agent_base_url = os.getenv("PI_AGENT_BASE_URL", "http://10.1.82.103:8765").rstrip("/")
+    pi_agent_base_url = _pi_agent_base_url()
     body = None
     method = "GET"
     headers = {"Accept": "application/json"}
@@ -167,3 +167,13 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
                 "error": str(exc),
             },
         ) from exc
+
+
+def _pi_agent_base_url() -> str:
+    configured_url = os.getenv("PI_AGENT_BASE_URL", "").strip()
+    if configured_url:
+        return configured_url.rstrip("/")
+
+    host = os.getenv("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
+    port = os.getenv("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
+    return f"http://{host}:{port}"

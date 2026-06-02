@@ -41,6 +41,7 @@ PI_AP_SSID="${PI_AP_SSID:-AiMyaong_PI_SETUP}"
 PI_AP_PASSWORD="${PI_AP_PASSWORD:-aimyaong1234}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PI_ENV="$REPO_ROOT/raspberrypi/.env"
+BACKEND_ENV="$REPO_ROOT/backend/.env"
 PI_ENV_BACKUP=""
 PREVIOUS_NMCLI_CONNECTION=""
 ESP32_WIFI_HEADERS=(
@@ -160,18 +161,37 @@ PI_ENV_BACKUP="$(mktemp)"
 cp "$PI_ENV" "$PI_ENV_BACKUP"
 
 set_env_value() {
-  local key="$1"
-  local value="$2"
-  if grep -q "^${key}=" "$PI_ENV"; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$PI_ENV"
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+  if grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
   else
-    printf '%s=%s\n' "$key" "$value" >> "$PI_ENV"
+    printf '%s=%s\n' "$key" "$value" >> "$file"
   fi
 }
 
-set_env_value MQTT_BROKER_HOST "$MQTT_HOST"
-set_env_value MQTT_BROKER_PORT "$MQTT_PORT"
-set_env_value MQTT_DISABLED false
+set_pi_env_value() {
+  local key="$1"
+  local value="$2"
+  set_env_value "$PI_ENV" "$key" "$value"
+}
+
+set_pi_env_value MQTT_BROKER_HOST "$MQTT_HOST"
+set_pi_env_value MQTT_BROKER_PORT "$MQTT_PORT"
+set_pi_env_value MQTT_DISABLED false
+set_pi_env_value PI_AGENT_HTTP_HOST "${PI_AGENT_HTTP_HOST:-0.0.0.0}"
+set_pi_env_value PI_AGENT_HTTP_PORT "${PI_AGENT_HTTP_PORT:-8765}"
+set_pi_env_value PI_AGENT_HTTP_DISABLED false
+
+if [[ -f "$BACKEND_ENV" ]]; then
+  set_env_value "$BACKEND_ENV" MQTT_BROKER_HOST "$MQTT_HOST"
+  set_env_value "$BACKEND_ENV" MQTT_BROKER_PORT "$MQTT_PORT"
+  set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$MQTT_HOST:${PI_AGENT_HTTP_PORT:-8765}"
+  set_env_value "$BACKEND_ENV" STREAM_BASE_URL "http://$MQTT_HOST:8000/api/stream"
+fi
 
 update_esp32_default_mqtt_host() {
   local file="$1"
