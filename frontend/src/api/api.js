@@ -11,13 +11,18 @@ function resolveStreamUrl(url) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+  } catch (error) {
+    throw new Error(`백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`);
+  }
 
   if (!response.ok) {
     const message = await response.text();
@@ -39,15 +44,18 @@ export const api = {
   getDashboard: () => request("/api/robot/dashboard"),
   getStatus: () => request("/api/robot/status"),
   getStreamUrl: async () => {
-    if (STREAM_URL) {
-      return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
+    try {
+      const data = await request("/api/stream/url");
+      return {
+        ...data,
+        url: resolveStreamUrl(data.url),
+      };
+    } catch (error) {
+      if (STREAM_URL) {
+        return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
+      }
+      throw error;
     }
-
-    const data = await request("/api/stream/url");
-    return {
-      ...data,
-      url: resolveStreamUrl(data.url),
-    };
   },
   moveRobot: (command) =>
     request("/api/robot/move", {

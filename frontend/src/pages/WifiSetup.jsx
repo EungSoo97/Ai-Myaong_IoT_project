@@ -26,38 +26,55 @@ export function WifiSetup() {
   const [piStatus, setPiStatus] = useState(null)
   const [networks, setNetworks] = useState([])
   const [selectedNetwork, setSelectedNetwork] = useState(null)
-  const [manualSsid, setManualSsid] = useState('')
-  const [password, setPassword] = useState('')
+  const [pendingNetwork, setPendingNetwork] = useState(null)
+  const [modalSsid, setModalSsid] = useState('')
+  const [modalPassword, setModalPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [snackbar, setSnackbar] = useState('')
   const [piApFallback, setPiApFallback] = useState(false)
 
-  const selectedSsid = selectedNetwork?.ssid || manualSsid.trim()
-  const selectedIsSecure = selectedNetwork?.secure ?? true
-  const selectedIsCompatible = selectedNetwork?.compatible ?? selectedNetwork?.esp32Compatible ?? true
   const sortedNetworks = useMemo(
     () => [...networks].sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999)),
     [networks],
   )
+  const currentNetwork = piStatus?.wifiSsid || status?.ssid || status?.savedSsid || ''
+  const currentIp = piStatus?.wifiIp || status?.ip || ''
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl])
   useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost])
 
   useEffect(() => {
-    refreshStatus()
+    refreshStatus({ silent: true })
     refreshPiStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (!snackbar) return undefined
+    const timer = window.setTimeout(() => setSnackbar(''), 3500)
+    return () => window.clearTimeout(timer)
+  }, [snackbar])
+
+  function showMessage(text) {
+    setMessage(text)
+    setSnackbar(text)
+  }
+
   async function esp32Request(path, options = {}) {
     const base = setupUrl.replace(/\/$/, '')
-    const response = await fetch(`${base}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-      ...options,
-    })
+    let response
+    try {
+      response = await fetch(`${base}${path}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+        ...options,
+      })
+    } catch {
+      throw new Error(`ESP32 설정 주소에 연결할 수 없습니다. ${base} 접속 상태를 확인하세요.`)
+    }
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || `ESP32 API error: ${response.status}`)
     return data
@@ -71,7 +88,7 @@ export function WifiSetup() {
       if (data.mqttHost) setMqttHost(data.mqttHost)
     } catch {
       setStatus(null)
-      if (!silent) setMessage('ESP32 설정 주소에 연결할 수 없습니다.')
+      if (!silent) showMessage('ESP32 설정 주소에 연결할 수 없습니다.')
     }
   }
 
@@ -88,7 +105,7 @@ export function WifiSetup() {
 
   async function scanWifi() {
     setBusy(true)
-    setMessage('주변 Wi-Fi를 검색하는 중입니다.')
+    showMessage('주변 Wi-Fi를 검색하는 중입니다.')
     try {
       let data
       try {
@@ -100,79 +117,85 @@ export function WifiSetup() {
       const nextNetworks = data.networks || []
       setNetworks(nextNetworks)
       setSelectedNetwork(null)
-      setManualSsid('')
-      setPassword('')
-      setMessage(nextNetworks.length ? '검색 완료' : '검색된 Wi-Fi가 없습니다.')
+      showMessage(nextNetworks.length ? '검색 완료' : '검색된 Wi-Fi가 없습니다.')
       await refreshStatus({ silent: true })
+      await refreshPiStatus()
     } catch (error) {
-      setMessage(error.message || 'Wi-Fi 검색에 실패했습니다.')
+      showMessage(error.message || 'Wi-Fi 검색에 실패했습니다.')
     } finally {
       setBusy(false)
     }
   }
 
   function chooseNetwork(network) {
-    setSelectedNetwork(network)
-    setManualSsid('')
-    setPassword('')
     if ((network.compatible ?? network.esp32Compatible ?? true) === false) {
-      setMessage('ESP32는 2.4GHz Wi-Fi만 지원합니다. 라즈베리파이와 ESP32를 같이 연결하려면 2.4GHz 네트워크를 선택하세요.')
-    } else {
-      setMessage('')
+      showMessage('ESP32는 2.4GHz Wi-Fi만 지원합니다.')
+      return
+    }
+
+    setPendingNetwork(network)
+    setModalSsid(network.ssid || '')
+    setModalPassword('')
+    setMessage('')
+  }
+
+  function closeNetworkModal() {
+    setPendingNetwork(null)
+    setModalSsid('')
+    setModalPassword('')
+    showMessage('Wi-Fi 연결을 취소했습니다.')
+  }
+
+  function modalNetworkPayload() {
+    const ssid = modalSsid.trim()
+    const secure = pendingNetwork?.secure ?? true
+    const compatible = pendingNetwork?.compatible ?? pendingNetwork?.esp32Compatible ?? true
+    return {
+      ssid,
+      password: secure ? modalPassword : '',
+      secure,
+      compatible,
     }
   }
 
-  async function saveWifi() {
-    if (!selectedSsid) {
-      setMessage('연결할 Wi-Fi를 선택하거나 SSID를 입력하세요.')
-      return
-    }
-    if (!selectedIsCompatible) {
-      setMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
-      return
-    }
-    if (selectedIsSecure && !password) {
-      setMessage('비밀번호를 입력하세요.')
-      return
-    }
+  async function saveEsp32OnlyFromModal() {
+    const payload = modalNetworkPayload()
+    if (!validateModalPayload(payload)) return
 
     setBusy(true)
-    setMessage('ESP32 설정 저장 중입니다.')
+    showMessage('ESP32 설정을 저장하는 중입니다.')
     try {
       const data = await esp32Request('/api/wifi/connect', {
         method: 'POST',
-        body: JSON.stringify({ ssid: selectedSsid, password, mqttHost, reboot: false }),
+        body: JSON.stringify({
+          ssid: payload.ssid,
+          password: payload.password,
+          mqttHost,
+          reboot: false,
+        }),
       })
-      setMessage(data.rebooting ? '저장 완료. ESP32 재부팅 중입니다.' : '저장 완료.')
+      setSelectedNetwork(pendingNetwork)
+      showMessage(data.rebooting ? '저장 완료. ESP32 재부팅 중입니다.' : '저장 완료.')
+      closeModalSilently()
     } catch (error) {
-      setMessage(error.message || 'ESP32 설정 저장에 실패했습니다.')
+      showMessage(error.message || 'ESP32 설정 저장에 실패했습니다.')
     } finally {
       setBusy(false)
     }
   }
 
-  async function saveSharedWifi() {
-    if (!selectedSsid) {
-      setMessage('연결할 Wi-Fi를 선택하거나 SSID를 입력하세요.')
-      return
-    }
-    if (!selectedIsCompatible) {
-      setMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
-      return
-    }
-    if (selectedIsSecure && !password) {
-      setMessage('비밀번호를 입력하세요.')
-      return
-    }
+  async function saveSharedWifiFromModal() {
+    const payload = modalNetworkPayload()
+    if (!validateModalPayload(payload)) return
 
     setBusy(true)
-    setMessage('라즈베리파이와 ESP32 설정 적용 중입니다.')
+    showMessage(`${payload.ssid} 연결을 시작합니다.`)
     try {
       let data
       try {
         data = await api.configurePiWifi({
-          ssid: selectedSsid,
-          password,
+          ssid: payload.ssid,
+          password: payload.password,
           mqttHost: mqttHost.trim() || 'auto',
           mqttPort: 1883,
           esp32SetupUrl: setupUrl,
@@ -180,8 +203,8 @@ export function WifiSetup() {
         })
       } catch {
         data = await api.configureSharedWifi({
-          ssid: selectedSsid,
-          password,
+          ssid: payload.ssid,
+          password: payload.password,
           mqttHost: mqttHost.trim() || 'auto',
           mqttPort: 1883,
           esp32SetupUrl: setupUrl,
@@ -190,14 +213,38 @@ export function WifiSetup() {
       }
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
       if (nextHost) setMqttHost(nextHost)
-      setMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
+      setSelectedNetwork(pendingNetwork)
+      showMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
+      closeModalSilently()
       await refreshPiStatus()
       await refreshStatus({ silent: true })
     } catch (error) {
-      setMessage(error.message || '공통 설정 적용에 실패했습니다.')
+      showMessage(error.message || '공통 Wi-Fi 설정 적용에 실패했습니다.')
     } finally {
       setBusy(false)
     }
+  }
+
+  function validateModalPayload({ ssid, password, secure, compatible }) {
+    if (!ssid) {
+      showMessage('SSID를 입력하세요.')
+      return false
+    }
+    if (!compatible) {
+      showMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다.')
+      return false
+    }
+    if (secure && !password) {
+      showMessage('비밀번호를 입력하세요.')
+      return false
+    }
+    return true
+  }
+
+  function closeModalSilently() {
+    setPendingNetwork(null)
+    setModalSsid('')
+    setModalPassword('')
   }
 
   return (
@@ -213,7 +260,7 @@ export function WifiSetup() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">Wi-Fi</h1>
-          <p className="mt-1 text-sm text-brand-mute truncate">{piStatus?.wifiSsid || '연결 설정'}</p>
+          <p className="mt-1 text-sm text-brand-mute truncate">{currentNetwork || '연결 설정'}</p>
         </div>
         <Badge tone={status?.stationConnected ? 'success' : 'warn'}>
           {status?.stationConnected ? '연결됨' : '설정'}
@@ -233,7 +280,7 @@ export function WifiSetup() {
             className="min-w-0 rounded-2xl border border-brand-line bg-brand-cream px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
             placeholder="ESP32 설정 주소"
           />
-          <GhostButton className="px-3 py-2.5 rounded-2xl" onClick={() => refreshStatus()} disabled={busy}>
+          <GhostButton type="button" className="px-3 py-2.5 rounded-2xl" onClick={() => refreshStatus()} disabled={busy}>
             <RefreshCw className="w-4 h-4" />
           </GhostButton>
         </div>
@@ -248,13 +295,15 @@ export function WifiSetup() {
       <section className="mt-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <h2 className="font-display text-base font-bold text-brand-brown">네트워크</h2>
-          <GhostButton className="px-3 py-2 rounded-2xl text-sm" onClick={scanWifi} disabled={busy}>
+          <GhostButton type="button" className="px-3 py-2 rounded-2xl text-sm" onClick={scanWifi} disabled={busy}>
             <Search className="w-4 h-4" />
             스캔
           </GhostButton>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-brand-line bg-brand-card shadow-soft">
+        <CurrentNetworkCard ssid={currentNetwork} ip={currentIp} mqttHost={mqttHost} />
+
+        <div className="mt-3 overflow-hidden rounded-3xl border border-brand-line bg-brand-card shadow-soft">
           {sortedNetworks.length > 0 ? (
             sortedNetworks.map((network, index) => (
               <NetworkRow
@@ -270,35 +319,59 @@ export function WifiSetup() {
         </div>
       </section>
 
-      <Card className="mt-4 p-4">
-        <p className="text-xs font-bold text-brand-mute">선택한 네트워크</p>
-        <input
-          value={selectedNetwork?.ssid || manualSsid}
-          onChange={(event) => {
-            setSelectedNetwork(null)
-            setManualSsid(event.target.value)
-          }}
-          className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-          placeholder="목록에서 선택하거나 SSID 직접 입력"
-        />
-        {selectedSsid && (
-          <>
+      {message && <p className="mt-3 text-xs font-bold text-brand-mute">{message}</p>}
+
+      {pendingNetwork && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 px-4 pb-4 sm:items-center sm:pb-0"
+          onClick={closeNetworkModal}
+        >
+          <div
+            className="w-full max-w-[420px] rounded-3xl bg-brand-bg p-4 shadow-soft-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wifi-connect-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-primary/15 text-brand-primary">
+                {pendingNetwork.secure ? <Lock className="h-5 w-5" /> : <Signal className="h-5 w-5" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 id="wifi-connect-title" className="truncate font-display text-lg font-bold text-brand-brown">
+                  선택한 네트워크
+                </h3>
+                <p className="mt-1 text-xs font-semibold text-brand-mute">
+                  CH {pendingNetwork.channel || '-'}{pendingNetwork.band ? ` · ${pendingNetwork.band}` : ''}
+                </p>
+              </div>
+            </div>
+
             <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-              placeholder={selectedIsSecure ? '비밀번호' : '개방형 네트워크'}
-              disabled={!selectedIsSecure}
+              value={modalSsid}
+              onChange={(event) => setModalSsid(event.target.value)}
+              className="mt-4 w-full rounded-2xl border border-brand-line bg-white px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              placeholder="SSID"
             />
-            <PrimaryButton className="mt-3 w-full rounded-2xl" onClick={saveSharedWifi} disabled={busy || !selectedIsCompatible}>
-              <Wifi className="w-4 h-4" />
-              연결
-            </PrimaryButton>
-            <GhostButton className="mt-2 w-full rounded-2xl" onClick={saveWifi} disabled={busy || !selectedIsCompatible}>
-              <CheckCircle2 className="w-4 h-4" />
-              ESP32만 저장
-            </GhostButton>
+
+            {pendingNetwork.secure ? (
+              <input
+                value={modalPassword}
+                onChange={(event) => setModalPassword(event.target.value)}
+                type="password"
+                autoFocus
+                className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+                placeholder="Wi-Fi 비밀번호"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !busy) saveSharedWifiFromModal()
+                }}
+              />
+            ) : (
+              <p className="mt-2 rounded-2xl bg-brand-cream px-3 py-3 text-sm font-semibold text-brand-brown">
+                개방형 네트워크입니다.
+              </p>
+            )}
+
             <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-brand-cream px-3 py-2.5">
               <span className="text-xs font-bold text-brand-brown">실패 시 Pi AP 모드</span>
               <input
@@ -308,10 +381,54 @@ export function WifiSetup() {
                 className="h-4 w-4 accent-brand-primary"
               />
             </label>
-          </>
-        )}
-        {message && <p className="mt-3 text-xs font-bold text-brand-mute">{message}</p>}
-      </Card>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <GhostButton type="button" className="rounded-2xl py-3" onClick={closeNetworkModal} disabled={busy}>
+                취소
+              </GhostButton>
+              <PrimaryButton
+                type="button"
+                className="rounded-2xl py-3"
+                onClick={saveSharedWifiFromModal}
+                disabled={busy || (pendingNetwork.secure && !modalPassword)}
+              >
+                확인
+              </PrimaryButton>
+            </div>
+            <GhostButton type="button" className="mt-2 w-full rounded-2xl py-3" onClick={saveEsp32OnlyFromModal} disabled={busy}>
+              <CheckCircle2 className="w-4 h-4" />
+              ESP32만 저장
+            </GhostButton>
+          </div>
+        </div>
+      )}
+
+      {snackbar && (
+        <div className="fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4">
+          <div className="max-w-[420px] rounded-2xl bg-brand-brown px-4 py-3 text-sm font-bold text-white shadow-soft-lg">
+            {snackbar}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CurrentNetworkCard({ ssid, ip, mqttHost }) {
+  return (
+    <div className="rounded-3xl border border-brand-line bg-brand-card px-4 py-3 shadow-soft">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-success/15 text-brand-success">
+          <Wifi className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold text-brand-mute">현재 접속 중인 네트워크</p>
+          <p className="mt-0.5 truncate text-sm font-bold text-brand-brown">{ssid || '확인되지 않음'}</p>
+          <p className="mt-0.5 truncate text-xs text-brand-mute">
+            {ip ? `${ip} · ` : ''}MQTT {mqttHost || '자동'}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

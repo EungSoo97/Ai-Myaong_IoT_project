@@ -170,6 +170,14 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    @app.get("/api/wifi/status")
+    def wifi_status():
+        return {
+            "ssid": current_wifi_ssid(),
+            "ip": current_wifi_ip(),
+            "source": "raspberrypi",
+        }
+
     @app.post("/api/wifi/connect")
     def wifi_connect(body: dict | None = None):
         body = body or {}
@@ -245,6 +253,36 @@ def scan_wifi_networks() -> list[dict[str, object]]:
     if iwlist_error:
         detail = f"iwlist failed: {iwlist_error}"
     raise RuntimeError(f"{detail} Install wireless-tools or NetworkManager on the Raspberry Pi.")
+
+
+def current_wifi_ssid() -> str:
+    if _command_exists("iwgetid"):
+        ssid = _command_output(["iwgetid", "-r"])
+        if ssid:
+            return ssid
+
+    if _command_exists("nmcli"):
+        ssid = _command_output(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"]).splitlines()
+        for line in ssid:
+            if line.startswith("yes:"):
+                return line.split(":", 1)[1].replace("\\:", ":")
+
+    return ""
+
+
+def current_wifi_ip() -> str:
+    if _command_exists("nmcli"):
+        ip = _command_output(["nmcli", "-g", "IP4.ADDRESS", "device", "show", "wlan0"])
+        if ip:
+            return ip.splitlines()[0].split("/", 1)[0]
+
+    if _command_exists("ip"):
+        output = _command_output(["ip", "-4", "addr", "show", "wlan0"])
+        match = re.search(r"\binet\s+([0-9.]+)/", output)
+        if match:
+            return match.group(1)
+
+    return ""
 
 
 def _scan_with_iwlist() -> list[dict[str, object]]:
@@ -445,6 +483,16 @@ def _esp32_wifi_compatible(channel: int, frequency: float) -> bool:
 def _command_exists(command: str) -> bool:
     result = subprocess.run(["bash", "-lc", f"command -v {command}"], capture_output=True, text=True)
     return result.returncode == 0
+
+
+def _command_output(command: list[str]) -> str:
+    try:
+        result = subprocess.run(command, text=True, capture_output=True, timeout=5, check=False)
+    except Exception:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
 
 
 def _command_path(command: str) -> str:

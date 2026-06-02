@@ -18,13 +18,18 @@ SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 
 @router.get("/status")
 def network_status():
+    pi_status = _pi_agent_status()
+    local_wifi_ip = _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"])
+    local_wifi_ssid = _command_output(["bash", "-lc", "iwgetid -r"])
+
     return {
         "raspberrypiEnv": _read_env_values(
             PI_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
-        "wifiIp": _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"]),
-        "wifiSsid": _command_output(["bash", "-lc", "iwgetid -r"]),
+        "wifiIp": pi_status.get("ip") or local_wifi_ip,
+        "wifiSsid": pi_status.get("ssid") or local_wifi_ssid,
+        "source": pi_status.get("source") or "local",
     }
 
 
@@ -178,3 +183,10 @@ def _pi_agent_base_url() -> str:
     host = os.getenv("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
     port = os.getenv("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
     return f"http://{host}:{port}"
+
+
+def _pi_agent_status() -> dict:
+    try:
+        return _pi_agent_json_request("/api/wifi/status")
+    except HTTPException:
+        return {}

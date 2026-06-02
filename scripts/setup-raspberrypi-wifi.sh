@@ -42,6 +42,7 @@ PI_AP_PASSWORD="${PI_AP_PASSWORD:-aimyaong1234}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PI_ENV="$REPO_ROOT/raspberrypi/.env"
 BACKEND_ENV="$REPO_ROOT/backend/.env"
+FRONTEND_ENV="$REPO_ROOT/frontend/.env"
 PI_ENV_BACKUP=""
 PREVIOUS_NMCLI_CONNECTION=""
 ESP32_WIFI_HEADERS=(
@@ -190,7 +191,13 @@ if [[ -f "$BACKEND_ENV" ]]; then
   set_env_value "$BACKEND_ENV" MQTT_BROKER_HOST "$MQTT_HOST"
   set_env_value "$BACKEND_ENV" MQTT_BROKER_PORT "$MQTT_PORT"
   set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$MQTT_HOST:${PI_AGENT_HTTP_PORT:-8765}"
-  set_env_value "$BACKEND_ENV" STREAM_BASE_URL "http://$MQTT_HOST:8000/api/stream"
+  set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8080}/stream.mjpg"
+  set_env_value "$BACKEND_ENV" CAMERA_PROXY false
+fi
+
+if [[ -f "$FRONTEND_ENV" ]]; then
+  set_env_value "$FRONTEND_ENV" VITE_ESP32_MQTT_HOST "$MQTT_HOST"
+  set_env_value "$FRONTEND_ENV" VITE_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8080}/stream.mjpg"
 fi
 
 update_esp32_default_mqtt_host() {
