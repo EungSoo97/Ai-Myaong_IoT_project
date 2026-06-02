@@ -584,6 +584,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
         print("[device] desktop backend was not found. Set DESKTOP_BACKEND_URL if auto-discovery fails.")
         return False
 
+    last_error = ""
     for attempt in range(retries):
         pi_ip = current_wifi_ip() or primary_ip()
         if pi_ip:
@@ -605,26 +606,34 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                 )
                 with urllib.request.urlopen(request, timeout=5) as response:
                     response.read()
-                print(f"[device] registered to desktop backend: {pi_ip}")
+                print(f"[device] registered Pi IP {pi_ip} to desktop backend {backend_url}")
                 return True
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", "replace")
-                print(f"[device] backend registration failed: {backend_url} HTTP {exc.code} {body}")
+                last_error = f"HTTP {exc.code} {body}"
             except Exception as exc:
-                print(f"[device] backend registration failed: {backend_url} {exc}")
+                last_error = str(exc)
 
         if attempt < retries - 1 and delay:
             time.sleep(delay)
+
+    print(f"[device] backend registration failed: {backend_url} {last_error}")
+
+    configured = os.getenv("DESKTOP_BACKEND_URL", "").strip().rstrip("/")
+    if configured:
+        discovered = discover_desktop_backend()
+        if discovered and discovered != configured:
+            os.environ["DESKTOP_BACKEND_URL"] = discovered
+            set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", discovered)
+            print(f"[device] desktop backend rediscovered: {discovered}")
 
     return False
 
 
 def desktop_backend_url() -> str:
     configured = os.getenv("DESKTOP_BACKEND_URL", "").strip().rstrip("/")
-    if configured and is_backend_url(configured):
-        return configured
     if configured:
-        print(f"[device] configured desktop backend is not reachable, rediscovering: {configured}")
+        return configured
 
     discovered = discover_desktop_backend()
     if discovered:
