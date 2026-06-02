@@ -61,6 +61,7 @@ def pi_wifi_connect(payload: SharedWifiRequest):
             "mqttPort": payload.mqtt_port,
             "esp32SetupUrl": payload.esp32_setup_url,
             "piApFallback": payload.pi_ap_fallback,
+            "desktopBackendUrl": _desktop_backend_url_for_pi(),
         },
     )
     _sync_backend_env_from_pi_result(result)
@@ -277,6 +278,30 @@ def _pi_agent_candidate_urls() -> list[str]:
         if url and url not in deduped:
             deduped.append(url)
     return deduped
+
+
+def _desktop_backend_url_for_pi() -> str:
+    configured_url = runtime_env("BACKEND_PUBLIC_URL", "").strip().rstrip("/")
+    if configured_url:
+        return configured_url
+
+    host = _primary_private_ip()
+    port = runtime_env("BACKEND_PUBLIC_PORT", "8000").strip() or "8000"
+    return f"http://{host}:{port}" if host else ""
+
+
+def _primary_private_ip() -> str:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        return ip if _looks_like_private_ipv4(ip) else ""
+    except Exception:
+        for ip in _local_private_ips():
+            return ip
+        return ""
+    finally:
+        sock.close()
 
 
 def _reachable_pi_agent_urls() -> list[str]:

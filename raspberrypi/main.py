@@ -195,11 +195,17 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         mqtt_port = int(body.get("mqttPort") or body.get("mqtt_port") or 1883)
         esp32_setup_url = str(body.get("esp32SetupUrl") or body.get("esp32_setup_url") or "").strip()
         pi_ap_fallback = bool(body.get("piApFallback") or body.get("pi_ap_fallback") or False)
+        desktop_backend_url = str(body.get("desktopBackendUrl") or body.get("desktop_backend_url") or "").strip().rstrip("/")
 
         if not ssid:
             raise HTTPException(status_code=400, detail="SSID is required.")
         if not SETUP_WIFI_SCRIPT.exists():
             raise HTTPException(status_code=500, detail="Wi-Fi setup script was not found.")
+
+        if desktop_backend_url:
+            os.environ["DESKTOP_BACKEND_URL"] = desktop_backend_url
+            set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", desktop_backend_url)
+            print(f"[device] desktop backend URL saved before Wi-Fi change: {desktop_backend_url}")
 
         env = os.environ.copy()
         env["MQTT_BROKER_HOST"] = mqtt_host
@@ -589,8 +595,11 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                     response.read()
                 print(f"[device] registered to desktop backend: {pi_ip}")
                 return True
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", "replace")
+                print(f"[device] backend registration failed: {backend_url} HTTP {exc.code} {body}")
             except Exception as exc:
-                print(f"[device] backend registration failed: {exc}")
+                print(f"[device] backend registration failed: {backend_url} {exc}")
 
         if attempt < retries - 1 and delay:
             time.sleep(delay)
@@ -600,8 +609,10 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
 
 def desktop_backend_url() -> str:
     configured = os.getenv("DESKTOP_BACKEND_URL", "").strip().rstrip("/")
-    if configured:
+    if configured and is_backend_url(configured):
         return configured
+    if configured:
+        print(f"[device] configured desktop backend is not reachable, rediscovering: {configured}")
 
     discovered = discover_desktop_backend()
     if discovered:
