@@ -88,7 +88,6 @@ const SHORTCUTS = [
 export function Dashboard() {
   const navigate = useNavigate();
   const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
-  const navigate = useNavigate();
   const account = useAccount();
 
   // 가입 데이터 기반 값 (없으면 샘플 fallback)
@@ -111,7 +110,6 @@ export function Dashboard() {
         right={
           <button
             type="button"
-            onClick={() => navigate("/settings#network")}
             onClick={() => navigate("/wifi-setup")}
             className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
             aria-label="네트워크 설정"
