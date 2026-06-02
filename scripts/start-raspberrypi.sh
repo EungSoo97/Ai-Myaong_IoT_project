@@ -91,10 +91,18 @@ else
   PYTHON_BIN="python3"
 fi
 
+if [[ -n "${CAMERA_PYTHON_BIN:-}" ]]; then
+  STREAM_PYTHON_BIN="$CAMERA_PYTHON_BIN"
+elif [[ -x "/usr/bin/python3" ]]; then
+  STREAM_PYTHON_BIN="/usr/bin/python3"
+else
+  STREAM_PYTHON_BIN="python3"
+fi
+
 if [[ "${START_CAMERA_STREAM:-true}" != "false" ]]; then
   STREAM_PORT="${STREAM_PORT:-8080}"
   echo "[camera] starting MJPEG stream server on 0.0.0.0:$STREAM_PORT..."
-  "$PYTHON_BIN" ./camera/mjpeg_server.py &
+  "$STREAM_PYTHON_BIN" ./camera/mjpeg_server.py &
   STREAM_PID="$!"
 fi
 

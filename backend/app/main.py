@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.mqtt.mqtt_client import MqttClient
-from app.routers import feed, network, robot, stream
+from app.routers import feed, network, robot, stream, ws
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.robot_service import RobotService
@@ -30,8 +30,13 @@ cors_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_origin_regex=r"http://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+):(?:3000|5173)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,6 +55,7 @@ app.state.feed_service = FeedService(mqtt_client, database, simulator)
 app.include_router(robot.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
+app.include_router(ws.router)  
 app.include_router(network.router)
 
 

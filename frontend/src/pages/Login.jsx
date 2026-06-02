@@ -1,39 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
 import { Lock, LogIn, User } from 'lucide-react'
+import { GoogleButton } from '../components/GoogleButton'
+import { getAccount, getCurrentUser, saveAccount } from '../lib/accountRepository'
 
 const DEMO_ID = 'admin'
 const DEMO_PW = 'meow1234'
 
-/* Warm-tone 팔레트 (주황/크림 고양이 컨셉) */
+/* Warm-tone 팔레트 */
 const C = {
-  bg: '#FFF3E2',          // 따뜻한 크림 배경
+  bg: '#FFF3E2',
   card: '#FFFFFF',
   input: '#FFF6E9',
   border: '#F1DEC2',
   brown: '#5C3D1F',
   mute: '#A98A6B',
-  primary: '#F39557',     // 주황
-  primaryDeep: '#D86D2F',
-  cream: '#FFE9CF',
-  catOrange: '#F39557',
-  catOrangeDark: '#E07A3C',
-  catWhite: '#FDF5E8',
-  catNose: '#F6B6A3',
-  catEar: '#F8B58C',
+  primary: '#F2A06A',
+  primaryDeep: '#D6814A',
+  outline: '#2D2520',
+  catOrange: '#F0A56E',
+  catOrangeDark: '#E58A4F',
+  catCream: '#FAF1E2',
+  catPink: '#F5B5A4',
 }
 
 /**
  * 로그인 화면.
- * - 마우스/터치 좌표 → 고양이 머리/눈동자 transform 에 부드럽게 바인딩.
- * - 둥글둥글한 캐릭터 비례에 맞춰 트래킹 수치 미세 조정.
+ * - 마우스/터치 좌표 → 머리 전체가 부드럽게 갸웃 (눈은 감겨 있어 눈동자 트래킹은 생략).
+ * - 좌표 변화 시 꼬리만 살짝 흔들림.
  */
-export function Login({ onLogin }) {
-  const [id, setId] = useState(DEMO_ID)
-  const [pw, setPw] = useState(DEMO_PW)
+export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
+  const [id, setId] = useState('')
+  const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
 
   const stageRef = useRef(null)
   const headRef = useRef(null)
+  const tailRef = useRef(null)
   const eyeLRef = useRef(null)
   const eyeRRef = useRef(null)
 
@@ -48,19 +50,23 @@ export function Login({ onLogin }) {
       const nx = Math.max(-1, Math.min(1, (clientX - cx) / (rect.width / 2)))
       const ny = Math.max(-1, Math.min(1, (clientY - cy) / (rect.height / 2)))
 
-      // 머리: 천천히 갸웃 (translate ±2.5px / rotate ±4deg)
+      // 고양이: 커서 향해 갸웃 (translate + rotate)
       if (headRef.current) {
-        const tx = nx * 2.5
-        const ty = ny * 1.5
-        const rotZ = nx * 4
-        const tiltX = -ny * 3
-        headRef.current.style.transform = `translate(${tx}px, ${ty}px) rotate(${rotZ}deg) rotateX(${tiltX}deg)`
+        const tx = nx * 7
+        const ty = ny * 5
+        const rotZ = nx * 8
+        headRef.current.style.transform = `translate(${tx}px, ${ty}px) rotate(${rotZ}deg)`
       }
-      // 눈동자: 좁은 슬릿 안에서만 미세하게 (max 2.5px / 1.5px)
-      const ex = nx * 2.5
-      const ey = ny * 1.5
+      // 눈동자: 살짝 따라감 (±3px / ±2px)
+      const ex = nx * 3
+      const ey = ny * 2
       if (eyeLRef.current) eyeLRef.current.style.transform = `translate(${ex}px, ${ey}px)`
       if (eyeRRef.current) eyeRRef.current.style.transform = `translate(${ex}px, ${ey}px)`
+      // 꼬리: 좌우 살짝 흔들림 (±6deg)
+      if (tailRef.current) {
+        const rotZ = nx * 6
+        tailRef.current.style.transform = `rotate(${rotZ}deg)`
+      }
     }
 
     const onMouse = (e) => apply(e.clientX, e.clientY)
@@ -79,6 +85,13 @@ export function Login({ onLogin }) {
 
   const submit = (e) => {
     e.preventDefault()
+    // 1) 가입한 계정으로 검증 (localStorage · 내일 백엔드 인증으로 교체)
+    const acc = getCurrentUser()
+    if (acc && id === acc.userId && pw === acc.password) {
+      onLogin?.()
+      return
+    }
+    // 2) 데모 계정 (편의용 fallback)
     if (id === DEMO_ID && pw === DEMO_PW) {
       onLogin?.()
       return
@@ -86,11 +99,28 @@ export function Login({ onLogin }) {
     setErr('아이디 또는 비밀번호를 확인해 주세요')
   }
 
+  // 구글 로그인: 계정 없으면 프로필로 최소 계정 생성 후 로그인
+  const handleGoogleLogin = (profile) => {
+    if (!getAccount()) {
+      saveAccount({
+        provider: 'google',
+        user: {
+          userId: profile.email?.split('@')[0] || 'google',
+          email: profile.email,
+          nickname: profile.name || '구글유저',
+        },
+        pets: [],
+        createdAt: new Date().toISOString(),
+      })
+    }
+    onLogin?.()
+  }
+
   return (
     <div
       ref={stageRef}
-      className="flex-1 flex flex-col px-6 pt-10 pb-8"
-      style={{ background: C.bg, perspective: '900px' }}
+      className="flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
+      style={{ background: C.bg }}
     >
       {/* 브랜드 */}
       <div className="text-center">
@@ -102,15 +132,17 @@ export function Login({ onLogin }) {
         </p>
       </div>
 
-      {/* 둥글둥글한 주황 고양이 */}
-      <div className="mt-6 flex justify-center" style={{ transformStyle: 'preserve-3d' }}>
-        <ChubbyCat headRef={headRef} eyeLRef={eyeLRef} eyeRRef={eyeRRef} />
+      {/* 반응형 고양이 이미지 */}
+      <div className="mt-4 sm:mt-6 flex justify-center">
+        <div className="w-full max-w-[240px]">
+          <ReactiveCat headRef={headRef} />
+        </div>
       </div>
 
-      {/* 로그인 폼 (warm tone) */}
+      {/* 로그인 폼 */}
       <form
         onSubmit={submit}
-        className="mt-6 rounded-3xl p-5 shadow-lg"
+        className="mt-4 sm:mt-6 rounded-3xl p-5 shadow-lg"
         style={{ background: C.card, border: `1px solid ${C.border}` }}
       >
         <p className="text-center text-xs font-bold tracking-widest uppercase" style={{ color: C.primary }}>
@@ -148,9 +180,39 @@ export function Login({ onLogin }) {
           들어가기
         </button>
 
-        <div className="mt-4 flex items-center justify-between text-xs" style={{ color: C.mute }}>
-          <button type="button" className="font-semibold hover:underline">비밀번호 찾기</button>
-          <button type="button" className="font-bold hover:underline" style={{ color: C.primary }}>
+        {/* 또는 구글 로그인 */}
+        <div className="mt-5 flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: C.border }} />
+          <span className="text-xs font-bold" style={{ color: C.mute }}>또는</span>
+          <div className="flex-1 h-px" style={{ background: C.border }} />
+        </div>
+        <div className="mt-4">
+          <GoogleButton label="Google 계정으로 로그인" onSuccess={handleGoogleLogin} />
+        </div>
+
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={onFindId}
+            className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
+            style={{ background: C.input, color: C.brown, border: `1.5px solid ${C.border}` }}
+          >
+            아이디 찾기
+          </button>
+          <button
+            type="button"
+            onClick={onFindPassword}
+            className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
+            style={{ background: C.input, color: C.brown, border: `1.5px solid ${C.border}` }}
+          >
+            비밀번호 찾기
+          </button>
+          <button
+            type="button"
+            onClick={onSignup}
+            className="rounded-2xl py-3 text-sm font-bold text-white transition-colors active:brightness-90"
+            style={{ background: C.primary }}
+          >
             회원가입
           </button>
         </div>
@@ -169,11 +231,8 @@ function WarmField({ icon, label, value, onChange, type = 'text', placeholder, a
     <label className="mt-4 block">
       <span className="text-[11px] font-semibold pl-1" style={{ color: C.mute }}>{label}</span>
       <div
-        className="mt-1 flex items-center gap-2 rounded-2xl px-4 py-3 transition-colors focus-within:ring-2"
-        style={{
-          background: C.input,
-          border: `1.5px solid ${C.border}`,
-        }}
+        className="mt-1 flex items-center gap-2 rounded-2xl px-4 py-3 transition-colors"
+        style={{ background: C.input, border: `1.5px solid ${C.border}` }}
       >
         <span style={{ color: C.mute }}>{icon}</span>
         <input
@@ -190,149 +249,260 @@ function WarmField({ icon, label, value, onChange, type = 'text', placeholder, a
   )
 }
 
-/* ─────────────── 둥글둥글한 주황/흰색 고양이 ───────────────
- * 첨부 참조 (laying-down 둥근 체형, 닫힌 눈, 주황 등 + 흰 배):
- *  - 몸통: 주황 둥근 덩어리 + 앞부분/배 흰색 패치
- *  - 머리: 둥근 원, 양 옆 주황 귀, 가운데 흰 마스크 (눈/코/입 영역)
- *  - 눈: 평소엔 곱슬 곡선(닫힘) → 트래킹 위해 가는 슬릿 안 작은 눈동자가 미세 이동
- *  - 코: 작은 핑크 하트
- *  - 꼬리: 옆쪽으로 둥글게 말려있는 주황 호
+/* ─────────────── 반응형 고양이 이미지 (public/AAA.png) ───────────────
+ * - headRef 래퍼: 커서 방향으로 기울기/이동 (Login 의 mousemove 핸들러가 제어)
+ * - cat-bob: 가만히 있을 때 둥실 떠 있는 애니메이션
+ * - img: 마우스 올리면 살짝 커지고, 누르면 살짝 작아짐
+ * (세 가지를 각각 다른 요소에 둬서 transform 충돌 없이 합성)
  */
-function ChubbyCat({ headRef, eyeLRef, eyeRRef }) {
+function ReactiveCat({ headRef }) {
+  return (
+    <div
+      ref={headRef}
+      style={{ transformOrigin: 'center bottom', transition: 'transform 200ms ease-out', willChange: 'transform' }}
+    >
+      <div className="cat-bob">
+        <img
+          src="/AAA.png"
+          alt="고양이"
+          draggable={false}
+          className="w-full h-auto select-none transition-transform duration-300 hover:scale-105 active:scale-95"
+          style={{ filter: 'drop-shadow(0 16px 22px rgba(92,61,31,0.18))' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────── 잠자는 둥근 고양이 (참조 이미지 기반) ───────────────
+ * - 옆으로 살짝 기운 둥근 loaf 자세
+ * - 흰 가슴/배 + 흰 앞발, 주황 등/머리/꼬리
+ * - 감은 눈(C자 곡선), 작은 핑크 코, ω 미소
+ * - 검은 외곽선 (~2px)
+ * - viewBox 기반 → 부모 width 에 맞춰 자연스럽게 반응형
+ */
+function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
   return (
     <svg
-      width="230"
-      height="200"
-      viewBox="0 0 230 200"
+      viewBox="0 0 240 220"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
-      style={{ filter: 'drop-shadow(0 18px 22px rgba(92,61,31,0.18))' }}
+      className="w-full h-auto"
+      style={{ filter: 'drop-shadow(0 16px 22px rgba(92,61,31,0.18))' }}
     >
-      {/* 그림자 (앉아있는 형태) */}
-      <ellipse cx="115" cy="186" rx="78" ry="9" fill="#000" opacity="0.08" />
+      {/* 발 밑 그림자 (파스텔 민트 살짝) */}
+      <ellipse cx="120" cy="200" rx="80" ry="10" fill="#B8D9CC" opacity="0.7" />
+      <ellipse cx="120" cy="201" rx="80" ry="10" fill="none" stroke={C.outline} strokeWidth="2" />
 
-      {/* 꼬리 - 우측 뒤로 말림 */}
+      {/* 꼬리 (오른쪽으로 휘어진 줄무늬) — 트래킹 그룹 */}
+      <g
+        ref={tailRef}
+        style={{
+          transformOrigin: '170px 170px',
+          transition: 'transform 250ms ease-out',
+          willChange: 'transform',
+        }}
+      >
+        {/* 꼬리 본체 */}
+        <path
+          d="M168 178 C 210 178 222 160 220 138"
+          stroke={C.catCream}
+          strokeWidth="20"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M168 178 C 210 178 222 160 220 138"
+          stroke={C.outline}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          fill="none"
+        />
+        {/* 꼬리 줄무늬 */}
+        <path d="M190 176 q2 -8 6 -8" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path d="M205 170 q3 -7 5 -10" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path d="M216 156 q3 -6 4 -10" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
+      </g>
+
+      {/* ─── 몸통 ─── */}
+      {/* 등(흰색 기본) - 둥근 loaf */}
       <path
-        d="M170 150 Q210 140 208 110 Q207 88 188 86"
-        stroke={C.catOrange}
-        strokeWidth="18"
-        strokeLinecap="round"
-        fill="none"
+        d="M44 168
+           C 42 124 72 92 120 92
+           C 168 92 198 124 196 168
+           C 196 192 168 198 120 198
+           C 72 198 44 192 44 168 Z"
+        fill={C.catCream}
+        stroke={C.outline}
+        strokeWidth="2.8"
+        strokeLinejoin="round"
+      />
+
+      {/* 등 위쪽 주황 패치 (어깨~등 위) */}
+      <path
+        d="M58 138
+           C 70 108 100 100 120 100
+           C 140 100 170 108 182 138
+           C 174 144 150 140 120 140
+           C 90 140 66 144 58 138 Z"
+        fill={C.catOrange}
+        stroke={C.outline}
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+
+      {/* 앞발 (흰색, 작고 둥글) */}
+      <path
+        d="M86 188 q-2 14 14 16 q14 -2 14 -16 z"
+        fill={C.catCream}
+        stroke={C.outline}
+        strokeWidth="2.2"
+        strokeLinejoin="round"
       />
       <path
-        d="M170 150 Q210 140 208 110 Q207 88 188 86"
-        stroke={C.catOrangeDark}
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.4"
+        d="M126 188 q-2 14 14 16 q14 -2 14 -16 z"
+        fill={C.catCream}
+        stroke={C.outline}
+        strokeWidth="2.2"
+        strokeLinejoin="round"
       />
-
-      {/* 몸통 (둥근 loaf) - 주황 */}
-      <ellipse cx="115" cy="148" rx="78" ry="40" fill={C.catOrange} />
-      {/* 몸통 외곽선 */}
-      <ellipse cx="115" cy="148" rx="78" ry="40" fill="none" stroke={C.brown} strokeWidth="2.5" opacity="0.85" />
-
-      {/* 흰 가슴/배 패치 */}
-      <path
-        d="M65 158 Q70 130 115 128 Q160 130 165 158 Q160 178 115 180 Q70 178 65 158 Z"
-        fill={C.catWhite}
-      />
-      <path
-        d="M65 158 Q70 130 115 128 Q160 130 165 158"
-        fill="none"
-        stroke={C.brown}
-        strokeWidth="1.6"
-        opacity="0.4"
-      />
-
-      {/* 앞발 흰색 (두 개) */}
-      <ellipse cx="92" cy="178" rx="14" ry="9" fill={C.catWhite} stroke={C.brown} strokeWidth="2" />
-      <ellipse cx="138" cy="178" rx="14" ry="9" fill={C.catWhite} stroke={C.brown} strokeWidth="2" />
+      {/* 발가락 라인 */}
+      <line x1="96" y1="200" x2="96" y2="196" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="104" y1="201" x2="104" y2="197" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="136" y1="200" x2="136" y2="196" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="144" y1="201" x2="144" y2="197" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
 
       {/* ─── 머리 (트래킹 그룹) ─── */}
       <g
         ref={headRef}
         style={{
-          transition: 'transform 160ms ease-out',
+          transformOrigin: '120px 92px',
+          transition: 'transform 200ms ease-out',
           willChange: 'transform',
-          transformOrigin: '115px 90px',
         }}
       >
-        {/* 귀 (왼쪽) - 주황 삼각형 둥글게 */}
-        <path d="M62 62 Q56 26 86 38 Q90 56 84 70 Z" fill={C.catOrange} stroke={C.brown} strokeWidth="2.2" />
-        <path d="M70 58 Q70 40 82 46 Q82 54 80 62 Z" fill={C.catEar} />
-        {/* 귀 (오른쪽) */}
-        <path d="M168 62 Q174 26 144 38 Q140 56 146 70 Z" fill={C.catOrange} stroke={C.brown} strokeWidth="2.2" />
-        <path d="M160 58 Q160 40 148 46 Q148 54 150 62 Z" fill={C.catEar} />
-
-        {/* 머리 (둥근 원) */}
-        <circle cx="115" cy="90" r="50" fill={C.catOrange} stroke={C.brown} strokeWidth="2.5" />
-
-        {/* 흰 페이스 마스크 (이마부터 턱) - 머리 가운데 */}
+        {/* 귀 (왼쪽) */}
         <path
-          d="M82 96 Q90 130 115 134 Q140 130 148 96 Q146 80 115 78 Q84 80 82 96 Z"
-          fill={C.catWhite}
-          stroke={C.brown}
-          strokeWidth="1.8"
+          d="M64 60 Q58 22 96 40 L100 70 Z"
+          fill={C.catOrange}
+          stroke={C.outline}
+          strokeWidth="2.4"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M74 56 Q72 38 90 48 L92 62 Z"
+          fill={C.catPink}
+        />
+        {/* 귀 (오른쪽) */}
+        <path
+          d="M176 60 Q182 22 144 40 L140 70 Z"
+          fill={C.catOrange}
+          stroke={C.outline}
+          strokeWidth="2.4"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M166 56 Q168 38 150 48 L148 62 Z"
+          fill={C.catPink}
         />
 
-        {/* 볼터치 (살짝 분홍) */}
-        <ellipse cx="86" cy="106" rx="7" ry="4" fill="#F6B6A3" opacity="0.55" />
-        <ellipse cx="144" cy="106" rx="7" ry="4" fill="#F6B6A3" opacity="0.55" />
+        {/* 머리 (흰 베이스) */}
+        <ellipse
+          cx="120"
+          cy="94"
+          rx="60"
+          ry="52"
+          fill={C.catCream}
+          stroke={C.outline}
+          strokeWidth="2.6"
+        />
 
-        {/* 눈 - 호기심 많은 슬릿 + 작은 눈동자(트래킹) */}
-        {/* 눈 흰자 (얇은 아몬드) */}
-        <ellipse cx="100" cy="98" rx="6.5" ry="5" fill="#FFFDFA" stroke={C.brown} strokeWidth="1.5" />
-        <ellipse cx="130" cy="98" rx="6.5" ry="5" fill="#FFFDFA" stroke={C.brown} strokeWidth="1.5" />
+        {/* 머리 윗부분 주황 패치 (이마/정수리) */}
+        <path
+          d="M68 86
+             Q72 56 120 52
+             Q168 56 172 86
+             Q150 96 120 96
+             Q90 96 68 86 Z"
+          fill={C.catOrange}
+          stroke={C.outline}
+          strokeWidth="2.2"
+          strokeLinejoin="round"
+        />
 
-        {/* 눈동자 (ref) */}
+        {/* 정수리 줄무늬 (참조: 머리 위 3줄) */}
+        <line x1="112" y1="60" x2="112" y2="72" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
+        <line x1="120" y1="56" x2="120" y2="70" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
+        <line x1="128" y1="60" x2="128" y2="72" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
+
+        {/* 흰 페이스 마스크 (눈 아래쪽 강조용 - 살짝만) */}
+        <path
+          d="M88 110
+             Q92 132 120 134
+             Q148 132 152 110
+             Q150 100 120 100
+             Q90 100 88 110 Z"
+          fill={C.catCream}
+          opacity="0.001"
+        />
+
+        {/* 볼터치 (분홍 동그라미) */}
+        <circle cx="84" cy="116" r="7" fill={C.catPink} opacity="0.85" />
+        <circle cx="156" cy="116" r="7" fill={C.catPink} opacity="0.85" />
+
+        {/* 큰 까만 눈 - 트래킹 */}
         <g
           ref={eyeLRef}
-          style={{ transition: 'transform 110ms ease-out', willChange: 'transform' }}
+          style={{ transition: 'transform 120ms ease-out', willChange: 'transform' }}
         >
-          <circle cx="100" cy="98" r="3" fill="#1c130a" />
-          <circle cx="99" cy="97" r="1" fill="#FFFDFA" />
+          <circle cx="103" cy="108" r="8.5" fill={C.outline} />
+          {/* 큰 하이라이트 */}
+          <circle cx="100" cy="105" r="2.6" fill="#FFFFFF" />
+          {/* 작은 ✨ */}
+          <circle cx="106" cy="112" r="1.2" fill="#FFFFFF" />
         </g>
         <g
           ref={eyeRRef}
-          style={{ transition: 'transform 110ms ease-out', willChange: 'transform' }}
+          style={{ transition: 'transform 120ms ease-out', willChange: 'transform' }}
         >
-          <circle cx="130" cy="98" r="3" fill="#1c130a" />
-          <circle cx="129" cy="97" r="1" fill="#FFFDFA" />
+          <circle cx="137" cy="108" r="8.5" fill={C.outline} />
+          <circle cx="134" cy="105" r="2.6" fill="#FFFFFF" />
+          <circle cx="140" cy="112" r="1.2" fill="#FFFFFF" />
         </g>
 
         {/* 코 (작은 핑크 삼각) */}
         <path
-          d="M111 110 L119 110 L115 115 Z"
-          fill={C.catNose}
-          stroke={C.brown}
-          strokeWidth="1.4"
+          d="M116 122 L124 122 L120 127 Z"
+          fill={C.catPink}
+          stroke={C.outline}
+          strokeWidth="1.6"
           strokeLinejoin="round"
         />
 
-        {/* 입 - 작은 ω 미소 */}
+        {/* 입 (작은 ω - 살짝 미소) */}
         <path
-          d="M115 115 Q110 121 106 119"
-          stroke={C.brown}
+          d="M120 127 q-4 5 -8 3"
+          stroke={C.outline}
           strokeWidth="1.8"
           fill="none"
           strokeLinecap="round"
         />
         <path
-          d="M115 115 Q120 121 124 119"
-          stroke={C.brown}
+          d="M120 127 q4 5 8 3"
+          stroke={C.outline}
           strokeWidth="1.8"
           fill="none"
           strokeLinecap="round"
         />
 
-        {/* 수염 */}
-        <g stroke={C.brown} strokeWidth="1.2" strokeLinecap="round" opacity="0.7">
-          <line x1="70" y1="108" x2="86" y2="110" />
-          <line x1="70" y1="114" x2="86" y2="114" />
-          <line x1="160" y1="108" x2="144" y2="110" />
-          <line x1="160" y1="114" x2="144" y2="114" />
+        {/* 수염 (3쌍) */}
+        <g stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" opacity="0.85">
+          <line x1="60" y1="112" x2="80" y2="114" />
+          <line x1="58" y1="120" x2="80" y2="118" />
+          <line x1="60" y1="128" x2="80" y2="122" />
+          <line x1="180" y1="112" x2="160" y2="114" />
+          <line x1="182" y1="120" x2="160" y2="118" />
+          <line x1="180" y1="128" x2="160" y2="122" />
         </g>
       </g>
     </svg>
