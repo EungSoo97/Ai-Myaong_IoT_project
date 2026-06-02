@@ -462,6 +462,9 @@ function normalizeWifiError(message) {
   if (message.includes('Not authorized to control networking')) {
     return '라즈베리파이에서 Wi-Fi 변경 권한이 없습니다. Pi에서 scripts/allow-networkmanager-control.sh를 한 번 실행하세요.'
   }
+  if (message.includes('stayed in connecting state')) {
+    return '라즈베리파이 Wi-Fi가 연결 중 상태에서 멈췄습니다. 비밀번호, 공유기 DHCP, 2.4GHz 지원 여부를 확인하세요.'
+  }
   return message
 }
 

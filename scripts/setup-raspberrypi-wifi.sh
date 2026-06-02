@@ -39,6 +39,7 @@ ESP32_SETUP_URL="${ESP32_SETUP_URL:-http://192.168.4.1}"
 PI_AP_FALLBACK="${PI_AP_FALLBACK:-false}"
 PI_AP_SSID="${PI_AP_SSID:-AiMyaong_PI_SETUP}"
 PI_AP_PASSWORD="${PI_AP_PASSWORD:-aimyaong1234}"
+NMCLI_CONNECT_TIMEOUT="${NMCLI_CONNECT_TIMEOUT:-60}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PI_ENV="$REPO_ROOT/raspberrypi/.env"
 BACKEND_ENV="$REPO_ROOT/backend/.env"
@@ -72,28 +73,109 @@ rollback_pi_wifi() {
 
   if [[ -n "$PREVIOUS_NMCLI_CONNECTION" ]] && command -v nmcli >/dev/null 2>&1; then
     echo "[wifi] rolling back Raspberry Pi Wi-Fi to: $PREVIOUS_NMCLI_CONNECTION"
-    nmcli connection up "$PREVIOUS_NMCLI_CONNECTION" || true
+    nmcli device disconnect wlan0 >/dev/null 2>&1 || true
+    nmcli --wait "$NMCLI_CONNECT_TIMEOUT" connection up "$PREVIOUS_NMCLI_CONNECTION" || true
   fi
 }
 
 fail_with_rollback() {
   echo "[wifi] $1" >&2
+  print_nmcli_diagnostics
   rollback_pi_wifi
   start_pi_ap_fallback
   exit 1
+}
+
+detect_pi_ip() {
+  local ip=""
+  ip="$(nmcli -g IP4.ADDRESS device show wlan0 2>/dev/null | head -n 1 | cut -d/ -f1 || true)"
+  if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 addr show wlan0 2>/dev/null | awk '/inet / { sub("/.*", "", $2); print $2; exit }')"
+  fi
+  printf '%s' "$ip"
+}
+
+active_nmcli_connection() {
+  nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | awk -F: '$2 == "wlan0" { print $1; exit }'
+}
+
+wifi_device_state() {
+  nmcli -t -f DEVICE,STATE device status 2>/dev/null | awk -F: '$1 == "wlan0" { print $2; exit }'
+}
+
+print_nmcli_diagnostics() {
+  if ! command -v nmcli >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "[wifi] nmcli device status:" >&2
+  nmcli device status >&2 || true
+  echo "[wifi] active wlan0 connection: $(active_nmcli_connection)" >&2
+  echo "[wifi] wlan0 IP: $(detect_pi_ip)" >&2
+}
+
+wait_for_nmcli_connected() {
+  local expected_connection="$1"
+  local deadline=$((SECONDS + NMCLI_CONNECT_TIMEOUT))
+  local state=""
+  local active_connection=""
+  local ip=""
+
+  while (( SECONDS < deadline )); do
+    state="$(wifi_device_state)"
+    active_connection="$(active_nmcli_connection)"
+    ip="$(detect_pi_ip)"
+
+    if [[ "$state" == "connected" && -n "$ip" ]]; then
+      echo "[wifi] Raspberry Pi wlan0 connected: $active_connection ($ip)"
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  echo "[wifi] expected connection: $expected_connection" >&2
+  echo "[wifi] last wlan0 state: ${state:-unknown}" >&2
+  echo "[wifi] last active connection: ${active_connection:-none}" >&2
+  echo "[wifi] last wlan0 IP: ${ip:-none}" >&2
+  return 1
 }
 
 connect_with_nmcli() {
   echo "[wifi] connecting Raspberry Pi with nmcli: $SSID"
   PREVIOUS_NMCLI_CONNECTION="$(nmcli -t -f NAME,DEVICE connection show --active | awk -F: '$2 == "wlan0" { print $1; exit }')"
   if nmcli -t -f NAME connection show | grep -Fxq "$SSID"; then
-    nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
-      || fail_with_rollback "failed to update Wi-Fi profile."
-    nmcli connection up "$SSID" \
+    if [[ -n "$PASSWORD" ]]; then
+      nmcli connection modify "$SSID" \
+        802-11-wireless.ssid "$SSID" \
+        wifi-sec.key-mgmt wpa-psk \
+        wifi-sec.psk "$PASSWORD" \
+        connection.autoconnect yes \
+        ipv4.method auto \
+        ipv6.method auto \
+        || fail_with_rollback "failed to update Wi-Fi profile."
+    else
+      nmcli connection modify "$SSID" \
+        802-11-wireless.ssid "$SSID" \
+        connection.autoconnect yes \
+        ipv4.method auto \
+        ipv6.method auto \
+        || fail_with_rollback "failed to update open Wi-Fi profile."
+    fi
+    nmcli --wait "$NMCLI_CONNECT_TIMEOUT" connection up "$SSID" \
       || fail_with_rollback "failed to connect Raspberry Pi to Wi-Fi: $SSID"
+    wait_for_nmcli_connected "$SSID" \
+      || fail_with_rollback "Raspberry Pi Wi-Fi stayed in connecting state. Check the Wi-Fi password, DHCP, and router compatibility."
   else
-    nmcli dev wifi connect "$SSID" password "$PASSWORD" \
-      || fail_with_rollback "failed to connect Raspberry Pi to Wi-Fi: $SSID"
+    if [[ -n "$PASSWORD" ]]; then
+      nmcli --wait "$NMCLI_CONNECT_TIMEOUT" dev wifi connect "$SSID" password "$PASSWORD" ifname wlan0 \
+        || fail_with_rollback "failed to connect Raspberry Pi to Wi-Fi: $SSID"
+    else
+      nmcli --wait "$NMCLI_CONNECT_TIMEOUT" dev wifi connect "$SSID" ifname wlan0 \
+        || fail_with_rollback "failed to connect Raspberry Pi to open Wi-Fi: $SSID"
+    fi
+    wait_for_nmcli_connected "$SSID" \
+      || fail_with_rollback "Raspberry Pi Wi-Fi stayed in connecting state. Check the Wi-Fi password, DHCP, and router compatibility."
   fi
 }
 
@@ -128,15 +210,6 @@ else
   echo "[wifi] Install NetworkManager or configure Wi-Fi manually first." >&2
   exit 1
 fi
-
-detect_pi_ip() {
-  local ip=""
-  ip="$(nmcli -g IP4.ADDRESS device show wlan0 2>/dev/null | head -n 1 | cut -d/ -f1 || true)"
-  if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
-    ip="$(ip -4 addr show wlan0 2>/dev/null | awk '/inet / { sub("/.*", "", $2); print $2; exit }')"
-  fi
-  printf '%s' "$ip"
-}
 
 if [[ "$MQTT_HOST" == "auto" ]]; then
   MQTT_HOST="$(detect_pi_ip)"
