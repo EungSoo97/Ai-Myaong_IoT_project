@@ -1,9 +1,12 @@
 import json
 import os
 import shutil
+import socket
 import subprocess
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from ipaddress import IPv4Network
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -23,13 +26,20 @@ def network_status():
     pi_status = _pi_agent_status()
     local_wifi_ip = _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"])
     local_wifi_ssid = _command_output(["bash", "-lc", "iwgetid -r"])
+    backend_env = read_env_values(
+        REPO_ROOT / "backend" / ".env",
+        ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+    )
+    if pi_status.get("ip"):
+        _sync_backend_env_from_pi_ip(str(pi_status["ip"]))
 
     return {
         "raspberrypiEnv": read_env_values(
             PI_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
-        "wifiIp": pi_status.get("ip") or local_wifi_ip,
+        "backendEnv": backend_env,
+        "wifiIp": pi_status.get("ip") or backend_env.get("MQTT_BROKER_HOST") or local_wifi_ip,
         "wifiSsid": pi_status.get("ssid") or local_wifi_ssid,
         "source": pi_status.get("source") or "local",
     }
@@ -168,6 +178,21 @@ def _sync_backend_env_from_pi_result(result: dict) -> None:
     _set_env_value(backend_env, "CAMERA_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
 
 
+def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
+    if not pi_ip:
+        return
+
+    mqtt_port = runtime_env("MQTT_BROKER_PORT", "1883").strip() or "1883"
+    pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
+    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
+    backend_env = REPO_ROOT / "backend" / ".env"
+
+    _set_env_value(backend_env, "MQTT_BROKER_HOST", pi_ip)
+    _set_env_value(backend_env, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(backend_env, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
+    _set_env_value(backend_env, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
+
+
 def _set_env_value(path: Path, key: str, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
@@ -188,8 +213,7 @@ def _set_env_value(path: Path, key: str, value: str) -> None:
 
 
 def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
-    pi_agent_base_url = _pi_agent_base_url()
-    timeout = 45 if path == "/api/wifi/scan" else 120 if payload is not None else 15
+    timeout = 35 if path == "/api/wifi/scan" else 8 if payload is not None else 5
     body = None
     method = "GET"
     headers = {"Accept": "application/json"}
@@ -198,41 +222,177 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
         method = "POST"
         headers["Content-Type"] = "application/json"
 
-    request = urllib.request.Request(
-        f"{pi_agent_base_url}{path}",
-        data=body,
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail_text = exc.read().decode("utf-8", "replace")
+    candidate_urls = _reachable_pi_agent_urls() if path == "/api/wifi/scan" else _pi_agent_candidate_urls()
+    errors: list[dict[str, str]] = []
+    for pi_agent_base_url in candidate_urls:
+        request = urllib.request.Request(
+            f"{pi_agent_base_url}{path}",
+            data=body,
+            headers=headers,
+            method=method,
+        )
         try:
-            detail = json.loads(detail_text)
-        except json.JSONDecodeError:
-            detail = detail_text or exc.reason
-        raise HTTPException(status_code=exc.code, detail=detail) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": "Raspberry Pi Wi-Fi API is not reachable.",
-                "baseUrl": pi_agent_base_url,
-                "error": str(exc),
-            },
-        ) from exc
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                _remember_pi_agent_url(pi_agent_base_url)
+                if isinstance(data, dict) and data.get("ip"):
+                    _sync_backend_env_from_pi_ip(str(data["ip"]))
+                return data
+        except urllib.error.HTTPError as exc:
+            detail_text = exc.read().decode("utf-8", "replace")
+            try:
+                detail = json.loads(detail_text)
+            except json.JSONDecodeError:
+                detail = detail_text or exc.reason
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
+        except Exception as exc:
+            errors.append({"baseUrl": pi_agent_base_url, "error": str(exc)})
+
+    raise HTTPException(
+        status_code=502,
+        detail={
+            "message": "Raspberry Pi Wi-Fi API is not reachable.",
+            "tried": errors,
+        },
+    )
 
 
-def _pi_agent_base_url() -> str:
+def _pi_agent_candidate_urls() -> list[str]:
+    port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
+    urls: list[str] = []
+
     configured_url = runtime_env("PI_AGENT_BASE_URL", "").strip()
     if configured_url:
-        return configured_url.rstrip("/")
+        urls.append(configured_url.rstrip("/"))
 
-    host = runtime_env("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
-    port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
-    return f"http://{host}:{port}"
+    host = runtime_env("MQTT_BROKER_HOST", "").strip()
+    if host:
+        urls.append(f"http://{host}:{port}")
+
+    urls.append(f"http://raspberrypi.local:{port}")
+    urls.extend(_discover_pi_agent_urls(port))
+
+    deduped: list[str] = []
+    for url in urls:
+        if url and url not in deduped:
+            deduped.append(url)
+    return deduped
+
+
+def _reachable_pi_agent_urls() -> list[str]:
+    reachable: list[str] = []
+    for url in _pi_agent_candidate_urls():
+        if _is_pi_agent_reachable(url):
+            reachable.append(url)
+    return reachable or _pi_agent_candidate_urls()
+
+
+def _is_pi_agent_reachable(base_url: str) -> bool:
+    request = urllib.request.Request(f"{base_url}/api/wifi/status", headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=0.6) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return data.get("source") == "raspberrypi"
+    except Exception:
+        return False
+
+
+def _discover_pi_agent_urls(port: str) -> list[str]:
+    ips = _arp_table_ips()
+    if not ips:
+        ips = _local_subnet_ips(limit=254)
+
+    discovered: list[str] = []
+    with ThreadPoolExecutor(max_workers=64) as executor:
+        futures = {
+            executor.submit(_probe_pi_agent_ip, ip, port): ip
+            for ip in ips
+        }
+        for future in as_completed(futures):
+            url = future.result()
+            if url:
+                discovered.append(url)
+                _remember_pi_agent_url(url)
+                break
+    return discovered
+
+
+def _probe_pi_agent_ip(ip: str, port: str) -> str:
+    url = f"http://{ip}:{port}"
+    return url if _is_pi_agent_reachable(url) else ""
+
+
+def _arp_table_ips() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["arp", "-a"],
+            text=True,
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+    except Exception:
+        return []
+    if result.returncode != 0:
+        return []
+
+    ips: list[str] = []
+    for token in result.stdout.replace("(", " ").replace(")", " ").split():
+        if _looks_like_private_ipv4(token) and token not in ips:
+            ips.append(token)
+    return ips
+
+
+def _local_subnet_ips(limit: int) -> list[str]:
+    local_ips = _local_private_ips()
+    candidates: list[str] = []
+    for local_ip in local_ips:
+        try:
+            network = IPv4Network(f"{local_ip}/24", strict=False)
+        except ValueError:
+            continue
+        for host in network.hosts():
+            ip = str(host)
+            if ip != local_ip and ip not in candidates:
+                candidates.append(ip)
+            if len(candidates) >= limit:
+                return candidates
+    return candidates
+
+
+def _local_private_ips() -> list[str]:
+    ips: list[str] = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if _looks_like_private_ipv4(ip) and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    return ips
+
+
+def _looks_like_private_ipv4(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        octets = [int(part) for part in parts]
+    except ValueError:
+        return False
+    if any(octet < 0 or octet > 255 for octet in octets):
+        return False
+    return (
+        octets[0] == 10
+        or (octets[0] == 172 and 16 <= octets[1] <= 31)
+        or (octets[0] == 192 and octets[1] == 168)
+    )
+
+
+def _remember_pi_agent_url(url: str) -> None:
+    backend_env = REPO_ROOT / "backend" / ".env"
+    _set_env_value(backend_env, "PI_AGENT_BASE_URL", url)
 
 
 def _pi_agent_status() -> dict:

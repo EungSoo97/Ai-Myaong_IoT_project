@@ -53,6 +53,9 @@ function extractErrorMessage(value) {
   if (value.detail) return extractErrorMessage(value.detail);
   if (typeof value.stderr === "string" && value.stderr.trim()) return value.stderr.trim();
   if (typeof value.stdout === "string" && value.stdout.trim()) return value.stdout.trim();
+  if (Array.isArray(value.tried) && value.tried.length) {
+    return value.tried.map((item) => `${item.baseUrl}: ${item.error}`).join("\n");
+  }
   if (typeof value.message === "string") return value.message;
   return "";
 }

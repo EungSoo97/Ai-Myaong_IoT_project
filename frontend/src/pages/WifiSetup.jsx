@@ -15,6 +15,7 @@ import { api } from '../api/api'
 
 const ESP32_SETUP_URL_KEY = 'aimyaong:esp32SetupUrl'
 const ESP32_MQTT_HOST_KEY = 'aimyaong:esp32MqttHost'
+const PENDING_PI_WIFI_KEY = 'aimyaong:pendingPiWifi'
 const DEFAULT_ESP32_SETUP_URL = import.meta.env.VITE_ESP32_SETUP_URL || 'http://192.168.4.1'
 const DEFAULT_ESP32_MQTT_HOST = import.meta.env.VITE_ESP32_MQTT_HOST || '10.1.82.103'
 
@@ -47,6 +48,10 @@ export function WifiSetup() {
   useEffect(() => {
     refreshStatus({ silent: true })
     refreshPiStatus()
+    const pending = readJsonLocal(PENDING_PI_WIFI_KEY)
+    if (pending?.ssid) {
+      waitForPiReconnect(pending.ssid)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -96,7 +101,7 @@ export function WifiSetup() {
     try {
       const data = await api.getNetworkStatus()
       setPiStatus(data)
-      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.wifiIp
       if (host) setMqttHost(host)
     } catch {
       setPiStatus(null)
@@ -203,6 +208,7 @@ export function WifiSetup() {
     if (!validateModalPayload(payload)) return
 
     setBusy(true)
+    rememberPendingPiWifi(payload.ssid)
     showMessage(`${payload.ssid} 연결을 시작합니다.`)
     try {
       const data = await api.configurePiWifi({
@@ -213,12 +219,14 @@ export function WifiSetup() {
         esp32SetupUrl: setupUrl,
         piApFallback,
       })
-      const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST
+      const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.backendEnv?.MQTT_BROKER_HOST
       if (nextHost) setMqttHost(nextHost)
       setSelectedNetwork(pendingNetwork)
       if (data.pendingReconnect) {
-        showMessage('Wi-Fi 변경을 시작했습니다. 라즈베리파이가 새 네트워크로 이동하는 동안 잠시 기다려 주세요.')
+        showMessage(`${payload.ssid}로 이동 중입니다. 라즈베리파이의 새 IP를 찾는 중입니다.`)
+        waitForPiReconnect(payload.ssid)
       } else {
+        clearPendingPiWifi()
         showMessage(nextHost ? `적용 완료. MQTT ${nextHost}:1883` : '적용 완료.')
       }
       closeModalSilently()
@@ -229,6 +237,38 @@ export function WifiSetup() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function rememberPendingPiWifi(ssid) {
+    writeJsonLocal(PENDING_PI_WIFI_KEY, {
+      ssid,
+      previousIp: currentIp,
+      startedAt: Date.now(),
+    })
+  }
+
+  function clearPendingPiWifi() {
+    try { localStorage.removeItem(PENDING_PI_WIFI_KEY) } catch { /* ignore */ }
+  }
+
+  async function waitForPiReconnect(targetSsid) {
+    for (let attempt = 0; attempt < 14; attempt += 1) {
+      await sleep(attempt === 0 ? 6000 : 5000)
+      try {
+        const data = await api.getNetworkStatus()
+        setPiStatus(data)
+        const host = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.wifiIp
+        if (host) setMqttHost(host)
+        if (data.wifiIp || data.wifiSsid) {
+          clearPendingPiWifi()
+          showMessage(data.wifiSsid ? `라즈베리파이가 ${data.wifiSsid}에 다시 연결됐습니다.` : `${targetSsid} 연결 후 라즈베리파이 새 IP를 찾았습니다.`)
+          return
+        }
+      } catch {
+        showMessage(`${targetSsid} 연결 후 라즈베리파이 새 IP를 찾는 중입니다.`)
+      }
+    }
+    showMessage('라즈베리파이 새 IP를 찾지 못했습니다. 잠시 후 다시 스캔하세요.')
   }
 
   function closeModalSilently() {
@@ -484,6 +524,23 @@ function readLocal(key, fallback) {
 
 function writeLocal(key, value) {
   try { localStorage.setItem(key, value) } catch { /* ignore */ }
+}
+
+function readJsonLocal(key) {
+  try {
+    const value = localStorage.getItem(key)
+    return value ? JSON.parse(value) : null
+  } catch {
+    return null
+  }
+}
+
+function writeJsonLocal(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* ignore */ }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 export default WifiSetup

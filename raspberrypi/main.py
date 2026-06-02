@@ -6,6 +6,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +17,8 @@ from comm.serial_comm import SerialComm
 REPO_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(REPO_ROOT / "raspberrypi" / ".env", override=True)
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
+DEVICE_ID = os.getenv("DEVICE_ID", "myaong-pi-01")
+DESKTOP_BACKEND_URL = os.getenv("DESKTOP_BACKEND_URL", "").rstrip("/")
 
 ROBOT_COMMANDS = {
     "FORWARD",
@@ -156,6 +160,7 @@ def start_wifi_http_server() -> None:
     port = int(os.getenv("PI_AGENT_HTTP_PORT", "8765"))
     thread = threading.Thread(target=_run_wifi_http_server, args=(host, port), daemon=True)
     thread.start()
+    start_backend_registration_loop()
 
 
 def _run_wifi_http_server(host: str, port: int) -> None:
@@ -527,6 +532,7 @@ def run_wifi_setup_job(ssid: str, password: str, env: dict[str, str]) -> None:
         return
 
     print("[wifi] background Wi-Fi setup completed.")
+    register_to_desktop_backend(retries=10, delay=3)
     restart_agent_after_wifi_change()
 
 
@@ -540,6 +546,69 @@ def restart_agent_after_wifi_change() -> None:
         os.execv(sys.executable, [sys.executable, *sys.argv])
 
     threading.Thread(target=restart, daemon=True).start()
+
+
+def start_backend_registration_loop() -> None:
+    if not DESKTOP_BACKEND_URL:
+        print("[device] DESKTOP_BACKEND_URL is empty. Skipping backend registration.")
+        return
+
+    def loop() -> None:
+        register_to_desktop_backend(retries=20, delay=3)
+        while True:
+            time.sleep(30)
+            register_to_desktop_backend(retries=1, delay=0)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
+def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
+    if not DESKTOP_BACKEND_URL:
+        return False
+
+    for attempt in range(retries):
+        pi_ip = current_wifi_ip() or primary_ip()
+        if pi_ip:
+            payload = {
+                "device_id": DEVICE_ID,
+                "ip": pi_ip,
+                "role": "raspberrypi",
+                "ssid": current_wifi_ssid(),
+                "agent_port": int(os.getenv("PI_AGENT_HTTP_PORT", "8765")),
+                "stream_port": int(os.getenv("STREAM_PORT", "8080")),
+            }
+            try:
+                body = json.dumps(payload).encode("utf-8")
+                request = urllib.request.Request(
+                    f"{DESKTOP_BACKEND_URL}/api/device/register",
+                    data=body,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    response.read()
+                print(f"[device] registered to desktop backend: {pi_ip}")
+                return True
+            except Exception as exc:
+                print(f"[device] backend registration failed: {exc}")
+
+        if attempt < retries - 1 and delay:
+            time.sleep(delay)
+
+    return False
+
+
+def primary_ip() -> str:
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except Exception:
+        return ""
+    finally:
+        sock.close()
 
 
 if __name__ == "__main__":
