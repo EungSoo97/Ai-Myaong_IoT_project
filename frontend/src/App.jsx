@@ -8,9 +8,15 @@ import FindId from './pages/FindId'
 import FindPassword from './pages/FindPassword'
 import ResetPassword from './pages/ResetPassword'
 import PetAuthFlow from './pages/PetAuthFlow'
+import BodyFatCalculator from './pages/BodyFatCalculator'
+import WifiManager from './pages/WifiManager'
 import { Dashboard } from './pages/Dashboard'
 import { RobotVision } from './pages/RobotVision'
 import { Dispenser } from './pages/Dispenser'
+import { Feeding } from './pages/Feeding'
+import { Activity } from './pages/Activity'
+import { PetDetail } from './pages/PetDetail'
+import { ProfileEdit } from './pages/ProfileEdit'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
 import { WifiSetup } from './pages/WifiSetup'
@@ -36,10 +42,14 @@ function App() {
   }, [authenticated]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* 단독 데모: 인증→펫 등록→대시보드 통합 플로우 (자체 셸 포함) */}
         <Route path="/flow" element={<PetAuthFlow />} />
+        {/* 단독: 반려동물 비만도(체지방률) 계산기 */}
+        <Route path="/body-fat" element={<BodyFatCalculator />} />
+        {/* 단독: Wi-Fi 스캔/연결 (FastAPI 연동 대비) */}
+        <Route path="/wifi-manager" element={<WifiManager />} />
 
         {/* Public: Splash / Login - 하단 탭 바 없음 */}
         <Route element={<PublicLayout />}>
@@ -77,6 +87,10 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="vision" element={<RobotVision />} />
           <Route path="dispenser" element={<Dispenser />} />
+          <Route path="feeding" element={<Feeding />} />
+          <Route path="activity" element={<Activity />} />
+          <Route path="pet/:idx" element={<PetDetail />} />
+          <Route path="profile/edit" element={<ProfileEdit />} />
           <Route path="settings" element={<Settings />} />
           <Route path="mypage" element={<MyPage />} />
         </Route>

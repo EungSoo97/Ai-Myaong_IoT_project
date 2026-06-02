@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Minus,
   Plus,
@@ -7,9 +8,13 @@ import {
   UtensilsCrossed,
   AlertTriangle,
   Droplets,
+  ChevronLeft,
+  ChevronRight,
+  X,
   Plus as PlusIcon,
 } from 'lucide-react'
 import { Card, CreamCard, PageHeader, PrimaryButton } from '../components/ui'
+import { TimeWheel } from '../components/TimeWheel'
 
 const COLORS = {
   food: '#F08D86',
@@ -18,27 +23,19 @@ const COLORS = {
   mute: '#9C8A78',
 }
 
-const WEEKLY_TREND = [
-  { label: '월', food: 22, water: 110 },
-  { label: '화', food: 18, water: 95 },
-  { label: '수', food: 30, water: 140 },
-  { label: '목', food: 26, water: 125 },
-  { label: '금', food: 35, water: 150 },
-  { label: '토', food: 20, water: 130 },
-  { label: '일', food: 28, water: 120 },
-]
-
-const MONTHLY_TREND = [
-  { label: '1주', food: 168, water: 820 },
-  { label: '2주', food: 182, water: 870 },
-  { label: '3주', food: 159, water: 760 },
-  { label: '4주', food: 179, water: 890 },
+/* 오늘(일간) 시간대별 급여량(g) */
+const DAILY_FOOD = [
+  { label: '아침', g: 15 },
+  { label: '점심', g: 10 },
+  { label: '오후', g: 8 },
+  { label: '저녁', g: 15 },
+  { label: '야식', g: 5 },
 ]
 
 export function Dispenser() {
+  const navigate = useNavigate()
   const [foodAmount, setFoodAmount] = useState(15)
   const [waterAmount, setWaterAmount] = useState(80)
-  const [period, setPeriod] = useState('week')
 
   const [schedule, setSchedule] = useState([
     { id: 1, time: '08:00', type: 'food', amount: 15, on: true },
@@ -46,23 +43,69 @@ export function Dispenser() {
     { id: 3, time: '13:00', type: 'food', amount: 10, on: true },
     { id: 4, time: '19:00', type: 'food', amount: 15, on: false },
   ])
+  const [editing, setEditing] = useState(null) // { id?, time, type, amount } | null
+
+  // 토스트
+  const [toast, setToast] = useState(null)
+  const [toastOn, setToastOn] = useState(false)
+  const toastTimer = useRef(null)
+  const showToast = (msg) => {
+    clearTimeout(toastTimer.current)
+    setToast(msg)
+    requestAnimationFrame(() => setToastOn(true))
+    toastTimer.current = setTimeout(() => {
+      setToastOn(false)
+      setTimeout(() => setToast(null), 300)
+    }, 2000)
+  }
+
+  const openAdd = () => setEditing({ time: '08:00', type: 'food', amount: 15 })
+  const openEdit = (s) => setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
+
+  const saveSchedule = (form) => {
+    if (form.id) {
+      setSchedule((prev) => prev.map((x) => (x.id === form.id ? { ...x, ...form } : x)))
+      showToast('스케줄이 수정되었어요')
+    } else {
+      setSchedule((prev) =>
+        [...prev, { ...form, id: Date.now(), on: true }].sort((a, b) => a.time.localeCompare(b.time)))
+      showToast('스케줄이 추가되었어요')
+    }
+    setEditing(null)
+  }
+
+  const removeSchedule = (id) => {
+    setSchedule((prev) => prev.filter((x) => x.id !== id))
+    showToast('스케줄이 삭제되었어요')
+  }
+  const toggleSchedule = (id) =>
+    setSchedule((prev) => prev.map((x) => (x.id === id ? { ...x, on: !x.on } : x)))
 
   const foodRemain = 28
   const waterRemain = 62
   const foodLow = foodRemain < 30
   const waterLow = waterRemain < 25
 
-  const trend = period === 'week' ? WEEKLY_TREND : MONTHLY_TREND
-  const totals = useMemo(() => ({
-    food: trend.reduce((s, d) => s + d.food, 0),
-    water: trend.reduce((s, d) => s + d.water, 0),
-  }), [trend])
-  const maxFood = Math.max(...trend.map((d) => d.food))
-  const maxWater = Math.max(...trend.map((d) => d.water))
+  const todayTotal = DAILY_FOOD.reduce((s, d) => s + d.g, 0)
+  const maxFood = Math.max(...DAILY_FOOD.map((d) => d.g))
 
   return (
     <div className="px-5 pb-6">
-      <PageHeader title="디스펜서" subtitle="사료 · 음수 · 통계" />
+      {/* 헤더 + 뒤로가기 */}
+      <header className="flex items-center gap-2.5 pt-5 pb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="뒤로가기"
+          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">디스펜서</h1>
+          <p className="text-sm text-brand-mute truncate">사료 · 음수 · 통계</p>
+        </div>
+      </header>
 
       {/* 잔여량 (사료 + 물) */}
       <section className="grid grid-cols-2 gap-3">
@@ -90,7 +133,7 @@ export function Dispenser() {
         unitLabel="g"
         amount={foodAmount}
         min={5}
-        max={50}
+        max={300}
         step={5}
         onChange={setFoodAmount}
         button={`지금 ${foodAmount}g 배식하기`}
@@ -110,39 +153,62 @@ export function Dispenser() {
         icon={<Droplets className="w-4 h-4" />}
       />
 
-      {/* 스케줄 */}
+      {/* 스케줄 (CRUD) */}
       <section className="mt-5">
         <div className="flex items-center justify-between px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">자동 스케줄</h3>
-          <button className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active">
+          <button
+            type="button"
+            onClick={openAdd}
+            className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active"
+          >
             <PlusIcon className="w-3.5 h-3.5" /> 추가
           </button>
         </div>
         <CreamCard className="divide-y divide-brand-line">
+          {schedule.length === 0 && (
+            <p className="px-4 py-8 text-center text-sm text-brand-mute">등록된 스케줄이 없어요. <b>추가</b>를 눌러보세요.</p>
+          )}
           {schedule.map((s) => {
             const isFood = s.type === 'food'
             return (
-              <div key={s.id} className="flex items-center gap-3 px-4 py-3.5">
+              <div
+                key={s.id}
+                onClick={() => openEdit(s)}
+                role="button"
+                tabIndex={0}
+                className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-brand-cream transition-colors"
+              >
+                {/* 삭제 (작은 ×) */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeSchedule(s.id) }}
+                  aria-label="삭제"
+                  className="w-6 h-6 rounded-full bg-brand-line/60 text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger active:text-white transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+
                 <span
-                  className="w-10 h-10 rounded-2xl bg-brand-card flex items-center justify-center shadow-soft"
+                  className="w-10 h-10 rounded-2xl bg-brand-card flex items-center justify-center shadow-soft shrink-0"
                   style={{ color: isFood ? COLORS.food : COLORS.water }}
                 >
                   {isFood ? <UtensilsCrossed className="w-5 h-5" /> : <Droplets className="w-5 h-5" />}
                 </span>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="font-display text-lg font-bold text-brand-brown leading-none">{s.time}</p>
                   <p className="text-xs text-brand-mute mt-1">
                     {isFood ? `사료 ${s.amount}g` : `물 ${s.amount}ml`}
                   </p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+
+                {/* 활성 토글 */}
+                <label className="relative inline-flex items-center cursor-pointer shrink-0" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     className="sr-only peer"
                     checked={s.on}
-                    onChange={(e) =>
-                      setSchedule((prev) => prev.map((x) => (x.id === s.id ? { ...x, on: e.target.checked } : x)))
-                    }
+                    onChange={() => toggleSchedule(s.id)}
                   />
                   <span className="w-12 h-7 rounded-full bg-brand-line peer-checked:bg-brand-primary transition-colors" />
                   <span className="absolute left-1 top-1 w-5 h-5 rounded-full bg-white shadow-soft transition-transform peer-checked:translate-x-5" />
@@ -151,51 +217,65 @@ export function Dispenser() {
             )
           })}
         </CreamCard>
+        <p className="mt-2 px-1 text-[11px] text-brand-mute">항목을 누르면 수정할 수 있어요.</p>
       </section>
 
-      {/* 통계 (단순 막대 차트, 외부 라이브러리 미사용) */}
+      {/* 추가/수정 모달 */}
+      {editing && (
+        <ScheduleModal initial={editing} onClose={() => setEditing(null)} onSave={saveSchedule} />
+      )}
+
+      {/* 토스트 */}
+      {toast && (
+        <div
+          className="fixed left-1/2 bottom-24 z-50 px-5 py-3 rounded-2xl shadow-soft-lg text-sm font-bold text-white"
+          style={{
+            transform: `translateX(-50%) translateY(${toastOn ? '0' : '10px'})`,
+            opacity: toastOn ? 1 : 0,
+            transition: 'all 250ms ease',
+            background: '#4B3621',
+            maxWidth: '88%',
+          }}
+        >
+          🐾 {toast}
+        </div>
+      )}
+
+      {/* 오늘(일간) 급여 통계 */}
       <section className="mt-6">
         <div className="flex items-center justify-between px-1 mb-3">
-          <h3 className="font-display text-base font-bold text-brand-brown">섭취 통계</h3>
-          <PeriodTabs value={period} onChange={setPeriod} />
+          <h3 className="font-display text-base font-bold text-brand-brown">오늘 급여 통계</h3>
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.food}26`, color: COLORS.food }}>
+            총 {todayTotal}g
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <SummaryStat color={COLORS.food} label={period === 'week' ? '주간 사료' : '월간 사료'} value={`${totals.food}g`} />
-          <SummaryStat color={COLORS.water} label={period === 'week' ? '주간 음수' : '월간 음수'} value={`${totals.water}ml`} />
-        </div>
-
-        <Card className="mt-3 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs text-brand-mute font-semibold">
-              {period === 'week' ? '이번 주' : '이번 달'} 트렌드
-            </p>
-            <div className="flex items-center gap-3 text-[11px] font-bold">
-              <Legend color={COLORS.food} label="사료(g)" />
-              <Legend color={COLORS.water} label="음수(ml)" />
-            </div>
-          </div>
-
+        <Card className="p-4">
+          <p className="text-xs text-brand-mute font-semibold mb-3">시간대별 급여량 (g)</p>
           <div className="flex items-end justify-between gap-2 h-32">
-            {trend.map((d, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1">
-                <div className="w-full flex items-end justify-center gap-1 h-full">
-                  <div
-                    className="w-1/2 rounded-t-lg transition-all"
-                    style={{ height: `${(d.food / maxFood) * 100}%`, background: COLORS.food }}
-                    title={`사료 ${d.food}g`}
-                  />
-                  <div
-                    className="w-1/2 rounded-t-lg transition-all"
-                    style={{ height: `${(d.water / maxWater) * 100}%`, background: COLORS.water }}
-                    title={`음수 ${d.water}ml`}
-                  />
-                </div>
+            {DAILY_FOOD.map((d, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
+                <span className="text-[10px] font-bold text-brand-mute">{d.g}</span>
+                <div
+                  className="w-2/3 rounded-t-lg transition-all"
+                  style={{ height: `${(d.g / maxFood) * 100}%`, background: COLORS.food }}
+                  title={`${d.label} ${d.g}g`}
+                />
                 <span className="text-[10px] font-semibold text-brand-mute">{d.label}</span>
               </div>
             ))}
           </div>
         </Card>
+
+        {/* 급여 통계 자세히 보기 → 일·주·월 상세 페이지 */}
+        <button
+          type="button"
+          onClick={() => navigate('/feeding')}
+          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-3xl bg-brand-cream text-brand-brown font-bold py-3.5 shadow-soft touch-active"
+        >
+          급여 통계 자세히 보기
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </section>
     </div>
   )
@@ -264,9 +344,20 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
         >
           <Minus className="w-5 h-5" />
         </button>
-        <div className="flex-1 h-3 rounded-full bg-brand-line overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{ width: `${ratio * 100}%`, background: accent }} />
-        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={amount}
+          onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={`${title} 제공량`}
+          className="flex-1 h-2.5 cursor-pointer appearance-none rounded-full"
+          style={{
+            accentColor: accent,
+            background: `linear-gradient(to right, ${accent} 0%, ${accent} ${ratio * 100}%, #EFE3D2 ${ratio * 100}%, #EFE3D2 100%)`,
+          }}
+        />
         <button
           onClick={() => onChange(Math.min(max, amount + step))}
           className="w-12 h-12 rounded-2xl bg-brand-cream text-brand-brown shadow-soft touch-active flex items-center justify-center"
@@ -335,6 +426,134 @@ function Legend({ color, label }) {
       <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
       {label}
     </span>
+  )
+}
+
+/* 스케줄 추가/수정 — 바텀 시트(아래에서 위로 슬라이딩) */
+function ScheduleModal({ initial, onClose, onSave }) {
+  const isEdit = initial.id != null
+  const [time, setTime] = useState(initial.time)
+  const [type, setType] = useState(initial.type)
+  const [amount, setAmount] = useState(initial.amount)
+  const [show, setShow] = useState(false) // 슬라이드 인/아웃 제어
+
+  // 마운트 직후 위로 슬라이드 업
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShow(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+
+  // 아래로 내려간 뒤 실제 닫기/저장 (애니메이션 후 처리)
+  const dismiss = (after) => {
+    setShow(false)
+    setTimeout(after, 280)
+  }
+
+  const isFood = type === 'food'
+  const unit = isFood ? 'g' : 'ml'
+  const step = isFood ? 5 : 20
+  const min = isFood ? 5 : 20
+  const max = 300
+  const accent = isFood ? COLORS.food : COLORS.water
+  const ratio = (Number(amount) - min) / (max - min)
+
+  const submit = (e) => {
+    e.preventDefault()
+    const amt = Number(amount)
+    if (!time || !amt || amt <= 0) return
+    dismiss(() => onSave({ id: initial.id, time, type, amount: amt }))
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={() => dismiss(onClose)}>
+      {/* 뒷배경(Overlay) */}
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: 'rgba(45,37,32,0.45)', opacity: show ? 1 : 0 }}
+      />
+
+      {/* 바텀 시트 */}
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-brand-card px-6 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{ transform: show ? 'translateY(0)' : 'translateY(100%)' }}
+      >
+        {/* 그랩 핸들 */}
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold text-brand-brown">{isEdit ? '스케줄 수정' : '스케줄 추가'}</h3>
+          <button type="button" onClick={() => dismiss(onClose)} aria-label="닫기" className="text-brand-mute"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* 종류 */}
+        <p className="mt-5 text-sm font-bold text-brand-mute pl-1">종류</p>
+        <div className="mt-1.5 grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            onClick={() => setType('food')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-2xl py-3.5 text-base font-bold transition-colors ${isFood ? 'bg-brand-primary text-white' : 'bg-brand-cream text-brand-brown'}`}
+          >
+            <UtensilsCrossed className="w-5 h-5" /> 사료
+          </button>
+          <button
+            type="button"
+            onClick={() => setType('water')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-2xl py-3.5 text-base font-bold transition-colors ${!isFood ? 'bg-brand-primary text-white' : 'bg-brand-cream text-brand-brown'}`}
+          >
+            <Droplets className="w-5 h-5" /> 물
+          </button>
+        </div>
+
+        {/* 시간 (시/분 휠) */}
+        <div className="mt-4">
+          <span className="text-sm font-bold text-brand-mute pl-1 flex items-center gap-1"><Clock className="w-4 h-4" /> 시간</span>
+          <div className="mt-1.5">
+            <TimeWheel value={time} onChange={setTime} />
+          </div>
+        </div>
+
+        {/* 급여량/급수량 (슬라이드 막대) */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between pl-1">
+            <span className="text-sm font-bold text-brand-mute">{isFood ? '급여량' : '급수량'}</span>
+            <span className="px-2.5 py-1 rounded-full text-sm font-bold" style={{ background: `${accent}26`, color: accent }}>
+              {amount}{unit}
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-center gap-3">
+            <button type="button" onClick={() => setAmount((a) => Math.max(min, Number(a) - step))}
+              className="w-10 h-10 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center shrink-0"><Minus className="w-5 h-5" /></button>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              aria-label={isFood ? '급여량' : '급수량'}
+              className="flex-1 h-2.5 cursor-pointer appearance-none rounded-full"
+              style={{
+                accentColor: accent,
+                background: `linear-gradient(to right, ${accent} 0%, ${accent} ${ratio * 100}%, #EFE3D2 ${ratio * 100}%, #EFE3D2 100%)`,
+              }}
+            />
+            <button type="button" onClick={() => setAmount((a) => Math.min(max, Number(a) + step))}
+              className="w-10 h-10 rounded-2xl bg-brand-cream text-brand-brown shadow-soft flex items-center justify-center shrink-0"><Plus className="w-5 h-5" /></button>
+          </div>
+          <div className="mt-1 flex justify-between text-[11px] text-brand-mute px-1">
+            <span>{min}{unit}</span>
+            <span>{max}{unit}</span>
+          </div>
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button type="button" onClick={() => dismiss(onClose)} className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active">취소</button>
+          <button type="submit" className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white bg-brand-primary shadow-soft touch-active">{isEdit ? '저장' : '추가'}</button>
+        </div>
+      </form>
+    </div>
   )
 }
 

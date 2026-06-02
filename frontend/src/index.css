@@ -78,6 +78,15 @@ body {
   user-select: none;
 }
 
+/* 스크롤바 숨김 (휠 피커 등) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .touch-active {
   transition: transform 120ms ease, opacity 120ms ease;
 }
