@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.models.command import SharedWifiRequest
+from app.runtime_config import read_env_values, runtime_env
 
 router = APIRouter(prefix="/api/network", tags=["network"])
 
@@ -24,7 +25,7 @@ def network_status():
     local_wifi_ssid = _command_output(["bash", "-lc", "iwgetid -r"])
 
     return {
-        "raspberrypiEnv": _read_env_values(
+        "raspberrypiEnv": read_env_values(
             PI_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
@@ -41,7 +42,7 @@ def pi_wifi_scan():
 
 @router.post("/pi-wifi-connect")
 def pi_wifi_connect(payload: SharedWifiRequest):
-    return _pi_agent_json_request(
+    result = _pi_agent_json_request(
         "/api/wifi/connect",
         {
             "ssid": payload.ssid,
@@ -52,6 +53,12 @@ def pi_wifi_connect(payload: SharedWifiRequest):
             "piApFallback": payload.pi_ap_fallback,
         },
     )
+    _sync_backend_env_from_pi_result(result)
+    result["backendEnv"] = read_env_values(
+        REPO_ROOT / "backend" / ".env",
+        ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+    )
+    return result
 
 
 @router.post("/shared-wifi")
@@ -116,25 +123,15 @@ def configure_shared_wifi(payload: SharedWifiRequest):
         "ok": True,
         "stdout": result.stdout,
         "stderr": result.stderr,
-        "raspberrypiEnv": _read_env_values(
+        "raspberrypiEnv": read_env_values(
             PI_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
+        "backendEnv": read_env_values(
+            REPO_ROOT / "backend" / ".env",
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+        ),
     }
-
-
-def _read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in keys:
-            values[key] = value
-    return values
 
 
 def _command_output(command: list[str]) -> str:
@@ -152,6 +149,42 @@ def _command_output(command: list[str]) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def _sync_backend_env_from_pi_result(result: dict) -> None:
+    raspberrypi_env = result.get("raspberrypiEnv") or {}
+    mqtt_host = str(raspberrypi_env.get("MQTT_BROKER_HOST") or "").strip()
+    if not mqtt_host:
+        return
+
+    mqtt_port = str(raspberrypi_env.get("MQTT_BROKER_PORT") or "1883").strip() or "1883"
+    pi_agent_port = str(raspberrypi_env.get("PI_AGENT_HTTP_PORT") or runtime_env("PI_AGENT_HTTP_PORT", "8765")).strip() or "8765"
+    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
+    backend_env = REPO_ROOT / "backend" / ".env"
+
+    _set_env_value(backend_env, "MQTT_BROKER_HOST", mqtt_host)
+    _set_env_value(backend_env, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(backend_env, "PI_AGENT_BASE_URL", f"http://{mqtt_host}:{pi_agent_port}")
+    _set_env_value(backend_env, "CAMERA_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
+
+
+def _set_env_value(path: Path, key: str, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    next_lines: list[str] = []
+    replaced = False
+
+    for line in lines:
+        if line.startswith(f"{key}="):
+            next_lines.append(f"{key}={value}")
+            replaced = True
+        else:
+            next_lines.append(line)
+
+    if not replaced:
+        next_lines.append(f"{key}={value}")
+
+    path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
 
 
 def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
@@ -193,12 +226,12 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
 
 
 def _pi_agent_base_url() -> str:
-    configured_url = os.getenv("PI_AGENT_BASE_URL", "").strip()
+    configured_url = runtime_env("PI_AGENT_BASE_URL", "").strip()
     if configured_url:
         return configured_url.rstrip("/")
 
-    host = os.getenv("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
-    port = os.getenv("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
+    host = runtime_env("MQTT_BROKER_HOST", "10.1.82.103").strip() or "10.1.82.103"
+    port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
     return f"http://{host}:{port}"
 
 

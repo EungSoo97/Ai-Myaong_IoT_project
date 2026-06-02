@@ -208,7 +208,7 @@ export function WifiSetup() {
       const data = await api.configurePiWifi({
         ssid: payload.ssid,
         password: payload.password,
-        mqttHost: mqttHost.trim() || 'auto',
+        mqttHost: mqttHostForPiConnect(mqttHost),
         mqttPort: 1883,
         esp32SetupUrl: setupUrl,
         piApFallback,
@@ -466,6 +466,12 @@ function normalizeWifiError(message) {
     return '라즈베리파이 Wi-Fi가 연결 중 상태에서 멈췄습니다. 비밀번호, 공유기 DHCP, 2.4GHz 지원 여부를 확인하세요.'
   }
   return message
+}
+
+function mqttHostForPiConnect(value) {
+  const host = value.trim()
+  if (!host || host === DEFAULT_ESP32_MQTT_HOST) return 'auto'
+  return host
 }
 
 function readLocal(key, fallback) {

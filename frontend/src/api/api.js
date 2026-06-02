@@ -1,7 +1,15 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://10.1.82.109:8000/";
+  import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
 const API_BASE = API_BASE_URL.replace(/\/$/, "");
 const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+
+function defaultApiBaseUrl() {
+  const host = window.location.hostname;
+  if (!host || host === "localhost" || host === "127.0.0.1") {
+    return "http://127.0.0.1:8000/";
+  }
+  return `${window.location.protocol}//${host}:8000/`;
+}
 
 function resolveStreamUrl(url) {
   if (!url) return "";

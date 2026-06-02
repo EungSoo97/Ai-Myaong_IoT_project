@@ -3,7 +3,9 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -230,7 +232,16 @@ def _run_wifi_http_server(host: str, port: int) -> None:
                 },
             )
 
-        return {"ok": True, "stdout": result.stdout, "stderr": result.stderr}
+        restart_agent_after_wifi_change()
+        return {
+            "ok": True,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "raspberrypiEnv": read_env_values(
+                REPO_ROOT / "raspberrypi" / ".env",
+                ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_HTTP_PORT"),
+            ),
+        }
 
     print(f"[raspberrypi] Wi-Fi HTTP API listening on {host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="warning")
@@ -500,6 +511,32 @@ def _command_path(command: str) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip().splitlines()[0]
+
+
+def read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in keys:
+            values[key] = value
+    return values
+
+
+def restart_agent_after_wifi_change() -> None:
+    if os.getenv("PI_AGENT_RESTART_AFTER_WIFI", "true").lower() != "true":
+        return
+
+    def restart() -> None:
+        time.sleep(2)
+        print("[raspberrypi] restarting agent after Wi-Fi change")
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+
+    threading.Thread(target=restart, daemon=True).start()
 
 
 if __name__ == "__main__":
