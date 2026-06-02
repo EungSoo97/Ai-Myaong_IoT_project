@@ -1,6 +1,14 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://10.1.82.109:8000/";
 const API_BASE = API_BASE_URL.replace(/\/$/, "");
+const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+
+function resolveStreamUrl(url) {
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  if (url.startsWith("/")) return `${API_BASE}${url}`;
+  return url;
+}
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -30,7 +38,17 @@ async function request(path, options = {}) {
 export const api = {
   getDashboard: () => request("/api/robot/dashboard"),
   getStatus: () => request("/api/robot/status"),
-  getStreamUrl: () => request("/api/stream/url"),
+  getStreamUrl: async () => {
+    if (STREAM_URL) {
+      return { url: resolveStreamUrl(STREAM_URL), mode: "external" };
+    }
+
+    const data = await request("/api/stream/url");
+    return {
+      ...data,
+      url: resolveStreamUrl(data.url),
+    };
+  },
   moveRobot: (command) =>
     request("/api/robot/move", {
       method: "POST",

@@ -134,6 +134,7 @@ def _command_output(command: list[str]) -> str:
 
 def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
     pi_agent_base_url = _pi_agent_base_url()
+    timeout = 45 if path == "/api/wifi/scan" else 120 if payload is not None else 15
     body = None
     method = "GET"
     headers = {"Accept": "application/json"}
@@ -149,7 +150,7 @@ def _pi_agent_json_request(path: str, payload: dict | None = None) -> dict:
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail_text = exc.read().decode("utf-8", "replace")

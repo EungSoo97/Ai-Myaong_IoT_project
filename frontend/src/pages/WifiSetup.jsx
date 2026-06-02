@@ -34,6 +34,7 @@ export function WifiSetup() {
 
   const selectedSsid = selectedNetwork?.ssid || manualSsid.trim()
   const selectedIsSecure = selectedNetwork?.secure ?? true
+  const selectedIsCompatible = selectedNetwork?.compatible ?? selectedNetwork?.esp32Compatible ?? true
   const sortedNetworks = useMemo(
     () => [...networks].sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999)),
     [networks],
@@ -114,12 +115,20 @@ export function WifiSetup() {
     setSelectedNetwork(network)
     setManualSsid('')
     setPassword('')
-    setMessage('')
+    if ((network.compatible ?? network.esp32Compatible ?? true) === false) {
+      setMessage('ESP32는 2.4GHz Wi-Fi만 지원합니다. 라즈베리파이와 ESP32를 같이 연결하려면 2.4GHz 네트워크를 선택하세요.')
+    } else {
+      setMessage('')
+    }
   }
 
   async function saveWifi() {
     if (!selectedSsid) {
       setMessage('연결할 Wi-Fi를 선택하거나 SSID를 입력하세요.')
+      return
+    }
+    if (!selectedIsCompatible) {
+      setMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
       return
     }
     if (selectedIsSecure && !password) {
@@ -145,6 +154,10 @@ export function WifiSetup() {
   async function saveSharedWifi() {
     if (!selectedSsid) {
       setMessage('연결할 Wi-Fi를 선택하거나 SSID를 입력하세요.')
+      return
+    }
+    if (!selectedIsCompatible) {
+      setMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
       return
     }
     if (selectedIsSecure && !password) {
@@ -278,11 +291,11 @@ export function WifiSetup() {
               placeholder={selectedIsSecure ? '비밀번호' : '개방형 네트워크'}
               disabled={!selectedIsSecure}
             />
-            <PrimaryButton className="mt-3 w-full rounded-2xl" onClick={saveSharedWifi} disabled={busy}>
+            <PrimaryButton className="mt-3 w-full rounded-2xl" onClick={saveSharedWifi} disabled={busy || !selectedIsCompatible}>
               <Wifi className="w-4 h-4" />
               연결
             </PrimaryButton>
-            <GhostButton className="mt-2 w-full rounded-2xl" onClick={saveWifi} disabled={busy}>
+            <GhostButton className="mt-2 w-full rounded-2xl" onClick={saveWifi} disabled={busy || !selectedIsCompatible}>
               <CheckCircle2 className="w-4 h-4" />
               ESP32만 저장
             </GhostButton>
@@ -304,6 +317,9 @@ export function WifiSetup() {
 }
 
 function NetworkRow({ network, selected, onClick }) {
+  const compatible = network.compatible ?? network.esp32Compatible ?? true
+  const band = network.band || (network.channel >= 1 && network.channel <= 14 ? '2.4GHz' : '')
+
   return (
     <button
       type="button"
@@ -315,9 +331,12 @@ function NetworkRow({ network, selected, onClick }) {
       </span>
       <span className="flex-1 min-w-0">
         <span className="block text-sm font-bold text-brand-brown truncate">{network.ssid || '숨겨진 네트워크'}</span>
-        <span className="block text-xs text-brand-mute">신호 {network.rssi} · CH {network.channel}</span>
+        <span className="block text-xs text-brand-mute">
+          신호 {network.rssi} · CH {network.channel || '-'}{band ? ` · ${band}` : ''}
+          {!compatible ? ' · ESP32 미지원' : ''}
+        </span>
       </span>
-      {selected && <Badge tone="primary">선택</Badge>}
+      {selected ? <Badge tone="primary">선택</Badge> : !compatible ? <Badge tone="warn">5GHz</Badge> : null}
     </button>
   )
 }

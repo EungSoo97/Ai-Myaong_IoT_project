@@ -28,6 +28,7 @@ export function Settings() {
   const [mqttHost, setMqttHost] = useState(() => readLocal(ESP32_MQTT_HOST_KEY, DEFAULT_ESP32_MQTT_HOST))
   const [wifiStatus, setWifiStatus] = useState(null)
   const [networks, setNetworks] = useState([])
+  const [selectedNetwork, setSelectedNetwork] = useState(null)
   const [selectedSsid, setSelectedSsid] = useState('')
   const [wifiPassword, setWifiPassword] = useState('')
   const [networkBusy, setNetworkBusy] = useState(false)
@@ -37,6 +38,8 @@ export function Settings() {
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl])
   useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost])
+
+  const selectedIsCompatible = selectedNetwork?.compatible ?? selectedNetwork?.esp32Compatible ?? true
 
   useEffect(() => {
     refreshWifiStatus()
@@ -86,6 +89,7 @@ export function Settings() {
       }
       const nextNetworks = data.networks || []
       setNetworks(nextNetworks)
+      setSelectedNetwork(null)
       setNetworkMessage(nextNetworks.length ? '검색 완료. 연결할 Wi-Fi를 선택하세요.' : '검색된 Wi-Fi가 없습니다.')
       await refreshWifiStatus({ silent: true })
     } catch (error) {
@@ -98,6 +102,10 @@ export function Settings() {
   async function connectWifi() {
     if (!selectedSsid) {
       setNetworkMessage('연결할 Wi-Fi를 선택해 주세요.')
+      return
+    }
+    if (!selectedIsCompatible) {
+      setNetworkMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
       return
     }
 
@@ -131,6 +139,10 @@ export function Settings() {
   async function applySharedWifi() {
     if (!selectedSsid) {
       setNetworkMessage('같이 적용할 Wi-Fi를 선택해 주세요.')
+      return
+    }
+    if (!selectedIsCompatible) {
+      setNetworkMessage('선택한 Wi-Fi는 ESP32가 지원하지 않습니다. 2.4GHz 네트워크를 선택하세요.')
       return
     }
 
@@ -212,7 +224,7 @@ export function Settings() {
               <Search className="w-4 h-4" />
               스캔
             </PrimaryButton>
-            <GhostButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={connectWifi} disabled={networkBusy}>
+            <GhostButton className="flex-1 py-2.5 rounded-2xl text-sm" onClick={connectWifi} disabled={networkBusy || !selectedIsCompatible}>
               ESP32
             </GhostButton>
           </div>
@@ -220,7 +232,10 @@ export function Settings() {
           <div className="mt-3">
             <input
               value={selectedSsid}
-              onChange={(event) => setSelectedSsid(event.target.value)}
+              onChange={(event) => {
+                setSelectedNetwork(null)
+                setSelectedSsid(event.target.value)
+              }}
               className="w-full rounded-2xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
               placeholder="SSID"
             />
@@ -239,7 +254,7 @@ export function Settings() {
             />
           </div>
 
-          <PrimaryButton className="mt-3 w-full py-2.5 rounded-2xl text-sm" onClick={applySharedWifi} disabled={networkBusy}>
+          <PrimaryButton className="mt-3 w-full py-2.5 rounded-2xl text-sm" onClick={applySharedWifi} disabled={networkBusy || !selectedIsCompatible}>
             <Wifi className="w-4 h-4" />
             라즈베리파이 + ESP32 같이 적용
           </PrimaryButton>
@@ -262,16 +277,32 @@ export function Settings() {
                 <button
                   key={`${network.ssid}-${network.channel}-${index}`}
                   className={`w-full flex items-center gap-3 px-3 py-3 text-left touch-active ${selectedSsid === network.ssid ? 'bg-brand-primary/10' : 'bg-white'}`}
-                  onClick={() => setSelectedSsid(network.ssid)}
+                  onClick={() => {
+                    setSelectedNetwork(network)
+                    setSelectedSsid(network.ssid)
+                    if ((network.compatible ?? network.esp32Compatible ?? true) === false) {
+                      setNetworkMessage('ESP32는 2.4GHz Wi-Fi만 지원합니다. 라즈베리파이와 ESP32를 같이 연결하려면 2.4GHz 네트워크를 선택하세요.')
+                    } else {
+                      setNetworkMessage('')
+                    }
+                  }}
                 >
                   <span className="w-9 h-9 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
                     {network.secure ? <Lock className="w-4 h-4" /> : <Signal className="w-4 h-4" />}
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-brand-brown truncate">{network.ssid || '숨겨진 네트워크'}</span>
-                    <span className="block text-xs text-brand-mute">신호 {network.rssi} dBm · CH {network.channel}</span>
+                    <span className="block text-xs text-brand-mute">
+                      신호 {network.rssi} dBm · CH {network.channel || '-'}
+                      {network.band ? ` · ${network.band}` : ''}
+                      {(network.compatible ?? network.esp32Compatible ?? true) === false ? ' · ESP32 미지원' : ''}
+                    </span>
                   </span>
-                  {selectedSsid === network.ssid && <Badge tone="primary">선택</Badge>}
+                  {selectedSsid === network.ssid ? (
+                    <Badge tone="primary">선택</Badge>
+                  ) : (network.compatible ?? network.esp32Compatible ?? true) === false ? (
+                    <Badge tone="warn">5GHz</Badge>
+                  ) : null}
                 </button>
               ))}
             </div>
