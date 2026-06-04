@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.mqtt.mqtt_client import MqttClient
-from app.routers import feed, network, robot, stream, ws
+from app.routers import device, feed, network, robot, stream, ws
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.robot_service import RobotService
@@ -57,6 +57,7 @@ app.include_router(feed.router)
 app.include_router(stream.router)
 app.include_router(ws.router)  
 app.include_router(network.router)
+app.include_router(device.router)
 
 
 @app.on_event("startup")
