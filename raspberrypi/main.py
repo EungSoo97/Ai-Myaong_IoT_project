@@ -21,6 +21,12 @@ PI_ENV = REPO_ROOT / "raspberrypi" / ".env"
 load_dotenv(REPO_ROOT / "raspberrypi" / ".env", override=True)
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
 DEVICE_ID = os.getenv("DEVICE_ID", "myaong-pi-01")
+WIFI_JOB_STATUS: dict[str, object] = {
+    "state": "idle",
+    "ssid": "",
+    "message": "",
+    "updatedAt": "",
+}
 
 ROBOT_COMMANDS = {
     "FORWARD",
@@ -184,6 +190,7 @@ def _run_wifi_http_server(host: str, port: int) -> None:
             "ssid": current_wifi_ssid(),
             "ip": current_wifi_ip(),
             "source": "raspberrypi",
+            "wifiJob": WIFI_JOB_STATUS,
         }
 
     @app.post("/api/wifi/desktop-backend")
@@ -226,9 +233,13 @@ def _run_wifi_http_server(host: str, port: int) -> None:
         if esp32_setup_url:
             env["ESP32_SETUP_URL"] = esp32_setup_url
 
+        previous_connection = active_wifi_connection()
+        pi_env_backup = PI_ENV.read_text(encoding="utf-8") if PI_ENV.exists() else ""
+        update_wifi_job("running", ssid, "Wi-Fi 변경을 시작했습니다.")
+
         threading.Thread(
             target=run_wifi_setup_job,
-            args=(ssid, password, env),
+            args=(ssid, password, env, previous_connection, pi_env_backup),
             daemon=True,
         ).start()
         return {
@@ -522,7 +533,24 @@ def read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
     return values
 
 
-def run_wifi_setup_job(ssid: str, password: str, env: dict[str, str]) -> None:
+def update_wifi_job(state: str, ssid: str = "", message: str = "") -> None:
+    WIFI_JOB_STATUS.update(
+        {
+            "state": state,
+            "ssid": ssid,
+            "message": message,
+            "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        }
+    )
+
+
+def run_wifi_setup_job(
+    ssid: str,
+    password: str,
+    env: dict[str, str],
+    previous_connection: str,
+    pi_env_backup: str,
+) -> None:
     print(f"[wifi] background Wi-Fi setup started: {ssid}")
     try:
         result = subprocess.run(
@@ -536,6 +564,7 @@ def run_wifi_setup_job(ssid: str, password: str, env: dict[str, str]) -> None:
         )
     except subprocess.TimeoutExpired as exc:
         print("[wifi] background Wi-Fi setup timed out.")
+        update_wifi_job("failed", ssid, "Wi-Fi 변경 시간이 초과되었습니다.")
         if exc.stdout:
             print(exc.stdout)
         if exc.stderr:
@@ -549,11 +578,61 @@ def run_wifi_setup_job(ssid: str, password: str, env: dict[str, str]) -> None:
 
     if result.returncode != 0:
         print(f"[wifi] background Wi-Fi setup failed: {result.returncode}")
+        update_wifi_job("failed", ssid, "Wi-Fi 변경에 실패했습니다.")
         return
 
     print("[wifi] background Wi-Fi setup completed.")
-    register_to_desktop_backend(retries=10, delay=3)
+    if not register_to_desktop_backend(retries=10, delay=3):
+        print("[wifi] desktop backend registration failed after Wi-Fi change; rolling back.")
+        if env.get("ROLLBACK_WIFI_ON_BACKEND_REGISTER_FAILURE", "true").lower() == "true":
+            rollback_wifi_after_registration_failure(previous_connection, pi_env_backup)
+            update_wifi_job("rolled_back", ssid, "백엔드 재등록 실패로 기존 Wi-Fi로 롤백했습니다.")
+        else:
+            update_wifi_job("failed", ssid, "백엔드 재등록에 실패했습니다.")
+        return
+
+    update_wifi_job("completed", ssid, "Wi-Fi 변경과 백엔드 재등록이 완료되었습니다.")
     restart_agent_after_wifi_change()
+
+
+def active_wifi_connection() -> str:
+    if not _command_exists("nmcli"):
+        return ""
+
+    return _command_output(
+        ["bash", "-lc", "nmcli -t -f NAME,DEVICE connection show --active | awk -F: '$2 == \"wlan0\" { print $1; exit }'"]
+    )
+
+
+def rollback_wifi_after_registration_failure(previous_connection: str, pi_env_backup: str) -> None:
+    if pi_env_backup:
+        PI_ENV.write_text(pi_env_backup, encoding="utf-8")
+        print("[wifi] raspberrypi/.env restored after failed backend registration.")
+
+    if not previous_connection:
+        print("[wifi] no previous Wi-Fi connection was saved; rollback skipped.")
+        return
+
+    if not _command_exists("nmcli"):
+        print("[wifi] nmcli was not found; rollback skipped.")
+        return
+
+    timeout = os.getenv("NMCLI_CONNECT_TIMEOUT", "30").strip() or "30"
+    print(f"[wifi] rolling back Raspberry Pi Wi-Fi to: {previous_connection}")
+    subprocess.run(["nmcli", "device", "disconnect", "wlan0"], text=True, capture_output=True, timeout=10, check=False)
+    result = subprocess.run(
+        ["nmcli", "--wait", timeout, "connection", "up", previous_connection],
+        text=True,
+        capture_output=True,
+        timeout=int(timeout) + 10,
+        check=False,
+    )
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
+    if result.returncode != 0:
+        print(f"[wifi] rollback failed: {result.returncode}")
 
 
 def restart_agent_after_wifi_change() -> None:
@@ -609,9 +688,18 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                     method="POST",
                 )
                 with urllib.request.urlopen(request, timeout=5) as response:
-                    response.read()
+                    response_body = response.read().decode("utf-8", "replace")
+                response_data = json.loads(response_body) if response_body else {}
+                if response_data.get("ok") is not True:
+                    last_error = response_body or "backend returned ok=false"
+                    continue
+                if response_data.get("mqttConnected") is False:
+                    last_error = "backend MQTT reconnect failed"
+                    continue
                 print(f"[device] registered Pi IP {pi_ip} to desktop backend {backend_url}")
                 return True
+            except json.JSONDecodeError as exc:
+                last_error = f"invalid backend response: {exc}"
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", "replace")
                 last_error = f"HTTP {exc.code} {body}"

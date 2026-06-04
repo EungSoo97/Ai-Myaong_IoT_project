@@ -25,6 +25,7 @@ class MqttClient:
 
             self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
             self._client.connect(self.host, self.port, keepalive=30)
+            self._subscribe_topics()
             self._client.loop_start()
             self.connected = True
             print(f"[mqtt] connected to {self.host}:{self.port}")
@@ -56,8 +57,9 @@ class MqttClient:
             print(f"[mqtt] publish failed rc={result.rc} {topic} {message}")
         return result.rc == 0
 
-    def reconnect_if_config_changed(self) -> None:
+    def reconnect_if_config_changed(self) -> bool:
         self._restart_if_config_changed()
+        return self.connected
 
     def _refresh_config(self) -> tuple[str, int, bool]:
         self.host = runtime_env("MQTT_BROKER_HOST", "localhost")
@@ -79,3 +81,19 @@ class MqttClient:
         self.stop()
         self.host, self.port, self.simulation_mode = current
         self.start()
+
+    def _subscribe_topics(self) -> None:
+        if not self._client:
+            return
+
+        raw_topics = runtime_env("MQTT_SUBSCRIBE_TOPICS", "").strip()
+        if not raw_topics:
+            return
+
+        for topic in [item.strip() for item in raw_topics.split(",") if item.strip()]:
+            result = self._client.subscribe(topic)
+            rc = result[0] if isinstance(result, tuple) else getattr(result, "rc", 0)
+            if rc == 0:
+                print(f"[mqtt] subscribed: {topic}")
+            else:
+                print(f"[mqtt] subscribe failed rc={rc}: {topic}")

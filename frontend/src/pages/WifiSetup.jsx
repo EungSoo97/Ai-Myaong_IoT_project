@@ -259,9 +259,19 @@ export function WifiSetup() {
         setPiStatus(data)
         const host = data.raspberrypiEnv?.MQTT_BROKER_HOST || data.wifiIp
         if (host) setMqttHost(host)
+        const wifiJob = data.wifiJob || {}
+        if (wifiJob.state === 'rolled_back' || wifiJob.state === 'failed') {
+          clearPendingPiWifi()
+          showMessage(wifiJob.message || `${targetSsid} 연결에 실패했습니다.`)
+          return
+        }
+        if (wifiJob.state === 'running') {
+          showMessage(wifiJob.message || `${targetSsid} 연결 상태를 확인하는 중입니다.`)
+          continue
+        }
         if (data.wifiIp || data.wifiSsid) {
           clearPendingPiWifi()
-          showMessage(data.wifiSsid ? `라즈베리파이가 ${data.wifiSsid}에 다시 연결됐습니다.` : `${targetSsid} 연결 후 라즈베리파이 새 IP를 찾았습니다.`)
+          showMessage(wifiJob.message || (data.wifiSsid ? `라즈베리파이가 ${data.wifiSsid}에 다시 연결됐습니다.` : `${targetSsid} 연결 후 라즈베리파이 새 IP를 찾았습니다.`))
           return
         }
       } catch {

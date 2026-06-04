@@ -41,6 +41,7 @@ def network_status():
         "backendEnv": backend_env,
         "wifiIp": pi_status.get("ip") or backend_env.get("MQTT_BROKER_HOST") or local_wifi_ip,
         "wifiSsid": pi_status.get("ssid") or local_wifi_ssid,
+        "wifiJob": pi_status.get("wifiJob") or {},
         "source": pi_status.get("source") or "local",
     }
 

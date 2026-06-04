@@ -38,13 +38,18 @@ def register_device(data: DeviceRegister, request: Request):
     if data.role in {"raspberrypi", "robot"}:
         _sync_backend_env_from_device(data)
         mqtt_client = getattr(request.app.state, "mqtt_client", None)
+        mqtt_connected = False
         if mqtt_client:
-            mqtt_client.reconnect_if_config_changed()
+            mqtt_connected = mqtt_client.reconnect_if_config_changed()
+    else:
+        mqtt_client = getattr(request.app.state, "mqtt_client", None)
+        mqtt_connected = bool(getattr(mqtt_client, "connected", False))
 
     return {
         "ok": True,
         "device_id": data.device_id,
         "saved": DEVICES[data.device_id],
+        "mqttConnected": mqtt_connected,
         "backendEnv": read_env_values(
             BACKEND_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
