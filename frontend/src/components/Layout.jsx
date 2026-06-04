@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { BottomTabBar } from './BottomTabBar'
 import { OnboardingTour } from './OnboardingTour'
+import { PageTransition } from './PageTransition'
 
 /**
  * 글로벌 모바일 셸.
@@ -41,7 +42,9 @@ export function PrivateLayout() {
     <MobileShell>
       <div className="h-safe-top bg-brand-bg" />
       <main className="flex-1 overflow-y-auto pb-24">
-        <Outlet />
+        <PageTransition>
+          <Outlet />
+        </PageTransition>
       </main>
       <BottomTabBar />
       <OnboardingTour />

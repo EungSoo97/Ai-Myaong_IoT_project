@@ -12,16 +12,24 @@ import {
   MicOff,
   Moon,
   ChevronLeft,
+  ChevronRight,
+  UserX,
+  UtensilsCrossed,
+  MapPin,
+  Play,
+  Clock,
+  X,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
-import { api } from '../api/api'
+import { api, resolveMediaUrl } from '../api/api'
 
+/* 이벤트 로그 — clip_id 로 백엔드 클립(CLIPS) 참조 (활동 기록과 동일 구조) */
 const EVENT_LOG = [
-  { id: 1, type: '움직임 감지', time: '14:22:08', clip: 'clip-001' },
-  { id: 2, type: '배식 동작', time: '13:00:00', clip: 'clip-002' },
-  { id: 3, type: '음성 호출', time: '11:45:12', clip: 'clip-003' },
-  { id: 4, type: '외부인 감지', time: '09:11:55', clip: 'clip-004' },
-  { id: 5, type: '수면 감지', time: '03:20:41', clip: 'clip-005' },
+  { id: 1, type: '움직임 감지', time: '14:22:08', icon: Video, clip_id: 301, location: '거실', duration: 12, storage_path: '/clips/clip-301.mp4' },
+  { id: 2, type: '배식 동작', time: '13:00:00', icon: UtensilsCrossed, clip_id: 302, location: '식기 앞', duration: 6, storage_path: '/clips/clip-302.mp4' },
+  { id: 3, type: '음성 호출', time: '11:45:12', icon: Mic, clip_id: null, location: '집사 호출' },
+  { id: 4, type: '외부인 감지', time: '09:11:55', icon: UserX, clip_id: 304, location: '현관', duration: 9, danger: true, storage_path: '/clips/clip-304.mp4' },
+  { id: 5, type: '수면 감지', time: '03:20:41', icon: Moon, clip_id: 305, location: '안방', duration: 20, storage_path: '/clips/clip-305.mp4' },
 ]
 
 const MOVE_COMMANDS = {
@@ -289,52 +297,35 @@ export function RobotVision() {
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">이벤트 로그</h3>
         <Card className="divide-y divide-brand-line">
-          {EVENT_LOG.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => setSelectedClip(e)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
-            >
-              <span className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${e.type === '수면 감지' ? 'bg-brand-brown/10 text-brand-brown' : 'bg-brand-primary/15 text-brand-primary'}`}>
-                {e.type === '수면 감지' ? <Moon className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-brand-brown">{e.type}</p>
-                <p className="text-xs text-brand-mute">{e.time}</p>
-              </div>
-              <span className="text-[11px] text-brand-primary font-bold">VOD ▶</span>
-            </button>
-          ))}
+          {EVENT_LOG.map((e) => {
+            const Icon = e.icon || Video
+            return (
+              <button
+                key={e.id}
+                onClick={() => setSelectedClip(e)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
+              >
+                <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? 'bg-brand-danger/15 text-brand-danger' : 'bg-brand-primary/15 text-brand-primary'}`}>
+                  <Icon className="w-5 h-5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-brand-brown truncate">{e.type}</p>
+                  <p className="text-xs text-brand-mute truncate">{e.location}{e.clip_id ? '' : ' · 영상 없음'}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Badge tone={e.danger ? 'danger' : 'primary'}>{e.clip_id ? 'VOD' : '기록'}</Badge>
+                  <span className="text-[11px] text-brand-mute">{e.time}</span>
+                  <ChevronRight className="w-4 h-4 text-brand-mute" />
+                </div>
+              </button>
+            )
+          })}
         </Card>
       </section>
 
-      {/* VOD 모달 */}
+      {/* 클립 뷰어 (활동 기록 상세와 동일 형식) */}
       {selectedClip && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4"
-          onClick={() => setSelectedClip(null)}
-        >
-          <div
-            className="w-full max-w-[420px] bg-brand-bg rounded-3xl shadow-soft-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="aspect-video bg-black flex items-center justify-center text-white/70 text-sm">
-              VOD 재생 placeholder · {selectedClip.clip}
-            </div>
-            <div className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-brand-brown">{selectedClip.type}</p>
-                <p className="text-xs text-brand-mute">{selectedClip.time}</p>
-              </div>
-              <button
-                onClick={() => setSelectedClip(null)}
-                className="px-4 py-2 rounded-2xl bg-brand-primary text-white text-sm font-bold active:bg-brand-brown transition-colors"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
+        <ClipModal clip={selectedClip} onClose={() => setSelectedClip(null)} />
       )}
 
       {/* 전체화면 스테이지 - 가로 모드 풀스크린 */}
@@ -441,6 +432,126 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn, strea
         muted
       />
     </>
+  )
+}
+
+/* 클립 뷰어 — 바텀시트 + 실제 영상 재생 (활동 기록 상세와 동일 형식).
+ * 백엔드가 클립을 저장/서빙하면 자동 재생, 미구현 시 placeholder 폴백. */
+function ClipModal({ clip, onClose }) {
+  const [show, setShow] = useState(false)
+  const [videoUrl, setVideoUrl] = useState(null)
+  const [videoFailed, setVideoFailed] = useState(false)
+  const Icon = clip.icon || Video
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShow(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+
+  useEffect(() => {
+    if (!clip?.clip_id) return undefined
+    let alive = true
+    api
+      .getClipUrl(clip.clip_id)
+      .then((u) => { if (alive && u) setVideoUrl(u) })
+      .catch(() => { if (alive && clip.storage_path) setVideoUrl(resolveMediaUrl(clip.storage_path)) })
+    return () => { alive = false }
+  }, [clip])
+
+  const dismiss = () => {
+    setShow(false)
+    setTimeout(onClose, 280)
+  }
+  const hasClip = !!clip?.clip_id
+  const showVideo = hasClip && videoUrl && !videoFailed
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={dismiss}>
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: 'rgba(45,37,32,0.45)', opacity: show ? 1 : 0 }}
+      />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{ transform: show ? 'translateY(0)' : 'translateY(100%)' }}
+      >
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+
+        {/* 헤더 */}
+        <div className="flex items-center gap-3">
+          <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${clip.danger ? 'bg-brand-danger/15 text-brand-danger' : 'bg-brand-primary/15 text-brand-primary'}`}>
+            <Icon className="w-5 h-5" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">{clip.type}</h3>
+            <p className="text-xs text-brand-mute">오늘 {clip.time}</p>
+          </div>
+          <button type="button" onClick={dismiss} aria-label="닫기" className="text-brand-mute touch-active">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 영상 */}
+        <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
+          {hasClip ? (
+            <>
+              {showVideo ? (
+                <video
+                  src={videoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  onError={() => setVideoFailed(true)}
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/80 gap-2">
+                  <span className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+                    <Play className="w-6 h-6 ml-0.5" />
+                  </span>
+                  <span className="text-[11px] font-semibold">영상 준비 중 · 처리되면 자동 재생</span>
+                </div>
+              )}
+              <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
+                <Video className="w-3.5 h-3.5" /> REC
+              </span>
+              <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
+                <MapPin className="w-3.5 h-3.5" /> {clip.location}
+              </span>
+              {!showVideo && clip.duration && (
+                <span className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/55 text-white text-[11px] font-bold tabular-nums pointer-events-none">
+                  00:{String(clip.duration).padStart(2, '0')}
+                </span>
+              )}
+            </>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-white/75 text-sm font-semibold">
+              저장된 영상이 없는 이벤트예요
+            </div>
+          )}
+        </div>
+
+        {/* 메타 */}
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          <div className="rounded-2xl bg-brand-cream p-3.5">
+            <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute"><Clock className="w-4 h-4" /> 탐지 시각</p>
+            <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none">{clip.time}</p>
+          </div>
+          <div className="rounded-2xl bg-brand-cream p-3.5">
+            <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute"><MapPin className="w-4 h-4" /> 위치</p>
+            <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">{clip.location}</p>
+          </div>
+        </div>
+
+        {clip.danger && (
+          <div className="mt-3 rounded-2xl bg-brand-danger/10 p-3.5 flex items-center gap-2">
+            <UserX className="w-5 h-5 text-brand-danger shrink-0" />
+            <p className="text-sm font-bold text-brand-danger">주의가 필요한 감지예요. 영상을 확인해 주세요.</p>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

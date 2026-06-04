@@ -119,9 +119,15 @@ export function Dispenser() {
     setEditing(null)
   }
 
+  const [removingIds, setRemovingIds] = useState([])
   const removeSchedule = (id) => {
-    setSchedule((prev) => prev.filter((x) => x.id !== id))
-    showToast('스케줄이 삭제되었어요')
+    if (removingIds.includes(id)) return
+    setRemovingIds((p) => [...p, id]) // 먼저 접히는 애니메이션
+    setTimeout(() => {
+      setSchedule((prev) => prev.filter((x) => x.id !== id))
+      setRemovingIds((p) => p.filter((x) => x !== id))
+      showToast('스케줄이 삭제되었어요')
+    }, 320)
   }
   const toggleSchedule = (id) =>
     setSchedule((prev) => prev.map((x) => (x.id === id ? { ...x, on: !x.on } : x)))
@@ -224,13 +230,19 @@ export function Dispenser() {
           )}
           {schedule.map((s) => {
             const isFood = s.type === 'food'
+            const removing = removingIds.includes(s.id)
             return (
               <div
                 key={s.id}
+                className="overflow-hidden transition-all duration-300 ease-out"
+                style={{ maxHeight: removing ? 0 : 120, opacity: removing ? 0 : 1 }}
+              >
+              <div
                 onClick={() => openEdit(s)}
                 role="button"
                 tabIndex={0}
-                className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-brand-cream transition-colors"
+                className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-brand-cream transition-transform duration-300"
+                style={{ transform: removing ? 'translateX(-12px)' : 'none' }}
               >
                 {/* 삭제 (작은 ×) */}
                 <button
@@ -266,6 +278,7 @@ export function Dispenser() {
                   <span className="w-12 h-7 rounded-full bg-brand-line peer-checked:bg-brand-primary transition-colors" />
                   <span className="absolute left-1 top-1 w-5 h-5 rounded-full bg-white shadow-soft transition-transform peer-checked:translate-x-5" />
                 </label>
+              </div>
               </div>
             )
           })}

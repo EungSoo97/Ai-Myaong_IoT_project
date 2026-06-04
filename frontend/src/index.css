@@ -167,6 +167,23 @@ body {
   .cat-bob { animation: none; }
 }
 
+/* 탭/라우트 전환 — 은은한 페이드 + 살짝 떠오름 */
+@keyframes pageFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  /* 종료 상태를 transform:none 으로 둬야 내부 position:fixed 모달이
+     이 요소 기준으로 잡히지 않음 (translateY(0) 도 containing block 생성) */
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  /* backwards 사용: 시작 전 from 상태만 적용하고, 끝나면 transform 을 완전히 해제.
+     forwards/both 로 transform 을 "지속"하면 내부 position:fixed 모달이
+     이 요소 기준으로 잡혀 위로 박히는 문제가 생긴다. */
+  animation: pageFadeUp 260ms ease-out backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+}
+
 /* Soft 3D card */
 .soft-card {
   background: rgb(var(--brand-card));

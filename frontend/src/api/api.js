@@ -10,6 +10,12 @@ function resolveStreamUrl(url) {
   return url;
 }
 
+/* 저장된 미디어(클립 등) 경로 → 재생 가능한 절대 URL.
+ * CLIPS.storage_path 같은 상대경로를 API_BASE 기준으로 변환한다. */
+export function resolveMediaUrl(path) {
+  return resolveStreamUrl(path);
+}
+
 async function request(path, options = {}) {
   let response;
   try {
@@ -65,6 +71,12 @@ export const api = {
       }
       throw error;
     }
+  },
+  /* 감지 클립 재생 URL — 백엔드가 영상 저장/서빙하면 동작.
+   * 응답 예: { url } 또는 { storage_path }. 미구현 시 호출 측에서 폴백 처리. */
+  getClipUrl: async (clipId) => {
+    const data = await request(`/api/clips/${clipId}`);
+    return resolveStreamUrl(data.url || data.storage_path || "");
   },
   moveRobot: (command) =>
     request("/api/robot/move", {

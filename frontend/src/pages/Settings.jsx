@@ -12,6 +12,8 @@ import {
   Search,
   Lock,
   Signal,
+  Cpu,
+  Check,
 } from "lucide-react";
 import {
   Card,
@@ -27,6 +29,7 @@ import { api } from "../api/api";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
 const ESP32_MQTT_HOST_KEY = "aimyaong:esp32MqttHost";
+const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
 const DEFAULT_ESP32_SETUP_URL =
   import.meta.env.VITE_ESP32_SETUP_URL || "http://192.168.4.1";
 const DEFAULT_ESP32_MQTT_HOST =
@@ -58,6 +61,20 @@ export function Settings() {
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
   useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost]);
+
+  // 로봇 시리얼 번호 (기기 등록)
+  const [serial, setSerial] = useState(() => readLocal(ROBOT_SERIAL_KEY, ""));
+  const [serialInput, setSerialInput] = useState("");
+  useEffect(() => writeLocal(ROBOT_SERIAL_KEY, serial), [serial]);
+
+  const registerSerial = () => {
+    const v = serialInput.trim().toUpperCase();
+    if (!v) return;
+    setSerial(v);
+    setSerialInput("");
+    // TODO(백엔드): await api.registerDevice(v)
+  };
+  const unregisterSerial = () => setSerial("");
 
   const selectedIsCompatible =
     selectedNetwork?.compatible ?? selectedNetwork?.esp32Compatible ?? true;
@@ -513,20 +530,85 @@ export function Settings() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
           기기 제어
         </h3>
-        <div className="grid grid-cols-2 gap-3">
-          <button className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active">
+
+        {/* 로봇 시리얼 번호 (기기 등록) */}
+        {serial ? (
+          <Card className="px-4 py-4">
+            <div className="flex items-center gap-3">
+              <span className="w-11 h-11 rounded-2xl bg-brand-success/15 text-brand-success flex items-center justify-center shrink-0">
+                <Cpu className="w-5 h-5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold text-brand-success flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> 기기 등록됨
+                </p>
+                <p className="font-display text-base font-bold text-brand-brown tracking-wide truncate">
+                  {serial}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={unregisterSerial}
+                className="text-xs font-bold text-brand-mute px-3 py-1.5 rounded-full bg-brand-cream touch-active shrink-0"
+              >
+                해제
+              </button>
+            </div>
+          </Card>
+        ) : (
+          <Card className="px-4 py-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-brand-mute pl-0.5">
+              <Cpu className="w-4 h-4 text-brand-primary" /> 로봇 시리얼 번호
+            </label>
+            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+              <input
+                value={serialInput}
+                onChange={(e) => setSerialInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && registerSerial()}
+                placeholder="예: AIM-7F3A-22K9"
+                className="min-w-0 rounded-2xl border border-brand-line bg-brand-card px-3 py-2.5 text-sm font-semibold tracking-wide text-brand-brown outline-none focus:border-brand-primary placeholder:font-normal placeholder:text-brand-mute/60"
+              />
+              <PrimaryButton
+                className="px-4 py-2.5 rounded-2xl text-sm disabled:opacity-50"
+                onClick={registerSerial}
+                disabled={!serialInput.trim()}
+              >
+                등록
+              </PrimaryButton>
+            </div>
+            <p className="mt-2 text-[11px] text-brand-mute pl-0.5">
+              기기 밑면 또는 포장 박스의 시리얼 번호를 입력해 주세요.
+            </p>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <button
+            type="button"
+            disabled={!serial}
+            className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active disabled:opacity-50"
+          >
             <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
               <RotateCw className="w-5 h-5" />
             </span>
             <span className="text-sm font-bold text-brand-brown">재부팅</span>
           </button>
-          <button className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active">
+          <button
+            type="button"
+            disabled={!serial}
+            className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active disabled:opacity-50"
+          >
             <span className="w-11 h-11 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center">
               <Power className="w-5 h-5" />
             </span>
             <span className="text-sm font-bold text-brand-brown">전원 Off</span>
           </button>
         </div>
+        {!serial && (
+          <p className="mt-2 px-1 text-[11px] text-brand-mute">
+            기기를 먼저 등록하면 재부팅·전원 제어를 사용할 수 있어요.
+          </p>
+        )}
       </section>
 
       <section className="mt-6">
