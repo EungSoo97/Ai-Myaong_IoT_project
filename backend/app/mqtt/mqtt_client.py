@@ -24,6 +24,7 @@ class MqttClient:
             import paho.mqtt.client as mqtt
 
             self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+            self._client.connect_timeout = 3
             self._client.connect(self.host, self.port, keepalive=30)
             self._subscribe_topics()
             self._client.loop_start()
