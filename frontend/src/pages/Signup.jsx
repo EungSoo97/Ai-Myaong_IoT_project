@@ -1,55 +1,69 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from "react";
 import {
-  Check, ChevronLeft, ChevronRight, User, Smile,
-  PawPrint, Dog, Cat, Calendar, Scale, Ruler, Camera, Plus,
-  PartyPopper, Trash2, Pencil,
-} from 'lucide-react'
-import { GoogleButton } from '../components/GoogleButton'
-import { EmailVerifyField } from '../components/EmailVerifyField'
-import { DateWheel } from '../components/DateWheel'
-import { PasswordField, isStrongPassword } from '../components/PasswordField'
-import { saveAccount } from '../lib/accountRepository'
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  User,
+  Smile,
+  PawPrint,
+  Dog,
+  Cat,
+  Calendar,
+  Scale,
+  Ruler,
+  Camera,
+  Plus,
+  PartyPopper,
+  Trash2,
+  Pencil,
+} from "lucide-react";
+import { GoogleButton } from "../components/GoogleButton";
+import { EmailVerifyField } from "../components/EmailVerifyField";
+import { DateWheel } from "../components/DateWheel";
+import { PasswordField, isStrongPassword } from "../components/PasswordField";
+import { saveAccount } from "../lib/accountRepository";
+import { api } from "../api/api";
 
 /* Warm-tone 팔레트 (Login.jsx 와 동일) */
 const C = {
-  bg: '#FFF3E2',
-  card: '#FFFFFF',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  primaryDeep: '#D6814A',
-  outline: '#2D2520',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
-}
+  bg: "#FFF3E2",
+  card: "#FFFFFF",
+  input: "#FFF6E9",
+  border: "#F1DEC2",
+  brown: "#5C3D1F",
+  mute: "#A98A6B",
+  primary: "#F2A06A",
+  primaryDeep: "#D6814A",
+  outline: "#2D2520",
+  danger: "#E26D5C",
+  ok: "#7FB28A",
+};
 
 /* 단계 메타 (약관 동의 단계 제거 → 유저 정보부터 시작) */
 const STEPS = [
-  { key: 'user', label: '정보 입력' },
-  { key: 'pet', label: '펫 정보' },
-]
-const STEP_USER = 0
-const STEP_PET = 1
+  { key: "user", label: "정보 입력" },
+  { key: "pet", label: "펫 정보" },
+];
+const STEP_USER = 0;
+const STEP_PET = 1;
 
 /* 오늘 날짜 (생년월일 미래 선택 방지용) */
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = new Date().toISOString().slice(0, 10);
 
 /* 빈 펫 객체 — 초기값 & Reset 용 */
 const emptyPet = () => ({
-  name: '',
-  species: 'DOG',
-  breed: '',
-  gender: 'M',
-  birthDate: '',
-  weightKg: '',
-  heightCm: '',
-  circumference: '', // (선택) 고양이: 갈비뼈 둘레 / 강아지: 골반 둘레 (cm)
-  legLength: '',     // (선택) 하퇴골 길이 (cm) — 체지방률 계산용
-  photo: '',     // Base64 미리보기 문자열
-  notes: '',
-})
+  name: "",
+  species: "DOG",
+  breed: "",
+  gender: "M",
+  birthDate: "",
+  weightKg: "",
+  heightCm: "",
+  circumference: "", // (선택) 고양이: 갈비뼈 둘레 / 강아지: 골반 둘레 (cm)
+  legLength: "", // (선택) 하퇴골 길이 (cm) — 체지방률 계산용
+  photo: "", // Base64 미리보기 문자열
+  notes: "",
+});
 
 /**
  * 다중 단계 회원가입 (프론트 전용).
@@ -58,137 +72,222 @@ const emptyPet = () => ({
  */
 export default function Signup({ onComplete, onBackToLogin }) {
   // 화면 전환: 'signup' → 'done'
-  const [screen, setScreen] = useState('signup')
-  const [step, setStep] = useState(0)
+  const [screen, setScreen] = useState("signup");
+  const [step, setStep] = useState(0);
 
   // 상위 폼 상태
   const [userInfo, setUserInfo] = useState({
-    userId: '',          // 로그인용 아이디
-    password: '',
-    passwordConfirm: '',
-    email: '',           // 아이디/비밀번호 찾기용 이메일
-    nickname: '',
-  })
-  const [emailVerified, setEmailVerified] = useState(false) // 이메일 인증 완료 여부
-  const [provider, setProvider] = useState('email')         // 'email' | 'google'
-  const [pet, setPet] = useState(emptyPet())   // 펫 1마리
+    userId: "", // 로그인용 아이디
+    password: "",
+    passwordConfirm: "",
+    email: "", // 아이디/비밀번호 찾기용 이메일
+    nickname: "",
+  });
+  const [emailVerified, setEmailVerified] = useState(false); // 이메일 인증 완료 여부
+  const [provider, setProvider] = useState("email"); // 'email' | 'google'
+  const [pet, setPet] = useState(emptyPet()); // 펫 1마리
 
-  const [finalPayload, setFinalPayload] = useState(null) // 완료 화면용
-  const [err, setErr] = useState('')
+  const [finalPayload, setFinalPayload] = useState(null); // 완료 화면용
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false); // 추가
 
-  const [fieldErrors, setFieldErrors] = useState({}) // 빈/잘못된 칸 강조용
+  const [fieldErrors, setFieldErrors] = useState({}); // 빈/잘못된 칸 강조용
 
-  const clearFieldError = (k) => setFieldErrors((p) => (p[k] ? { ...p, [k]: false } : p))
+  const clearFieldError = (k) =>
+    setFieldErrors((p) => (p[k] ? { ...p, [k]: false } : p));
 
-  const setUser = (k, v) => { setUserInfo((p) => ({ ...p, [k]: v })); clearFieldError(k) }
-  const setPetField = (k, v) => { setPet((p) => ({ ...p, [k]: v })); clearFieldError(k) }
+  const setUser = (k, v) => {
+    setUserInfo((p) => ({ ...p, [k]: v }));
+    clearFieldError(k);
+  };
+  const setPetField = (k, v) => {
+    setPet((p) => ({ ...p, [k]: v }));
+    clearFieldError(k);
+  };
 
-  const handleEmailVerified = (v) => { setEmailVerified(v); if (v) clearFieldError('email') }
+  const handleEmailVerified = (v) => {
+    setEmailVerified(v);
+    if (v) clearFieldError("email");
+  };
 
   /* 구글 빠른 가입 (mock): 이메일/닉네임/아이디 프리필 + 이메일 인증 완료 처리 */
   const handleGoogleSignup = (profile) => {
-    setErr('')
-    setFieldErrors({})
+    setErr("");
+    setFieldErrors({});
     setUserInfo((p) => ({
       ...p,
       email: profile.email,
       nickname: p.nickname || profile.name,
-      userId: p.userId || profile.email.split('@')[0],
-    }))
-    setEmailVerified(true) // 구글이 인증한 이메일 → 별도 인증번호 불필요
-    setProvider('google')
-  }
+      userId: p.userId || profile.email.split("@")[0],
+    }));
+    setEmailVerified(true); // 구글이 인증한 이메일 → 별도 인증번호 불필요
+    setProvider("google");
+  };
 
   /* ── 현재 단계에서 비었거나 잘못된 항목 수집 ── */
   const getStepIssues = () => {
     if (step === STEP_USER) {
       return [
-        { key: 'userId', bad: !userInfo.userId.trim(), msg: '아이디를 입력해 주세요.' },
-        { key: 'password', bad: !isStrongPassword(userInfo.password), msg: '비밀번호는 8자 이상이며 영문·숫자·특수문자를 포함해야 합니다.' },
-        { key: 'passwordConfirm', bad: !userInfo.passwordConfirm || userInfo.password !== userInfo.passwordConfirm, msg: '비밀번호 확인이 일치하지 않습니다.' },
-        { key: 'email', bad: !userInfo.email.includes('@') || !emailVerified, msg: '이메일 인증을 완료해 주세요.' },
-        { key: 'nickname', bad: !userInfo.nickname.trim(), msg: '닉네임을 입력해 주세요.' },
-      ]
+        {
+          key: "userId",
+          bad: !userInfo.userId.trim(),
+          msg: "아이디를 입력해 주세요.",
+        },
+        {
+          key: "password",
+          bad: !isStrongPassword(userInfo.password),
+          msg: "비밀번호는 8자 이상이며 영문·숫자·특수문자를 포함해야 합니다.",
+        },
+        {
+          key: "passwordConfirm",
+          bad:
+            !userInfo.passwordConfirm ||
+            userInfo.password !== userInfo.passwordConfirm,
+          msg: "비밀번호 확인이 일치하지 않습니다.",
+        },
+        {
+          key: "email",
+          bad: !userInfo.email.includes("@") || !emailVerified,
+          msg: "이메일 인증을 완료해 주세요.",
+        },
+        {
+          key: "nickname",
+          bad: !userInfo.nickname.trim(),
+          msg: "닉네임을 입력해 주세요.",
+        },
+      ];
     }
     if (step === STEP_PET) {
       return [
-        { key: 'name', bad: !pet.name.trim(), msg: '펫 이름을 입력해 주세요.' },
-        { key: 'breed', bad: !pet.breed.trim(), msg: '품종을 입력해 주세요.' },
-        { key: 'birthDate', bad: !!pet.birthDate && pet.birthDate > TODAY, msg: '생년월일은 오늘 이후로 선택할 수 없어요.' },
-      ]
+        { key: "name", bad: !pet.name.trim(), msg: "펫 이름을 입력해 주세요." },
+        { key: "breed", bad: !pet.breed.trim(), msg: "품종을 입력해 주세요." },
+        {
+          key: "birthDate",
+          bad: !!pet.birthDate && pet.birthDate > TODAY,
+          msg: "생년월일은 오늘 이후로 선택할 수 없어요.",
+        },
+      ];
     }
-    return []
-  }
+    return [];
+  };
 
   const next = () => {
-    const failing = getStepIssues().filter((c) => c.bad)
+    const failing = getStepIssues().filter((c) => c.bad);
     if (failing.length) {
-      const fe = {}
-      failing.forEach((c) => { fe[c.key] = true })
-      setFieldErrors(fe)
-      setErr(failing.length > 1 ? '입력하지 않았거나 올바르지 않은 항목이 있어요.' : failing[0].msg)
-      return
+      const fe = {};
+      failing.forEach((c) => {
+        fe[c.key] = true;
+      });
+      setFieldErrors(fe);
+      setErr(
+        failing.length > 1
+          ? "입력하지 않았거나 올바르지 않은 항목이 있어요."
+          : failing[0].msg,
+      );
+      return;
     }
-    setFieldErrors({})
-    setErr('')
-    setStep((s) => Math.min(s + 1, STEPS.length - 1))
-  }
+    setFieldErrors({});
+    setErr("");
+    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  };
 
   const prev = () => {
-    setErr('')
-    setFieldErrors({})
-    setStep((s) => Math.max(s - 1, 0))
-  }
+    setErr("");
+    setFieldErrors({});
+    setStep((s) => Math.max(s - 1, 0));
+  };
 
   /* 최종 가입: 페이로드 조립 → console + localStorage */
-  const finish = () => {
-    const failing = getStepIssues().filter((c) => c.bad) // 펫 단계 검증
+  const finish = async () => {
+    const failing = getStepIssues().filter((c) => c.bad);
     if (failing.length) {
-      const fe = {}
-      failing.forEach((c) => { fe[c.key] = true })
-      setFieldErrors(fe)
-      setErr(failing.length > 1 ? '입력하지 않았거나 올바르지 않은 항목이 있어요.' : failing[0].msg)
-      return
+      const fe = {};
+      failing.forEach((c) => {
+        fe[c.key] = true;
+      });
+      setFieldErrors(fe);
+      setErr(
+        failing.length > 1
+          ? "입력하지 않았거나 올바르지 않은 항목이 있어요."
+          : failing[0].msg,
+      );
+      return;
     }
 
-    const { passwordConfirm, ...user } = userInfo // 확인용 필드는 페이로드에서 제외
-    const payload = {
-      provider, // 'email' | 'google'
-      user,
-      pets: [pet], // 펫 1마리
-      createdAt: new Date().toISOString(),
+    setLoading(true);
+    setErr("");
+    try {
+      const result = await api.signup({
+        username: userInfo.userId,
+        email: userInfo.email,
+        password: userInfo.password,
+        nickname: userInfo.nickname,
+        pets: [
+          {
+            name: pet.name,
+            species: pet.species,
+            breed: pet.breed,
+            gender: pet.gender,
+            birth_date: pet.birthDate || null,
+            weight_kg: pet.weightKg ? Number(pet.weightKg) : null,
+            height_cm: pet.heightCm ? Number(pet.heightCm) : null,
+            circumference: pet.circumference ? Number(pet.circumference) : null,
+            leg_length: pet.legLength ? Number(pet.legLength) : null,
+          },
+        ],
+      });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      saveAccount({
+        provider,
+        user: { ...userInfo },
+        pets: [pet],
+        createdAt: new Date().toISOString(),
+      });
+      setFinalPayload({ provider, user: userInfo, pets: [pet] });
+      setScreen("done");
+    } catch (e) {
+      setErr(e.message || "가입 중 오류가 발생했어요.");
+    } finally {
+      setLoading(false);
     }
-
-    console.log('%c[Signup] 백엔드 전송 페이로드', 'color:#D6814A;font-weight:bold')
-    console.log(JSON.stringify(payload, null, 2))
-
-    // 데이터 계층에 저장 (내일 백엔드 붙으면 repository 내부만 교체)
-    saveAccount(payload)
-
-    setFinalPayload(payload)
-    setScreen('done')
-  }
+  };
 
   /* ───────── 환영 로딩 화면 ───────── */
-  if (screen === 'welcome') {
-    return <WelcomeSplash nickname={finalPayload?.user?.nickname} onDone={onComplete} />
+  if (screen === "welcome") {
+    return (
+      <WelcomeSplash
+        nickname={finalPayload?.user?.nickname}
+        onDone={onComplete}
+      />
+    );
   }
 
   /* ───────── 완료(가상 대시보드) 화면 ───────── */
-  if (screen === 'done' && finalPayload) {
-    return <DonePanel payload={finalPayload} onGo={() => setScreen('welcome')} />
+  if (screen === "done" && finalPayload) {
+    return (
+      <DonePanel payload={finalPayload} onGo={() => setScreen("welcome")} />
+    );
   }
 
   /* ───────── 회원가입 단계 화면 ───────── */
   return (
-    <div className="font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden" style={{ background: C.bg }}>
+    <div
+      className="font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
+      style={{ background: C.bg }}
+    >
       {/* 상단 고정: 브랜드 + 단계 인디케이터 */}
       <div className="shrink-0 px-5 pt-6 sm:px-8">
         <div className="text-center">
-          <h1 className="font-display text-3xl font-bold tracking-tight" style={{ color: C.brown }}>
+          <h1
+            className="font-display text-3xl font-bold tracking-tight"
+            style={{ color: C.brown }}
+          >
             Ai<span style={{ color: C.primary }}>:</span>Myaong
           </h1>
-          <p className="mt-1 text-sm font-semibold" style={{ color: C.mute }}>회원가입</p>
+          <p className="mt-1 text-sm font-semibold" style={{ color: C.mute }}>
+            회원가입
+          </p>
           {onBackToLogin && step === STEP_USER && (
             <button
               type="button"
@@ -219,23 +318,42 @@ export default function Signup({ onComplete, onBackToLogin }) {
               errors={fieldErrors}
             />
           )}
-          {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
+          {step === STEP_PET && (
+            <PetStep
+              pet={pet}
+              setPetField={setPetField}
+              count={0}
+              errors={fieldErrors}
+            />
+          )}
 
-          {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
+          {err && (
+            <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>
+              {err}
+            </p>
+          )}
         </div>
       </div>
 
       {/* 하단 고정: 네비게이션 */}
       <div
         className="shrink-0 flex gap-3 px-5 pt-4 sm:px-8"
-        style={{ background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.75rem)' }}
+        style={{
+          background: C.bg,
+          borderTop: `1px solid ${C.border}`,
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 1.75rem)",
+        }}
       >
         {step > 0 && (
           <button
             type="button"
             onClick={prev}
             className="inline-flex items-center justify-center gap-1 rounded-2xl px-6 py-4 text-base font-bold transition-colors active:brightness-95"
-            style={{ background: C.input, color: C.brown, border: `1.5px solid ${C.border}` }}
+            style={{
+              background: C.input,
+              color: C.brown,
+              border: `1.5px solid ${C.border}`,
+            }}
           >
             <ChevronLeft className="w-5 h-5" /> 이전
           </button>
@@ -264,7 +382,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
         )}
       </div>
     </div>
-  )
+  );
 }
 
 /* ─────────────── 단계 인디케이터 ─────────────── */
@@ -272,8 +390,8 @@ function Stepper({ step }) {
   return (
     <div className="mt-5 flex items-center justify-center gap-2">
       {STEPS.map((s, i) => {
-        const active = i === step
-        const done = i < step
+        const active = i === step;
+        const done = i < step;
         return (
           <div key={s.key} className="flex items-center gap-2">
             <div className="flex flex-col items-center">
@@ -281,31 +399,47 @@ function Stepper({ step }) {
                 className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors"
                 style={{
                   background: active ? C.primary : done ? C.ok : C.input,
-                  color: active || done ? '#fff' : C.mute,
+                  color: active || done ? "#fff" : C.mute,
                   border: `1.5px solid ${active ? C.primary : done ? C.ok : C.border}`,
                 }}
               >
                 {done ? <Check className="w-4 h-4" /> : i + 1}
               </div>
-              <span className="mt-1.5 text-xs font-bold" style={{ color: active ? C.brown : C.mute }}>
+              <span
+                className="mt-1.5 text-xs font-bold"
+                style={{ color: active ? C.brown : C.mute }}
+              >
                 {s.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className="w-6 h-0.5 rounded-full mb-5" style={{ background: done ? C.ok : C.border }} />
+              <div
+                className="w-6 h-0.5 rounded-full mb-5"
+                style={{ background: done ? C.ok : C.border }}
+              />
             )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 /* ─────────────── Step 1 · 유저 정보 ─────────────── */
-function UserStep({ userInfo, setUser, emailVerified, setEmailVerified, onGoogle, errors = {} }) {
+function UserStep({
+  userInfo,
+  setUser,
+  emailVerified,
+  setEmailVerified,
+  onGoogle,
+  errors = {},
+}) {
   return (
     <div>
-      <SectionTitle icon={<User className="w-5 h-5" />} title="회원 정보를 입력해 주세요" />
+      <SectionTitle
+        icon={<User className="w-5 h-5" />}
+        title="회원 정보를 입력해 주세요"
+      />
 
       {/* 구글 빠른 가입 */}
       <div className="mt-5">
@@ -313,31 +447,60 @@ function UserStep({ userInfo, setUser, emailVerified, setEmailVerified, onGoogle
       </div>
       <Divider />
 
-      <Field icon={<User className="w-5 h-5" />} label="아이디" value={userInfo.userId}
-        onChange={(v) => setUser('userId', v)} placeholder="로그인에 사용할 아이디" invalid={errors.userId} />
-      <PasswordField label="비밀번호" value={userInfo.password}
-        onChange={(v) => setUser('password', v)} invalid={errors.password} />
-      <PasswordField label="비밀번호 확인" value={userInfo.passwordConfirm}
-        onChange={(v) => setUser('passwordConfirm', v)} placeholder="비밀번호 재입력" showStrength={false} invalid={errors.passwordConfirm} />
+      <Field
+        icon={<User className="w-5 h-5" />}
+        label="아이디"
+        value={userInfo.userId}
+        onChange={(v) => setUser("userId", v)}
+        placeholder="로그인에 사용할 아이디"
+        invalid={errors.userId}
+      />
+      <PasswordField
+        label="비밀번호"
+        value={userInfo.password}
+        onChange={(v) => setUser("password", v)}
+        invalid={errors.password}
+      />
+      <PasswordField
+        label="비밀번호 확인"
+        value={userInfo.passwordConfirm}
+        onChange={(v) => setUser("passwordConfirm", v)}
+        placeholder="비밀번호 재입력"
+        showStrength={false}
+        invalid={errors.passwordConfirm}
+      />
       {userInfo.passwordConfirm && (
-        <p className="mt-1.5 text-xs font-bold pl-1"
-          style={{ color: userInfo.password === userInfo.passwordConfirm ? C.ok : C.danger }}>
-          {userInfo.password === userInfo.passwordConfirm ? '✓ 비밀번호가 일치해요' : '비밀번호가 일치하지 않아요'}
+        <p
+          className="mt-1.5 text-xs font-bold pl-1"
+          style={{
+            color:
+              userInfo.password === userInfo.passwordConfirm ? C.ok : C.danger,
+          }}
+        >
+          {userInfo.password === userInfo.passwordConfirm
+            ? "✓ 비밀번호가 일치해요"
+            : "비밀번호가 일치하지 않아요"}
         </p>
       )}
       <EmailVerifyField
         email={userInfo.email}
-        onEmailChange={(v) => setUser('email', v)}
+        onEmailChange={(v) => setUser("email", v)}
         verified={emailVerified}
         onVerifiedChange={setEmailVerified}
         label="이메일"
         hint="아이디/비밀번호 찾기에 사용돼요."
         invalid={errors.email}
       />
-      <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={userInfo.nickname}
-        onChange={(v) => setUser('nickname', v)} placeholder="집사 이름" invalid={errors.nickname} />
+      <Field
+        icon={<Smile className="w-5 h-5" />}
+        label="닉네임"
+        value={userInfo.nickname}
+        onChange={(v) => setUser("nickname", v)}
+        placeholder="집사 이름"
+        invalid={errors.nickname}
+      />
     </div>
-  )
+  );
 }
 
 /* "또는" 구분선 */
@@ -345,29 +508,35 @@ function Divider() {
   return (
     <div className="mt-5 flex items-center gap-3">
       <div className="flex-1 h-px" style={{ background: C.border }} />
-      <span className="text-xs font-bold" style={{ color: C.mute }}>또는</span>
+      <span className="text-xs font-bold" style={{ color: C.mute }}>
+        또는
+      </span>
       <div className="flex-1 h-px" style={{ background: C.border }} />
     </div>
-  )
+  );
 }
 
 /* ─────────────── Step 2 · 펫 정보 ─────────────── */
 function PetStep({ pet, setPetField, count, errors = {} }) {
-  const fileRef = useRef(null)
+  const fileRef = useRef(null);
 
   const onPickImage = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setPetField('photo', reader.result) // Base64
-    reader.readAsDataURL(file)
-  }
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPetField("photo", reader.result); // Base64
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div>
       <SectionTitle
         icon={<PawPrint className="w-5 h-5" />}
-        title={count === 0 ? '반려동물을 등록해 주세요' : `${count + 1}번째 반려동물 등록`}
+        title={
+          count === 0
+            ? "반려동물을 등록해 주세요"
+            : `${count + 1}번째 반려동물 등록`
+        }
       />
 
       {/* 프로필 이미지 미리보기 */}
@@ -379,54 +548,119 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
           style={{ background: C.input, border: `2px dashed ${C.border}` }}
         >
           {pet.photo ? (
-            <img src={pet.photo} alt="펫 미리보기" className="w-full h-full object-cover" />
+            <img
+              src={pet.photo}
+              alt="펫 미리보기"
+              className="w-full h-full object-cover"
+            />
           ) : (
             <Camera className="w-8 h-8" style={{ color: C.mute }} />
           )}
           <span
             className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: C.primary, border: '2px solid #fff' }}
+            style={{ background: C.primary, border: "2px solid #fff" }}
           >
             <Camera className="w-4 h-4 text-white" />
           </span>
         </button>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={onPickImage}
+          className="hidden"
+        />
       </div>
 
-      <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
-        onChange={(v) => setPetField('name', v)} placeholder="예: 나비" invalid={errors.name} />
+      <Field
+        icon={<PawPrint className="w-5 h-5" />}
+        label="이름"
+        value={pet.name}
+        onChange={(v) => setPetField("name", v)}
+        placeholder="예: 나비"
+        invalid={errors.name}
+      />
 
       {/* 종류 (DOG / CAT) */}
       <FieldLabel>종류</FieldLabel>
       <div className="mt-1.5 grid grid-cols-2 gap-2.5">
-        <SegBtn active={pet.species === 'DOG'} onClick={() => setPetField('species', 'DOG')}
-          icon={<Dog className="w-5 h-5" />} label="강아지" />
-        <SegBtn active={pet.species === 'CAT'} onClick={() => setPetField('species', 'CAT')}
-          icon={<Cat className="w-5 h-5" />} label="고양이" />
+        <SegBtn
+          active={pet.species === "DOG"}
+          onClick={() => setPetField("species", "DOG")}
+          icon={<Dog className="w-5 h-5" />}
+          label="강아지"
+        />
+        <SegBtn
+          active={pet.species === "CAT"}
+          onClick={() => setPetField("species", "CAT")}
+          icon={<Cat className="w-5 h-5" />}
+          label="고양이"
+        />
       </div>
 
-      <Field icon={<PawPrint className="w-5 h-5" />} label="품종" value={pet.breed}
-        onChange={(v) => setPetField('breed', v)} placeholder="예: 코리안숏헤어" invalid={errors.breed} />
+      <Field
+        icon={<PawPrint className="w-5 h-5" />}
+        label="품종"
+        value={pet.breed}
+        onChange={(v) => setPetField("breed", v)}
+        placeholder="예: 코리안숏헤어"
+        invalid={errors.breed}
+      />
 
       {/* 성별 */}
       <FieldLabel>성별</FieldLabel>
       <div className="mt-1.5 grid grid-cols-2 gap-2.5">
-        <SegBtn active={pet.gender === 'M'} onClick={() => setPetField('gender', 'M')} label="♂ 수컷" />
-        <SegBtn active={pet.gender === 'F'} onClick={() => setPetField('gender', 'F')} label="♀ 암컷" />
+        <SegBtn
+          active={pet.gender === "M"}
+          onClick={() => setPetField("gender", "M")}
+          label="♂ 수컷"
+        />
+        <SegBtn
+          active={pet.gender === "F"}
+          onClick={() => setPetField("gender", "F")}
+          label="♀ 암컷"
+        />
       </div>
 
       <FieldLabel>생년월일</FieldLabel>
       <div className="mt-1.5">
-        <DateWheel value={pet.birthDate} onChange={(v) => setPetField('birthDate', v)} />
+        <DateWheel
+          value={pet.birthDate}
+          onChange={(v) => setPetField("birthDate", v)}
+        />
       </div>
-      <Field icon={<Scale className="w-5 h-5" />} label="몸무게 (kg)" value={pet.weightKg}
-        onChange={(v) => setPetField('weightKg', v)} placeholder="예: 4.2" type="number" />
-      <Field icon={<Ruler className="w-5 h-5" />} label="키 (cm)" value={pet.heightCm}
-        onChange={(v) => setPetField('heightCm', v)} placeholder="예: 25" type="number" />
-      <Field icon={<Ruler className="w-5 h-5" />} label={`${pet.species === 'CAT' ? '갈비뼈 둘레' : '골반 둘레'} (cm)`} value={pet.circumference}
-        onChange={(v) => setPetField('circumference', v)} placeholder="선택 · 예: 32" type="number" />
-      <Field icon={<Ruler className="w-5 h-5" />} label="하퇴골 길이 (cm)" value={pet.legLength}
-        onChange={(v) => setPetField('legLength', v)} placeholder="선택 · 예: 12" type="number" />
+      <Field
+        icon={<Scale className="w-5 h-5" />}
+        label="몸무게 (kg)"
+        value={pet.weightKg}
+        onChange={(v) => setPetField("weightKg", v)}
+        placeholder="예: 4.2"
+        type="number"
+      />
+      <Field
+        icon={<Ruler className="w-5 h-5" />}
+        label="키 (cm)"
+        value={pet.heightCm}
+        onChange={(v) => setPetField("heightCm", v)}
+        placeholder="예: 25"
+        type="number"
+      />
+      <Field
+        icon={<Ruler className="w-5 h-5" />}
+        label={`${pet.species === "CAT" ? "갈비뼈 둘레" : "골반 둘레"} (cm)`}
+        value={pet.circumference}
+        onChange={(v) => setPetField("circumference", v)}
+        placeholder="선택 · 예: 32"
+        type="number"
+      />
+      <Field
+        icon={<Ruler className="w-5 h-5" />}
+        label="하퇴골 길이 (cm)"
+        value={pet.legLength}
+        onChange={(v) => setPetField("legLength", v)}
+        placeholder="선택 · 예: 12"
+        type="number"
+      />
       <p className="mt-1.5 text-xs pl-1" style={{ color: C.mute }}>
         둘레·하퇴골 길이를 입력하면 체지방률이 자동 계산돼요. (선택)
       </p>
@@ -435,45 +669,58 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
       <FieldLabel>특이사항</FieldLabel>
       <textarea
         value={pet.notes}
-        onChange={(e) => setPetField('notes', e.target.value)}
+        onChange={(e) => setPetField("notes", e.target.value)}
         rows={3}
         placeholder="알러지, 복용 약, 성격 등"
         className="font-sans mt-1.5 w-full rounded-2xl px-4 py-4 text-base outline-none resize-none placeholder:opacity-60"
-        style={{ background: C.input, border: `1.5px solid ${C.border}`, color: C.brown }}
+        style={{
+          background: C.input,
+          border: `1.5px solid ${C.border}`,
+          color: C.brown,
+        }}
       />
     </div>
-  )
+  );
 }
 
 /* ─────────────── 환영 로딩 스플래시 ─────────────── */
 const WELCOME_MESSAGES = [
-  '집사님 맞이할 준비 중…',
-  '사료 그릇 반짝반짝 닦는 중 🍚',
-  '포근한 낮잠 자리 데우는 중 😴',
-  '꼬리 흔드는 연습 중 🐾',
-  '거의 다 왔어요! 🐶🐱',
-]
+  "집사님 맞이할 준비 중…",
+  "사료 그릇 반짝반짝 닦는 중 🍚",
+  "포근한 낮잠 자리 데우는 중 😴",
+  "꼬리 흔드는 연습 중 🐾",
+  "거의 다 왔어요! 🐶🐱",
+];
 
 function WelcomeSplash({ nickname, onDone }) {
-  const [msgIdx, setMsgIdx] = useState(0)
+  const [msgIdx, setMsgIdx] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setMsgIdx((i) => (i + 1) % WELCOME_MESSAGES.length)
-    }, 650)
-    const done = setTimeout(onDone, 2800)
-    return () => { clearInterval(interval); clearTimeout(done) }
-  }, [onDone])
+      setMsgIdx((i) => (i + 1) % WELCOME_MESSAGES.length);
+    }, 650);
+    const done = setTimeout(onDone, 2800);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(done);
+    };
+  }, [onDone]);
 
   return (
-    <div className="font-cute flex-1 flex flex-col items-center justify-center h-[100dvh] px-8 text-center" style={{ background: C.bg }}>
+    <div
+      className="font-cute flex-1 flex flex-col items-center justify-center h-[100dvh] px-8 text-center"
+      style={{ background: C.bg }}
+    >
       <style>{`@keyframes wmFill{from{width:0%}to{width:100%}}`}</style>
 
       {/* 통통 튀는 발바닥 */}
       <div className="text-7xl animate-bounce">🐾</div>
 
-      <h1 className="mt-6 font-display text-3xl font-bold" style={{ color: C.brown }}>
-        {nickname ? `${nickname}님, 환영해요!` : '환영해요!'}
+      <h1
+        className="mt-6 font-display text-3xl font-bold"
+        style={{ color: C.brown }}
+      >
+        {nickname ? `${nickname}님, 환영해요!` : "환영해요!"}
       </h1>
 
       {/* 회전 문구 */}
@@ -482,25 +729,44 @@ function WelcomeSplash({ nickname, onDone }) {
       </p>
 
       {/* 진행 바 */}
-      <div className="mt-7 w-full max-w-[240px] h-2.5 rounded-full overflow-hidden" style={{ background: C.border }}>
-        <div className="h-full rounded-full" style={{ background: C.primary, animation: 'wmFill 2.8s ease-out forwards' }} />
+      <div
+        className="mt-7 w-full max-w-[240px] h-2.5 rounded-full overflow-hidden"
+        style={{ background: C.border }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{
+            background: C.primary,
+            animation: "wmFill 2.8s ease-out forwards",
+          }}
+        />
       </div>
 
-      <p className="mt-4 text-xs" style={{ color: C.mute }}>잠시만 기다려 주세요 🐈</p>
+      <p className="mt-4 text-xs" style={{ color: C.mute }}>
+        잠시만 기다려 주세요 🐈
+      </p>
     </div>
-  )
+  );
 }
 
 /* ─────────────── 완료(가상 대시보드) ─────────────── */
 function DonePanel({ payload, onGo }) {
   return (
-    <div className="font-cute flex-1 flex flex-col h-[100dvh] overflow-y-auto px-5 pt-10 pb-8 sm:px-8" style={{ background: C.bg }}>
+    <div
+      className="font-cute flex-1 flex flex-col h-[100dvh] overflow-y-auto px-5 pt-10 pb-8 sm:px-8"
+      style={{ background: C.bg }}
+    >
       <div className="text-center">
-        <div className="mx-auto w-20 h-20 rounded-full flex items-center justify-center"
-          style={{ background: C.primary }}>
+        <div
+          className="mx-auto w-20 h-20 rounded-full flex items-center justify-center"
+          style={{ background: C.primary }}
+        >
           <PartyPopper className="w-10 h-10 text-white" />
         </div>
-        <h1 className="mt-5 font-display text-2xl font-bold" style={{ color: C.brown }}>
+        <h1
+          className="mt-5 font-display text-2xl font-bold"
+          style={{ color: C.brown }}
+        >
           {payload.user.nickname} 님, 환영해요!
         </h1>
         <p className="mt-1.5 text-sm font-semibold" style={{ color: C.mute }}>
@@ -508,20 +774,46 @@ function DonePanel({ payload, onGo }) {
         </p>
       </div>
 
-      <div className="mt-6 rounded-3xl p-5 shadow-lg" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-        <p className="text-sm font-bold tracking-widest uppercase" style={{ color: C.primary }}>내 반려동물</p>
+      <div
+        className="mt-6 rounded-3xl p-5 shadow-lg"
+        style={{ background: C.card, border: `1px solid ${C.border}` }}
+      >
+        <p
+          className="text-sm font-bold tracking-widest uppercase"
+          style={{ color: C.primary }}
+        >
+          내 반려동물
+        </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           {payload.pets.map((p, i) => (
-            <div key={i} className="rounded-2xl p-4 text-center" style={{ background: C.input, border: `1px solid ${C.border}` }}>
-              <div className="mx-auto w-20 h-20 rounded-full overflow-hidden flex items-center justify-center"
-                style={{ background: '#fff', border: `1px solid ${C.border}` }}>
-                {p.photo
-                  ? <img src={p.photo} alt={p.name} className="w-full h-full object-cover" />
-                  : <PawPrint className="w-7 h-7" style={{ color: C.mute }} />}
+            <div
+              key={i}
+              className="rounded-2xl p-4 text-center"
+              style={{ background: C.input, border: `1px solid ${C.border}` }}
+            >
+              <div
+                className="mx-auto w-20 h-20 rounded-full overflow-hidden flex items-center justify-center"
+                style={{ background: "#fff", border: `1px solid ${C.border}` }}
+              >
+                {p.photo ? (
+                  <img
+                    src={p.photo}
+                    alt={p.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <PawPrint className="w-7 h-7" style={{ color: C.mute }} />
+                )}
               </div>
-              <p className="mt-2.5 text-base font-bold" style={{ color: C.brown }}>{p.name}</p>
+              <p
+                className="mt-2.5 text-base font-bold"
+                style={{ color: C.brown }}
+              >
+                {p.name}
+              </p>
               <p className="text-sm" style={{ color: C.mute }}>
-                {p.species === 'DOG' ? '강아지' : '고양이'} · {p.weightKg || '?'}kg
+                {p.species === "DOG" ? "강아지" : "고양이"} ·{" "}
+                {p.weightKg || "?"}kg
               </p>
             </div>
           ))}
@@ -538,10 +830,11 @@ function DonePanel({ payload, onGo }) {
       </button>
 
       <p className="mt-4 text-center text-sm" style={{ color: C.mute }}>
-        페이로드는 콘솔 & localStorage(<code>aimyaong:signup</code>)에 저장되었어요.
+        페이로드는 콘솔 & localStorage(<code>aimyaong:signup</code>)에
+        저장되었어요.
       </p>
     </div>
-  )
+  );
 }
 
 /* ─────────────── 공통 UI ─────────────── */
@@ -549,22 +842,52 @@ function SectionTitle({ icon, title }) {
   return (
     <div className="flex items-center gap-2">
       <span style={{ color: C.primary }}>{icon}</span>
-      <h2 className="text-xl font-bold" style={{ color: C.brown }}>{title}</h2>
+      <h2 className="text-xl font-bold" style={{ color: C.brown }}>
+        {title}
+      </h2>
     </div>
-  )
+  );
 }
 
 function FieldLabel({ children }) {
-  return <span className="mt-5 block text-sm font-bold pl-1" style={{ color: C.mute }}>{children}</span>
+  return (
+    <span
+      className="mt-5 block text-sm font-bold pl-1"
+      style={{ color: C.mute }}
+    >
+      {children}
+    </span>
+  );
 }
 
-function Field({ icon, label, value, onChange, type = 'text', placeholder, invalid, max }) {
+function Field({
+  icon,
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  invalid,
+  max,
+}) {
   return (
     <label className="mt-5 block">
-      <span className="text-sm font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>{label}</span>
-      <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
-        style={{ background: invalid ? '#FDECE9' : C.input, border: `1.5px solid ${invalid ? C.danger : C.border}` }}>
-        {icon && <span style={{ color: invalid ? C.danger : C.mute }}>{icon}</span>}
+      <span
+        className="text-sm font-bold pl-1"
+        style={{ color: invalid ? C.danger : C.mute }}
+      >
+        {label}
+      </span>
+      <div
+        className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
+        style={{
+          background: invalid ? "#FDECE9" : C.input,
+          border: `1.5px solid ${invalid ? C.danger : C.border}`,
+        }}
+      >
+        {icon && (
+          <span style={{ color: invalid ? C.danger : C.mute }}>{icon}</span>
+        )}
         <input
           type={type}
           value={value}
@@ -576,7 +899,7 @@ function Field({ icon, label, value, onChange, type = 'text', placeholder, inval
         />
       </div>
     </label>
-  )
+  );
 }
 
 function SegBtn({ active, onClick, icon, label }) {
@@ -587,11 +910,12 @@ function SegBtn({ active, onClick, icon, label }) {
       className="inline-flex items-center justify-center gap-1.5 rounded-2xl py-4 text-base font-bold transition-colors active:brightness-95"
       style={{
         background: active ? C.primary : C.input,
-        color: active ? '#fff' : C.brown,
+        color: active ? "#fff" : C.brown,
         border: `1.5px solid ${active ? C.primary : C.border}`,
       }}
     >
-      {icon}{label}
+      {icon}
+      {label}
     </button>
-  )
+  );
 }

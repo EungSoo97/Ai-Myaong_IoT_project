@@ -17,21 +17,23 @@ class PetCreate(BaseModel):
 
 
 class SignupRequest(BaseModel):
+    username: str
     email: EmailStr
     password: str
-    nickname: str
+    nickname: Optional[str] = None
     pets: List[PetCreate] = []
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 
 class UserResponse(BaseModel):
     user_id: int
+    username: Optional[str] = None
     email: str
-    nickname: str
+    nickname: Optional[str] = None
 
     class Config:
         from_attributes = True

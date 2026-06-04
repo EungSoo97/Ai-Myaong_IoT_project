@@ -1,11 +1,13 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey,Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
 
+
 class Pet(Base):
     __tablename__ = "PETS"
+    pet_id = Column(Integer, Identity(start=1), primary_key=True)
 
-    pet_id         = Column(Integer, primary_key=True, autoincrement=True)
+    # pet_id         = Column(Integer, primary_key=True, autoincrement=True)
     user_id        = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     name           = Column(String(50),  nullable=False)
     species        = Column(String(50),  nullable=True)

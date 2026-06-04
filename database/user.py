@@ -1,12 +1,14 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
 from datetime import datetime
 
+
 class User(Base):
     __tablename__ = "USERS"
+    user_id = Column(Integer, Identity(start=1), primary_key=True)
 
-    user_id            = Column(Integer, primary_key=True, autoincrement=True)
+    # user_id            = Column(Integer, primary_key=True, autoincrement=True)
     username           = Column(String(50),  nullable=True,  unique=True)   # 일반 로그인 아이디
     email              = Column(String(100), nullable=False, unique=True)
     password           = Column(String(255), nullable=True)                 # 소셜 전용 계정은 null

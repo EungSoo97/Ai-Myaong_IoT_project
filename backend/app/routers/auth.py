@@ -1,3 +1,11 @@
+import database.alerts
+import database.clips
+import database.detection_logs
+import database.emergency_clips
+import database.feed_logs
+import database.pet_health_reports
+import database.settings
+import database.water_logs
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,6 +15,7 @@ from database.base import get_db
 from database.user import User
 from database.pets import Pet
 
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
@@ -14,13 +23,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def signup(body: SignupRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
+    if db.query(User).filter(User.username == body.username).first():
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
 
     user = User(
+        username=body.username,
         email=body.email,
         password=hash_password(body.password),
+        nickname=body.nickname,
     )
     db.add(user)
-    db.flush()  # user_id 획득
+    db.flush()
 
     for pet_data in body.pets:
         pet = Pet(
@@ -43,20 +56,20 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
     token = create_access_token(user.user_id, user.email)
     return AuthResponse(
         access_token=token,
-        user=UserResponse(user_id=user.user_id, email=user.email, nickname=user.email),
+        user=UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname),
     )
 
 
 @router.post("/login", response_model=AuthResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email).first()
-    if not user or not verify_password(body.password, user.password):
-        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    user = db.query(User).filter(User.username == body.username).first()
+    if not user or not user.password or not verify_password(body.password, user.password):
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다.")
 
     token = create_access_token(user.user_id, user.email)
     return AuthResponse(
         access_token=token,
-        user=UserResponse(user_id=user.user_id, email=user.email, nickname=user.email),
+        user=UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname),
     )
 
 
@@ -70,6 +83,4 @@ def me(token: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
-    return UserResponse(user_id=user.user_id, email=user.email, nickname=user.email)
-
-# 참고: USERS 테이블에 nickname 컬럼 없어서 지금은 email을 nickname으로 대신 쓴다. 나중에 컬럼 추가하면 교체하면 됨.
+    return UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname)
