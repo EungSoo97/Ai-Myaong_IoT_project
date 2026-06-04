@@ -120,6 +120,14 @@ export default function Signup({ onComplete, onBackToLogin }) {
     return []
   }
 
+  // 첫 번째 오류 칸으로 스크롤 (data-field 속성 기준)
+  const scrollToField = (key) => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-field="${key}"]`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+
   const next = () => {
     const failing = getStepIssues().filter((c) => c.bad)
     if (failing.length) {
@@ -127,6 +135,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
       failing.forEach((c) => { fe[c.key] = true })
       setFieldErrors(fe)
       setErr(failing.length > 1 ? '입력하지 않았거나 올바르지 않은 항목이 있어요.' : failing[0].msg)
+      scrollToField(failing[0].key)
       return
     }
     setFieldErrors({})
@@ -148,6 +157,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
       failing.forEach((c) => { fe[c.key] = true })
       setFieldErrors(fe)
       setErr(failing.length > 1 ? '입력하지 않았거나 올바르지 않은 항목이 있어요.' : failing[0].msg)
+      scrollToField(failing[0].key)
       return
     }
 
@@ -232,16 +242,20 @@ export default function Signup({ onComplete, onBackToLogin }) {
             />
           )}
           {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
-
-          {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
         </div>
       </div>
 
-      {/* 하단 고정: 네비게이션 */}
+      {/* 하단 고정: 에러 + 네비게이션 */}
       <div
-        className="shrink-0 flex gap-3 px-5 pt-4 sm:px-8"
+        className="shrink-0 px-5 pt-3 sm:px-8"
         style={{ background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.75rem)' }}
       >
+        {err && (
+          <p className="mb-2.5 text-center text-sm font-bold" style={{ color: C.danger }}>
+            {err}
+          </p>
+        )}
+        <div className="flex gap-3">
         {step > 0 && (
           <button
             type="button"
@@ -274,6 +288,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
             <Check className="w-5 h-5" /> 가입 완료
           </button>
         )}
+        </div>
       </div>
     </div>
   )
@@ -325,29 +340,39 @@ function UserStep({ userInfo, setUser, emailVerified, setEmailVerified, onGoogle
       </div>
       <Divider />
 
-      <Field icon={<User className="w-5 h-5" />} label="아이디" value={userInfo.userId}
-        onChange={(v) => setUser('userId', v)} placeholder="로그인에 사용할 아이디" invalid={errors.userId} />
-      <PasswordField label="비밀번호" value={userInfo.password}
-        onChange={(v) => setUser('password', v)} invalid={errors.password} />
-      <PasswordField label="비밀번호 확인" value={userInfo.passwordConfirm}
-        onChange={(v) => setUser('passwordConfirm', v)} placeholder="비밀번호 재입력" showStrength={false} invalid={errors.passwordConfirm} />
-      {userInfo.passwordConfirm && (
-        <p className="mt-1.5 text-xs font-bold pl-1"
-          style={{ color: userInfo.password === userInfo.passwordConfirm ? C.ok : C.danger }}>
-          {userInfo.password === userInfo.passwordConfirm ? '✓ 비밀번호가 일치해요' : '비밀번호가 일치하지 않아요'}
-        </p>
-      )}
-      <EmailVerifyField
-        email={userInfo.email}
-        onEmailChange={(v) => setUser('email', v)}
-        verified={emailVerified}
-        onVerifiedChange={setEmailVerified}
-        label="이메일"
-        hint="아이디/비밀번호 찾기에 사용돼요."
-        invalid={errors.email}
-      />
-      <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={userInfo.nickname}
-        onChange={(v) => setUser('nickname', v)} placeholder="집사 이름" invalid={errors.nickname} />
+      <div data-field="userId">
+        <Field icon={<User className="w-5 h-5" />} label="아이디" value={userInfo.userId}
+          onChange={(v) => setUser('userId', v)} placeholder="로그인에 사용할 아이디" invalid={errors.userId} />
+      </div>
+      <div data-field="password">
+        <PasswordField label="비밀번호" value={userInfo.password}
+          onChange={(v) => setUser('password', v)} invalid={errors.password} />
+      </div>
+      <div data-field="passwordConfirm">
+        <PasswordField label="비밀번호 확인" value={userInfo.passwordConfirm}
+          onChange={(v) => setUser('passwordConfirm', v)} placeholder="비밀번호 재입력" showStrength={false} invalid={errors.passwordConfirm} />
+        {userInfo.passwordConfirm && (
+          <p className="mt-1.5 text-xs font-bold pl-1"
+            style={{ color: userInfo.password === userInfo.passwordConfirm ? C.ok : C.danger }}>
+            {userInfo.password === userInfo.passwordConfirm ? '✓ 비밀번호가 일치해요' : '비밀번호가 일치하지 않아요'}
+          </p>
+        )}
+      </div>
+      <div data-field="email">
+        <EmailVerifyField
+          email={userInfo.email}
+          onEmailChange={(v) => setUser('email', v)}
+          verified={emailVerified}
+          onVerifiedChange={setEmailVerified}
+          label="이메일"
+          hint="아이디/비밀번호 찾기에 사용돼요."
+          invalid={errors.email}
+        />
+      </div>
+      <div data-field="nickname">
+        <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={userInfo.nickname}
+          onChange={(v) => setUser('nickname', v)} placeholder="집사 이름" invalid={errors.nickname} />
+      </div>
     </div>
   )
 }
@@ -405,8 +430,10 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
       </div>
 
-      <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
-        onChange={(v) => setPetField('name', v)} placeholder="예: 나비" invalid={errors.name} />
+      <div data-field="name">
+        <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
+          onChange={(v) => setPetField('name', v)} placeholder="예: 나비" invalid={errors.name} />
+      </div>
 
       {/* 종류 (DOG / CAT) */}
       <FieldLabel>종류</FieldLabel>
@@ -417,8 +444,10 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
           icon={<Cat className="w-5 h-5" />} label="고양이" />
       </div>
 
-      <Field icon={<PawPrint className="w-5 h-5" />} label="품종" value={pet.breed}
-        onChange={(v) => setPetField('breed', v)} placeholder="예: 코리안숏헤어" invalid={errors.breed} />
+      <div data-field="breed">
+        <Field icon={<PawPrint className="w-5 h-5" />} label="품종" value={pet.breed}
+          onChange={(v) => setPetField('breed', v)} placeholder="예: 코리안숏헤어" invalid={errors.breed} />
+      </div>
 
       {/* 성별 */}
       <FieldLabel>성별</FieldLabel>
@@ -427,9 +456,11 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         <SegBtn active={pet.gender === 'F'} onClick={() => setPetField('gender', 'F')} label="♀ 암컷" />
       </div>
 
-      <FieldLabel>생년월일</FieldLabel>
-      <div className="mt-1.5">
-        <DateWheel value={pet.birthDate} onChange={(v) => setPetField('birthDate', v)} />
+      <div data-field="birthDate">
+        <FieldLabel>생년월일</FieldLabel>
+        <div className="mt-1.5">
+          <DateWheel value={pet.birthDate} onChange={(v) => setPetField('birthDate', v)} />
+        </div>
       </div>
       <Field icon={<Scale className="w-5 h-5" />} label="몸무게 (kg)" value={pet.weightKg}
         onChange={(v) => setPetField('weightKg', v)} placeholder="예: 4.2" type="number" />

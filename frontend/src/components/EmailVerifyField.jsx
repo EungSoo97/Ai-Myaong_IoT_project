@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Mail, Check, Clock } from 'lucide-react'
 import { sendVerificationEmail, emailjsConfigured } from '../lib/sendVerificationEmail'
 
@@ -39,6 +39,7 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
   const [sending, setSending] = useState(false)
   const [deadline, setDeadline] = useState(null) // 만료 시각(ms) or null
   const [remaining, setRemaining] = useState(0)  // 남은 초
+  const failRef = useRef(0)                       // 연속 발송 실패 횟수
 
   // 만료 카운트다운
   useEffect(() => {
@@ -79,13 +80,23 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
     setSending(true)
     try {
       await sendVerificationEmail(email, c)
+      failRef.current = 0
       setSentCode(c)
       setCode('')
       setNotice('인증번호를 이메일로 보냈어요. 메일함(스팸함)을 확인해 주세요.')
       startTimer()
     } catch (e) {
       console.error('[EmailVerifyField] 발송 실패', e)
-      setError('메일 발송에 실패했어요. 잠시 후 다시 시도해 주세요.')
+      failRef.current += 1
+      if (failRef.current >= 5) {
+        // 5회 연속 실패 → 가입이 막히지 않도록 임시 인증번호(화면 표시)로 폴백
+        setSentCode(c)
+        setCode('')
+        setNotice(`메일 발송이 계속 실패해 임시 인증번호로 진행해요: ${c}`)
+        startTimer()
+      } else {
+        setError(`메일 발송에 실패했어요. 다시 시도해 주세요. (${failRef.current}/5)`)
+      }
     } finally {
       setSending(false)
     }
