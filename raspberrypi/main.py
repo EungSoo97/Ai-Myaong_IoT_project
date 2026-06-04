@@ -51,12 +51,14 @@ class RaspberryPiAgent:
         self.mqtt_username = os.getenv("MQTT_USERNAME")
         self.mqtt_password = os.getenv("MQTT_PASSWORD")
         self.client_id = os.getenv("MQTT_CLIENT_ID", "ai-myaong-raspberrypi")
+        self.reconnect_delay = float(os.getenv("MQTT_RECONNECT_DELAY", "5"))
         self.topics = tuple(
             topic.strip()
             for topic in os.getenv("MQTT_TOPICS", "robot/move,robot/camera").split(",")
             if topic.strip()
         )
         self._client = None
+        self._stopping = threading.Event()
 
     def start(self) -> None:
         try:
@@ -78,11 +80,19 @@ class RaspberryPiAgent:
         client.on_connect = self.on_connect
         client.on_disconnect = self.on_disconnect
         client.on_message = self.on_message
+        client.reconnect_delay_set(min_delay=1, max_delay=max(2, int(self.reconnect_delay)))
         print(f"[raspberrypi] connecting to MQTT broker {self.mqtt_host}:{self.mqtt_port}")
 
         try:
-            client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
-            client.loop_forever()
+            while not self._stopping.is_set():
+                try:
+                    client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
+                    client.loop_forever(retry_first_connection=True)
+                except KeyboardInterrupt:
+                    raise
+                except Exception as exc:
+                    print(f"[raspberrypi] MQTT reconnect failed: {exc}")
+                    time.sleep(self.reconnect_delay)
         except KeyboardInterrupt:
             print("[raspberrypi] stopped by user")
         finally:
@@ -90,6 +100,7 @@ class RaspberryPiAgent:
             self.serial.close()
 
     def stop(self, *_args) -> None:
+        self._stopping.set()
         if self._client:
             self._client.disconnect()
 
@@ -587,6 +598,16 @@ def run_wifi_setup_job(
         return
 
     print("[wifi] background Wi-Fi setup completed.")
+    network_ok, network_error = validate_network_after_wifi_change()
+    if not network_ok:
+        print(f"[wifi] network validation failed after Wi-Fi change; rolling back. {network_error}")
+        if env.get("ROLLBACK_WIFI_ON_BACKEND_REGISTER_FAILURE", "true").lower() == "true":
+            rollback_wifi_after_registration_failure(previous_connection, pi_env_backup)
+            update_wifi_job("rolled_back", ssid, f"네트워크 확인 실패로 기존 Wi-Fi로 롤백했습니다. {network_error}")
+        else:
+            update_wifi_job("failed", ssid, f"네트워크 확인에 실패했습니다. {network_error}")
+        return
+
     registered, register_error = register_to_desktop_backend(retries=10, delay=3)
     # if not registered:
     #     print(f"[wifi] desktop backend registration failed after Wi-Fi change; rolling back. {register_error}")
@@ -602,6 +623,46 @@ def run_wifi_setup_job(
         return
     update_wifi_job("completed", ssid, "Wi-Fi 변경과 백엔드 재등록이 완료되었습니다.")
     restart_agent_after_wifi_change()
+
+
+def validate_network_after_wifi_change() -> tuple[bool, str]:
+    ip = current_wifi_ip()
+    if not ip:
+        return False, "wlan0 IP를 확인하지 못했습니다."
+
+    if os.getenv("WIFI_VALIDATE_GATEWAY", "true").lower() == "true":
+        gateway = default_gateway()
+        if not gateway:
+            return False, "기본 게이트웨이를 확인하지 못했습니다."
+        if not ping_host(gateway, timeout=3):
+            return False, f"게이트웨이({gateway})에 연결할 수 없습니다."
+
+    internet_host = os.getenv("WIFI_VALIDATE_INTERNET_HOST", "").strip()
+    if internet_host and not ping_host(internet_host, timeout=4):
+        return False, f"인터넷 확인 대상({internet_host})에 연결할 수 없습니다."
+
+    return True, ""
+
+
+def default_gateway() -> str:
+    if not _command_exists("ip"):
+        return ""
+
+    return _command_output(["bash", "-lc", "ip route show default 2>/dev/null | awk '{print $3; exit}'"])
+
+
+def ping_host(host: str, timeout: int = 3) -> bool:
+    if not host or not _command_exists("ping"):
+        return False
+
+    result = subprocess.run(
+        ["ping", "-c", "1", "-W", str(timeout), host],
+        text=True,
+        capture_output=True,
+        timeout=timeout + 2,
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def active_wifi_connection() -> str:
