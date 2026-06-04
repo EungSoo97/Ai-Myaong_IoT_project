@@ -22,4 +22,5 @@ class Pet(Base):
     alerts = relationship("Alert", back_populates="pet")
     detection_logs = relationship("DetectionLog",    back_populates="pet")
     feed_logs      = relationship("FeedLog",         back_populates="pet")
+    water_logs     = relationship("WaterLog",        back_populates="pet")
     health_reports = relationship("PetHealthReport", back_populates="pet")
