@@ -1,19 +1,12 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "SCRIPT_DIR=%~dp0"
-if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-set "REPO_ROOT=%SCRIPT_DIR%"
-if not exist "%REPO_ROOT%\.python-version" (
-  pushd "%SCRIPT_DIR%\.." >nul || exit /b 1
-  set "REPO_ROOT=%CD%"
-  popd >nul
-)
+set "REPO_ROOT=%~dp0"
+if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
 set "EXIT_CODE=0"
 set "AUTO_PAUSE=0"
-if defined CODEX_NO_PAUSE set "AUTO_PAUSE=0"
 echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
-if not errorlevel 1 if not defined CODEX_NO_PAUSE set "AUTO_PAUSE=1"
+if not errorlevel 1 set "AUTO_PAUSE=1"
 
 set /p PYTHON_VERSION=<"%REPO_ROOT%\.python-version"
 set /p NODE_VERSION=<"%REPO_ROOT%\.nvmrc"

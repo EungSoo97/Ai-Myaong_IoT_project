@@ -5,29 +5,22 @@ set "TARGET=%~1"
 if not defined TARGET set "TARGET=all"
 set "EXIT_CODE=0"
 set "AUTO_PAUSE=0"
-if defined CODEX_NO_PAUSE set "AUTO_PAUSE=0"
 echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
-if not errorlevel 1 if not defined CODEX_NO_PAUSE set "AUTO_PAUSE=1"
+if not errorlevel 1 set "AUTO_PAUSE=1"
 
-set "SCRIPT_DIR=%~dp0"
-if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-set "REPO_ROOT=%SCRIPT_DIR%"
-if not exist "%REPO_ROOT%\.python-version" (
-  pushd "%SCRIPT_DIR%\.." >nul || exit /b 1
-  set "REPO_ROOT=%CD%"
-  popd >nul
-)
+set "REPO_ROOT=%~dp0"
+if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
 set /p EXPECTED_PYTHON=<"%REPO_ROOT%\.python-version"
 set /p EXPECTED_NODE=<"%REPO_ROOT%\.nvmrc"
 
 if /I "%TARGET%"=="backend" call :check_python_target backend Backend || set "EXIT_CODE=1"
 if /I "%TARGET%"=="desktop" call :check_python_target desktop Desktop || set "EXIT_CODE=1"
-if /I "%TARGET%"=="raspberrypi" call :check_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
+if /I "%TARGET%"=="raspberrypi" call :check_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
 if /I "%TARGET%"=="frontend" call :check_node_target || set "EXIT_CODE=1"
 if /I "%TARGET%"=="all" (
   call :check_python_target backend Backend || set "EXIT_CODE=1"
   call :check_python_target desktop Desktop || set "EXIT_CODE=1"
-  call :check_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
+  call :check_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
   call :check_node_target || set "EXIT_CODE=1"
 )
 
@@ -66,31 +59,14 @@ if /I "%CURRENT_PYTHON%"=="%EXPECTED_PYTHON%" (
   echo Python status: expected %EXPECTED_PYTHON%, current %CURRENT_PYTHON%
 )
 
-if /I "%TARGET_KEY%"=="backend" (
-  "%VENV_PY%" -c "import fastapi; print('FastAPI:', fastapi.__version__)" 2>nul
-  if errorlevel 1 echo FastAPI: not installed
-  "%VENV_PY%" -c "import cv2; print('OpenCV:', cv2.__version__)" 2>nul
-  if errorlevel 1 echo OpenCV: not installed
+"%VENV_PY%" -c "import cv2; print('OpenCV:', cv2.__version__)" 2>nul
+if errorlevel 1 (
+  echo OpenCV: not installed
 )
 
-if /I "%TARGET_KEY%"=="desktop" (
-  "%VENV_PY%" -c "import cv2; print('OpenCV:', cv2.__version__)" 2>nul
-  if errorlevel 1 echo OpenCV: not installed
-  "%VENV_PY%" -c "import ultralytics; print('Ultralytics:', ultralytics.__version__)" 2>nul
-  if errorlevel 1 echo Ultralytics: not installed
-  "%VENV_PY%" -c "import requests; print('Requests:', requests.__version__)" 2>nul
-  if errorlevel 1 echo Requests: not installed
-)
-
-if /I "%TARGET_KEY%"=="raspberrypi" (
-  "%VENV_PY%" -c "import fastapi; print('FastAPI:', fastapi.__version__)" 2>nul
-  if errorlevel 1 echo FastAPI: not installed
-  "%VENV_PY%" -c "import uvicorn; print('Uvicorn:', uvicorn.__version__)" 2>nul
-  if errorlevel 1 echo Uvicorn: not installed
-  "%VENV_PY%" -c "import paho.mqtt.client; print('Paho MQTT: installed')" 2>nul
-  if errorlevel 1 echo Paho MQTT: not installed
-  "%VENV_PY%" -c "import serial; print('PySerial:', serial.VERSION)" 2>nul
-  if errorlevel 1 echo PySerial: not installed
+"%VENV_PY%" -c "import ultralytics; print('Ultralytics:', ultralytics.__version__)" 2>nul
+if errorlevel 1 (
+  echo Ultralytics: not installed
 )
 
 exit /b 0

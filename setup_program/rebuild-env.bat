@@ -5,18 +5,11 @@ set "TARGET=%~1"
 if not defined TARGET set "TARGET=all"
 set "EXIT_CODE=0"
 set "AUTO_PAUSE=0"
-if defined CODEX_NO_PAUSE set "AUTO_PAUSE=0"
 echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
-if not errorlevel 1 if not defined CODEX_NO_PAUSE set "AUTO_PAUSE=1"
+if not errorlevel 1 set "AUTO_PAUSE=1"
 
-set "SCRIPT_DIR=%~dp0"
-if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-set "REPO_ROOT=%SCRIPT_DIR%"
-if not exist "%REPO_ROOT%\.python-version" (
-  pushd "%SCRIPT_DIR%\.." >nul || exit /b 1
-  set "REPO_ROOT=%CD%"
-  popd >nul
-)
+set "REPO_ROOT=%~dp0"
+if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
 set /p EXPECTED_PYTHON=<"%REPO_ROOT%\.python-version"
 set /p EXPECTED_NODE=<"%REPO_ROOT%\.nvmrc"
 set "NEED_BACKEND=0"
@@ -27,11 +20,11 @@ set "CODEX_NO_PAUSE=1"
 
 if /I "%TARGET%"=="backend" call :prepare_python_target backend Backend || set "EXIT_CODE=1"
 if /I "%TARGET%"=="desktop" call :prepare_python_target desktop Desktop || set "EXIT_CODE=1"
-if /I "%TARGET%"=="raspberrypi" call :prepare_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
+if /I "%TARGET%"=="raspberrypi" call :prepare_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
 if /I "%TARGET%"=="all" (
   call :prepare_python_target backend Backend || set "EXIT_CODE=1"
   call :prepare_python_target desktop Desktop || set "EXIT_CODE=1"
-  call :prepare_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
+  call :prepare_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
 )
 if "%EXIT_CODE%"=="1" goto finish
 
@@ -93,7 +86,7 @@ if /I "%CHECK_KEY%"=="desktop" (
 )
 
 if /I "%CHECK_KEY%"=="raspberrypi" (
-  "%CHECK_VENV_PY%" -c "import fastapi, uvicorn, serial, dotenv, paho.mqtt.client" 1>nul 2>nul
+  "%CHECK_VENV_PY%" -c "import flask, serial, dotenv" 1>nul 2>nul
   exit /b %ERRORLEVEL%
 )
 
@@ -108,7 +101,7 @@ if not "%CURRENT_NEED%"=="1" (
   goto finish
 )
 echo Rebuilding %TARGET% environment...
-call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target %TARGET%
+call "%REPO_ROOT%\setup-python-venv.bat" -Target %TARGET%
 set "EXIT_CODE=%ERRORLEVEL%"
 goto finish
 
@@ -134,7 +127,7 @@ if not "%NEED_FRONTEND%"=="1" (
   set "EXIT_CODE=0"
   goto finish
 )
-call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target frontend
+call "%REPO_ROOT%\setup-python-venv.bat" -Target frontend
 set "EXIT_CODE=%ERRORLEVEL%"
 goto finish
 
@@ -156,10 +149,10 @@ if errorlevel 1 (
   echo [Frontend]
   echo Existing frontend dependencies look valid. Keeping node_modules
 )
-if "%NEED_BACKEND%"=="1" call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target backend || set "EXIT_CODE=1"
-if "%NEED_DESKTOP%"=="1" call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target desktop || set "EXIT_CODE=1"
-if "%NEED_RASPBERRYPI%"=="1" call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target raspberrypi || set "EXIT_CODE=1"
-if "%NEED_FRONTEND%"=="1" call "%REPO_ROOT%\setup_program\setup-python-venv.bat" -Target frontend || set "EXIT_CODE=1"
+if "%NEED_BACKEND%"=="1" call "%REPO_ROOT%\setup-python-venv.bat" -Target backend || set "EXIT_CODE=1"
+if "%NEED_DESKTOP%"=="1" call "%REPO_ROOT%\setup-python-venv.bat" -Target desktop || set "EXIT_CODE=1"
+if "%NEED_RASPBERRYPI%"=="1" call "%REPO_ROOT%\setup-python-venv.bat" -Target raspberrypi || set "EXIT_CODE=1"
+if "%NEED_FRONTEND%"=="1" call "%REPO_ROOT%\setup-python-venv.bat" -Target frontend || set "EXIT_CODE=1"
 if "%NEED_BACKEND%%NEED_DESKTOP%%NEED_RASPBERRYPI%%NEED_FRONTEND%"=="0000" (
   echo All environments are already valid. Skipping rebuild.
   set "EXIT_CODE=0"

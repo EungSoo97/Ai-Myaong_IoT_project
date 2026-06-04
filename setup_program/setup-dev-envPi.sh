@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SKIP_INSTALL=0
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="$REPO_ROOT/raspberrypi/.venv"
 VENV_PYTHON="$VENV_PATH/bin/python"
 REQUIREMENTS="$REPO_ROOT/raspberrypi/requirements.txt"

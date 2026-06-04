@@ -3,14 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$SCRIPT_DIR/../raspberrypi"
-
-if [[ -f "$PROJECT_PATH/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$PROJECT_PATH/.env"
-  set +a
-fi
-
 PORT="${MQTT_BROKER_PORT:-1883}"
 BIND_ADDRESS="${MQTT_BROKER_BIND_ADDRESS:-0.0.0.0}"
 BROKER_PID=""
@@ -91,34 +83,18 @@ start_broker_if_needed
 
 cd "$PROJECT_PATH"
 
-pick_python() {
-  if command -v python3.11 >/dev/null 2>&1; then
-    echo "python3.11"
-  elif command -v python3 >/dev/null 2>&1; then
-    echo "python3"
-  else
-    echo "python"
-  fi
-}
-
-if [[ ! -x ".venv/bin/python" ]]; then
-  PYTHON_FOR_VENV="$(pick_python)"
-  echo "[raspberrypi] creating Python virtual environment with $PYTHON_FOR_VENV..."
-  "$PYTHON_FOR_VENV" -m venv .venv
-fi
-
-PYTHON_BIN=".venv/bin/python"
-
-if ! "$PYTHON_BIN" -c "import fastapi, uvicorn" >/dev/null 2>&1; then
-  echo "[raspberrypi] installing Python dependencies..."
-  "$PYTHON_BIN" -m pip install --upgrade pip
-  "$PYTHON_BIN" -m pip install -r requirements.txt
+if [[ -x ".venv/bin/python" ]]; then
+  PYTHON_BIN=".venv/bin/python"
+elif command -v python3.11 >/dev/null 2>&1; then
+  PYTHON_BIN="python3.11"
+else
+  PYTHON_BIN="python3"
 fi
 
 if [[ -n "${CAMERA_PYTHON_BIN:-}" ]]; then
   STREAM_PYTHON_BIN="$CAMERA_PYTHON_BIN"
-elif [[ -x ".venv/bin/python" ]]; then
-  STREAM_PYTHON_BIN=".venv/bin/python"
+elif [[ -x "/usr/bin/python3" ]]; then
+  STREAM_PYTHON_BIN="/usr/bin/python3"
 else
   STREAM_PYTHON_BIN="python3"
 fi
@@ -128,6 +104,11 @@ if [[ "${START_CAMERA_STREAM:-true}" != "false" ]]; then
   echo "[camera] starting MJPEG stream server on 0.0.0.0:$STREAM_PORT..."
   "$STREAM_PYTHON_BIN" ./camera/mjpeg_server.py &
   STREAM_PID="$!"
+fi
+
+if [[ -x ".venv/bin/python" ]]; then
+  "$PYTHON_BIN" ./main.py
+  exit $?
 fi
 
 "$PYTHON_BIN" ./main.py
