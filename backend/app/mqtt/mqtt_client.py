@@ -75,6 +75,9 @@ class MqttClient:
             runtime_env("SIMULATION_MODE", "true").lower() == "true",
         )
         if current == previous:
+            if not self.connected and not current[2]:
+                print(f"[mqtt] disconnected from {self.host}:{self.port}; reconnecting")
+                self.start()
             return
 
         print(f"[mqtt] config changed {previous} -> {current}; reconnecting")

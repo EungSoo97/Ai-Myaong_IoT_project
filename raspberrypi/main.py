@@ -693,7 +693,8 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                 if response_data.get("ok") is not True:
                     last_error = response_body or "backend returned ok=false"
                     continue
-                if response_data.get("mqttConnected") is False:
+                mqtt_required = os.getenv("REQUIRE_BACKEND_MQTT_ON_REGISTER", "false").lower() == "true"
+                if mqtt_required and response_data.get("mqttConnected") is False:
                     last_error = "backend MQTT reconnect failed"
                     continue
                 print(f"[device] registered Pi IP {pi_ip} to desktop backend {backend_url}")

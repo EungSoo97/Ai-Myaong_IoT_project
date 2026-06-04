@@ -1,3 +1,4 @@
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -38,18 +39,25 @@ def register_device(data: DeviceRegister, request: Request):
     if data.role in {"raspberrypi", "robot"}:
         _sync_backend_env_from_device(data)
         mqtt_client = getattr(request.app.state, "mqtt_client", None)
-        mqtt_connected = False
+        mqtt_connected = bool(getattr(mqtt_client, "connected", False))
+        mqtt_reconnect_started = False
         if mqtt_client:
-            mqtt_connected = mqtt_client.reconnect_if_config_changed()
+            if runtime_env("BACKEND_REQUIRE_MQTT_ON_DEVICE_REGISTER", "false").lower() == "true":
+                mqtt_connected = mqtt_client.reconnect_if_config_changed()
+            else:
+                threading.Thread(target=mqtt_client.reconnect_if_config_changed, daemon=True).start()
+                mqtt_reconnect_started = True
     else:
         mqtt_client = getattr(request.app.state, "mqtt_client", None)
         mqtt_connected = bool(getattr(mqtt_client, "connected", False))
+        mqtt_reconnect_started = False
 
     return {
         "ok": True,
         "device_id": data.device_id,
         "saved": DEVICES[data.device_id],
         "mqttConnected": mqtt_connected,
+        "mqttReconnectStarted": mqtt_reconnect_started,
         "backendEnv": read_env_values(
             BACKEND_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
