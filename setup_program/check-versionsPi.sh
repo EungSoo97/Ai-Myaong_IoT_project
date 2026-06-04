@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 VENV_PYTHON="$REPO_ROOT/raspberrypi/.venv/bin/python"
 
@@ -20,7 +20,7 @@ echo "[Raspberry Pi] $REPO_ROOT/raspberrypi"
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "Virtual environment not found."
-  echo "Run: bash ./setup-dev-env.sh"
+  echo "Run: bash ./setup_program/setup-dev-envPi.sh"
   exit 1
 fi
 
@@ -36,7 +36,7 @@ fi
 # 패키지 확인
 echo
 echo "[Packages]"
-for pkg in flask paho-mqtt python-dotenv serial; do
+for pkg in fastapi uvicorn paho-mqtt python-dotenv serial; do
   import_name="$pkg"
   [[ "$pkg" == "paho-mqtt" ]]     && import_name="paho.mqtt.client"
   [[ "$pkg" == "python-dotenv" ]] && import_name="dotenv"

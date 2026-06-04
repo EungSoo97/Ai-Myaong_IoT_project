@@ -2,7 +2,7 @@
 set -euo pipefail
 
 TARGET="${1:-all}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 EXPECTED_NODE="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
 
@@ -24,7 +24,7 @@ python_target_is_valid() {
       "$venv_python" -c "import cv2, ultralytics, requests" >/dev/null 2>&1
       ;;
     raspberrypi)
-      "$venv_python" -c "import flask, serial, dotenv" >/dev/null 2>&1
+      "$venv_python" -c "import fastapi, uvicorn, serial, dotenv, paho.mqtt.client" >/dev/null 2>&1
       ;;
     *)
       return 1
@@ -115,7 +115,7 @@ prepare_node_modules() {
 case "$TARGET" in
   backend)
     if prepare_venv "backend" "Backend"; then
-      bash "$REPO_ROOT/setup-dev-env.sh" -Target backend
+      bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target backend
     else
       echo
       echo "backend environment is already valid. Skipping rebuild."
@@ -123,7 +123,7 @@ case "$TARGET" in
     ;;
   desktop)
     if prepare_venv "desktop" "Desktop"; then
-      bash "$REPO_ROOT/setup-dev-env.sh" -Target desktop
+      bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target desktop
     else
       echo
       echo "desktop environment is already valid. Skipping rebuild."
@@ -131,7 +131,7 @@ case "$TARGET" in
     ;;
   raspberrypi)
     if prepare_venv "raspberrypi" "Raspberry Pi"; then
-      bash "$REPO_ROOT/setup-dev-env.sh" -Target raspberrypi
+      bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target raspberrypi
     else
       echo
       echo "raspberrypi environment is already valid. Skipping rebuild."
@@ -139,7 +139,7 @@ case "$TARGET" in
     ;;
   frontend)
     if prepare_node_modules; then
-      bash "$REPO_ROOT/setup-dev-env.sh" -Target frontend
+      bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target frontend
     else
       echo
       echo "frontend environment is already valid. Skipping rebuild."
@@ -158,10 +158,10 @@ case "$TARGET" in
 
     echo
     echo "Rebuilding all environments..."
-    if [[ "$NEED_BACKEND" -eq 1 ]]; then bash "$REPO_ROOT/setup-dev-env.sh" -Target backend; fi
-    if [[ "$NEED_DESKTOP" -eq 1 ]]; then bash "$REPO_ROOT/setup-dev-env.sh" -Target desktop; fi
-    if [[ "$NEED_RASPBERRYPI" -eq 1 ]]; then bash "$REPO_ROOT/setup-dev-env.sh" -Target raspberrypi; fi
-    if [[ "$NEED_FRONTEND" -eq 1 ]]; then bash "$REPO_ROOT/setup-dev-env.sh" -Target frontend; fi
+    if [[ "$NEED_BACKEND" -eq 1 ]]; then bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target backend; fi
+    if [[ "$NEED_DESKTOP" -eq 1 ]]; then bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target desktop; fi
+    if [[ "$NEED_RASPBERRYPI" -eq 1 ]]; then bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target raspberrypi; fi
+    if [[ "$NEED_FRONTEND" -eq 1 ]]; then bash "$REPO_ROOT/setup_program/setup-dev-env.sh" -Target frontend; fi
     if [[ "$NEED_BACKEND$NEED_DESKTOP$NEED_RASPBERRYPI$NEED_FRONTEND" == "0000" ]]; then
       echo "All environments are already valid. Skipping rebuild."
     fi

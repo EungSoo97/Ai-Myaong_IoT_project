@@ -3,7 +3,7 @@ set -euo pipefail
 
 TARGET="all"
 SKIP_INSTALL=0
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN=""
 EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 EXPECTED_NODE="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"

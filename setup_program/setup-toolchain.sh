@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 NODE_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
 NVM_VERSION="v0.39.7"

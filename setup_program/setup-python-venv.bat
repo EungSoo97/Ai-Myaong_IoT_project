@@ -38,8 +38,14 @@ if not defined TARGET (
   if not defined TARGET set "TARGET=all"
 )
 
-set "REPO_ROOT=%~dp0"
-if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
+set "SCRIPT_DIR=%~dp0"
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+set "REPO_ROOT=%SCRIPT_DIR%"
+if not exist "%REPO_ROOT%\.python-version" (
+  pushd "%SCRIPT_DIR%\.." >nul || exit /b 1
+  set "REPO_ROOT=%CD%"
+  popd >nul
+)
 
 if /I "%TARGET%"=="frontend" call :setup_frontend || set "EXIT_CODE=1"
 if /I "%TARGET%"=="backend" call :resolve_python || set "EXIT_CODE=1"
@@ -48,13 +54,13 @@ if /I "%TARGET%"=="raspberrypi" call :resolve_python || set "EXIT_CODE=1"
 if "%EXIT_CODE%"=="1" goto finish
 if /I "%TARGET%"=="backend" call :setup_python_target backend Backend || set "EXIT_CODE=1"
 if /I "%TARGET%"=="desktop" call :setup_python_target desktop Desktop || set "EXIT_CODE=1"
-if /I "%TARGET%"=="raspberrypi" call :setup_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
+if /I "%TARGET%"=="raspberrypi" call :setup_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
 if /I "%TARGET%"=="all" (
   call :resolve_python || set "EXIT_CODE=1"
   if "%EXIT_CODE%"=="1" goto finish
   call :setup_python_target backend Backend || set "EXIT_CODE=1"
   call :setup_python_target desktop Desktop || set "EXIT_CODE=1"
-  call :setup_python_target raspberrypi Raspberry Pi || set "EXIT_CODE=1"
+  call :setup_python_target raspberrypi "Raspberry Pi" || set "EXIT_CODE=1"
   call :setup_frontend || set "EXIT_CODE=1"
 )
 

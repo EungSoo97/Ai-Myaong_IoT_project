@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_PYTHON="$(tr -d '[:space:]' < "$REPO_ROOT/.python-version")"
 VENV_PATH="$REPO_ROOT/raspberrypi/.venv"
 VENV_PYTHON="$VENV_PATH/bin/python"
@@ -14,14 +14,14 @@ is_venv_valid() {
   current="$("$VENV_PYTHON" -c "import sys; print(sys.version.split()[0])")"
   [[ "$current" == "$EXPECTED_PYTHON" ]] || return 1
 
-  "$VENV_PYTHON" -c "import flask, serial, dotenv" >/dev/null 2>&1
+  "$VENV_PYTHON" -c "import fastapi, uvicorn, serial, dotenv, paho.mqtt.client" >/dev/null 2>&1
 }
 
 echo "[Raspberry Pi]"
 
 if [[ ! -d "$VENV_PATH" ]]; then
   echo "No virtual environment found. Running setup..."
-  bash "$REPO_ROOT/setup-dev-env.sh"
+  bash "$REPO_ROOT/setup_program/setup-dev-envPi.sh"
   echo; echo "Rebuild finished successfully."
   exit 0
 fi
@@ -31,7 +31,7 @@ if is_venv_valid; then
 else
   echo "Environment needs rebuild. Removing $VENV_PATH..."
   rm -rf "$VENV_PATH"
-  bash "$REPO_ROOT/setup-dev-env.sh"
+  bash "$REPO_ROOT/setup_program/setup-dev-envPi.sh"
 fi
 
 echo
