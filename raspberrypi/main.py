@@ -114,17 +114,22 @@ class RaspberryPiAgent:
             print(f"[raspberrypi] MQTT disconnected: {reason_code}")
 
     def on_message(self, _client, _userdata, message) -> None:
-        command = self._extract_command(message.payload)
-        if not command:
-            print(f"[raspberrypi] ignored empty command on {message.topic}")
-            return
+    topic = message.topic
+    payload = message.payload.decode("utf-8").strip()
 
-        if command not in ROBOT_COMMANDS:
-            print(f"[raspberrypi] ignored unsupported command on {message.topic}: {command}")
-            return
+    # ✅ 여기 추가 (backend discovery 용)
+    if topic == "system/backend/announce":
+        try:
+            data = json.loads(payload)
+            url = data.get("url")
+            if url:
+                print(f"[mqtt] backend discovered: {url}")
 
-        print(f"[raspberrypi] MQTT {message.topic} -> Arduino {command}")
-        self.serial.send(command)
+                # 🔥 핵심 캐시 저장
+                MQTT_BACKEND_CACHE["url"] = url
+                os.environ["DESKTOP_BACKEND_URL"] = url
+        except Exception as e:
+            print(f"[mqtt] backend announce parse error: {e}")
 
     def _extract_command(self, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()
@@ -583,15 +588,18 @@ def run_wifi_setup_job(
 
     print("[wifi] background Wi-Fi setup completed.")
     registered, register_error = register_to_desktop_backend(retries=10, delay=3)
+    # if not registered:
+    #     print(f"[wifi] desktop backend registration failed after Wi-Fi change; rolling back. {register_error}")
+    #     if env.get("ROLLBACK_WIFI_ON_BACKEND_REGISTER_FAILURE", "true").lower() == "true":
+    #         rollback_wifi_after_registration_failure(previous_connection, pi_env_backup)
+    #         update_wifi_job("rolled_back", ssid, f"백엔드 재등록 실패로 기존 Wi-Fi로 롤백했습니다. {register_error}")
+    #     else:
+    #         update_wifi_job("failed", ssid, f"백엔드 재등록에 실패했습니다. {register_error}")
+    #     return
     if not registered:
-        print(f"[wifi] desktop backend registration failed after Wi-Fi change; rolling back. {register_error}")
-        if env.get("ROLLBACK_WIFI_ON_BACKEND_REGISTER_FAILURE", "true").lower() == "true":
-            rollback_wifi_after_registration_failure(previous_connection, pi_env_backup)
-            update_wifi_job("rolled_back", ssid, f"백엔드 재등록 실패로 기존 Wi-Fi로 롤백했습니다. {register_error}")
-        else:
-            update_wifi_job("failed", ssid, f"백엔드 재등록에 실패했습니다. {register_error}")
+        print("[wifi] backend registration failed, but keeping Wi-Fi connection")
+        update_wifi_job("completed_partial", ssid, "Wi-Fi는 연결되었지만 backend 등록 실패")
         return
-
     update_wifi_job("completed", ssid, "Wi-Fi 변경과 백엔드 재등록이 완료되었습니다.")
     restart_agent_after_wifi_change()
 
@@ -722,11 +730,21 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> tuple[boo
     return False, last_error
 
 
+# 전역 캐시 하나 추가 (파일 상단 아무데나)
+MQTT_BACKEND_CACHE = {"url": ""}
+
+
 def desktop_backend_url() -> str:
+    # 1. MQTT cache (최우선)
+    if MQTT_BACKEND_CACHE["url"]:
+        return MQTT_BACKEND_CACHE["url"]
+
+    # 2. env (수동 설정)
     configured = os.getenv("DESKTOP_BACKEND_URL", "").strip().rstrip("/")
     if configured:
         return configured
 
+    # 3. LAN discovery (scan)
     discovered = discover_desktop_backend()
     if discovered:
         print(f"[device] desktop backend discovered: {discovered}")
