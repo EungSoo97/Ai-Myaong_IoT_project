@@ -21,7 +21,9 @@ async function request(path, options = {}) {
       ...options,
     });
   } catch {
-    throw new Error(`백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`);
+    throw new Error(
+      `백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`,
+    );
   }
 
   if (!response.ok) {
@@ -43,8 +45,10 @@ function extractErrorMessage(value) {
   if (!value) return "";
   if (typeof value === "string") return value;
   if (value.detail) return extractErrorMessage(value.detail);
-  if (typeof value.stderr === "string" && value.stderr.trim()) return value.stderr.trim();
-  if (typeof value.stdout === "string" && value.stdout.trim()) return value.stdout.trim();
+  if (typeof value.stderr === "string" && value.stderr.trim())
+    return value.stderr.trim();
+  if (typeof value.stdout === "string" && value.stdout.trim())
+    return value.stdout.trim();
   if (typeof value.message === "string") return value.message;
   return "";
 }
@@ -125,5 +129,22 @@ export const api = {
         esp32_setup_url: esp32SetupUrl,
         pi_ap_fallback: piApFallback,
       }),
+    }),
+
+  signup: ({ username, email, password, nickname, pets }) =>
+    request("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password, nickname, pets }),
+    }),
+
+  login: ({ username, password }) =>
+    request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  getMe: (token) =>
+    request("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
     }),
 };

@@ -13,6 +13,9 @@ class Pet(Base):
     birth_date     = Column(Date,        nullable=True)
     weight_kg      = Column(Float,       nullable=True)
     height_cm      = Column(Float,       nullable=True)
+    gender         = Column(String(1),   nullable=True)   # M / F
+    circumference  = Column(Float,       nullable=True)   # 흉위 (cm)
+    leg_length     = Column(Float,       nullable=True)   # 다리 길이 (cm)
     # bmi            = Column(Float,       nullable=True)
     # obesity_grade  = Column(String(20),  nullable=True)
     # activity_goal  = Column(Float,       nullable=True)
