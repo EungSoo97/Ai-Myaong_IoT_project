@@ -582,13 +582,14 @@ def run_wifi_setup_job(
         return
 
     print("[wifi] background Wi-Fi setup completed.")
-    if not register_to_desktop_backend(retries=10, delay=3):
-        print("[wifi] desktop backend registration failed after Wi-Fi change; rolling back.")
+    registered, register_error = register_to_desktop_backend(retries=10, delay=3)
+    if not registered:
+        print(f"[wifi] desktop backend registration failed after Wi-Fi change; rolling back. {register_error}")
         if env.get("ROLLBACK_WIFI_ON_BACKEND_REGISTER_FAILURE", "true").lower() == "true":
             rollback_wifi_after_registration_failure(previous_connection, pi_env_backup)
-            update_wifi_job("rolled_back", ssid, "백엔드 재등록 실패로 기존 Wi-Fi로 롤백했습니다.")
+            update_wifi_job("rolled_back", ssid, f"백엔드 재등록 실패로 기존 Wi-Fi로 롤백했습니다. {register_error}")
         else:
-            update_wifi_job("failed", ssid, "백엔드 재등록에 실패했습니다.")
+            update_wifi_job("failed", ssid, f"백엔드 재등록에 실패했습니다. {register_error}")
         return
 
     update_wifi_job("completed", ssid, "Wi-Fi 변경과 백엔드 재등록이 완료되었습니다.")
@@ -657,11 +658,11 @@ def start_backend_registration_loop() -> None:
     threading.Thread(target=loop, daemon=True).start()
 
 
-def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
+def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> tuple[bool, str]:
     backend_url = desktop_backend_url()
     if not backend_url:
         print("[device] desktop backend was not found. Set DESKTOP_BACKEND_URL if auto-discovery fails.")
-        return False
+        return False, "desktop backend was not found"
 
     last_error = ""
     for attempt in range(retries):
@@ -698,7 +699,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
                     last_error = "backend MQTT reconnect failed"
                     continue
                 print(f"[device] registered Pi IP {pi_ip} to desktop backend {backend_url}")
-                return True
+                return True, ""
             except json.JSONDecodeError as exc:
                 last_error = f"invalid backend response: {exc}"
             except urllib.error.HTTPError as exc:
@@ -718,7 +719,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> bool:
         if discovered and discovered != configured:
             print(f"[device] desktop backend rediscovered: {discovered}")
 
-    return False
+    return False, last_error
 
 
 def desktop_backend_url() -> str:

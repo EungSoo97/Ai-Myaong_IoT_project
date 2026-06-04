@@ -3,13 +3,14 @@ import os
 import shutil
 import socket
 import subprocess
+import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ipaddress import IPv4Network
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.models.command import SharedWifiRequest
 from app.runtime_config import read_env_values, runtime_env
@@ -19,19 +20,31 @@ router = APIRouter(prefix="/api/network", tags=["network"])
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PI_ENV = REPO_ROOT / "raspberrypi" / ".env"
 SETUP_WIFI_SCRIPT = REPO_ROOT / "scripts" / "setup-raspberrypi-wifi.sh"
+BACKEND_ENV = REPO_ROOT / "backend" / ".env"
+DESKTOP_ENV = REPO_ROOT / "desktop" / ".env"
 
 
 @router.get("/status")
-def network_status():
+def network_status(request: Request):
     pi_status = _pi_agent_status()
     local_wifi_ip = _command_output(["bash", "-lc", "hostname -I | awk '{print $1}'"])
     local_wifi_ssid = _command_output(["bash", "-lc", "iwgetid -r"])
     backend_env = read_env_values(
-        REPO_ROOT / "backend" / ".env",
+        BACKEND_ENV,
         ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
     )
-    if pi_status.get("ip"):
+    pi_ip = str(pi_status.get("ip") or "").strip()
+    if pi_ip:
+        previous_host = backend_env.get("MQTT_BROKER_HOST", "")
         _sync_backend_env_from_pi_ip(str(pi_status["ip"]))
+        if previous_host != pi_ip:
+            mqtt_client = getattr(request.app.state, "mqtt_client", None)
+            if mqtt_client:
+                threading.Thread(target=mqtt_client.reconnect_if_config_changed, daemon=True).start()
+        backend_env = read_env_values(
+            BACKEND_ENV,
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+        )
 
     return {
         "raspberrypiEnv": read_env_values(
@@ -171,12 +184,13 @@ def _sync_backend_env_from_pi_result(result: dict) -> None:
     mqtt_port = str(raspberrypi_env.get("MQTT_BROKER_PORT") or "1883").strip() or "1883"
     pi_agent_port = str(raspberrypi_env.get("PI_AGENT_HTTP_PORT") or runtime_env("PI_AGENT_HTTP_PORT", "8765")).strip() or "8765"
     stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
-    backend_env = REPO_ROOT / "backend" / ".env"
-
-    _set_env_value(backend_env, "MQTT_BROKER_HOST", mqtt_host)
-    _set_env_value(backend_env, "MQTT_BROKER_PORT", mqtt_port)
-    _set_env_value(backend_env, "PI_AGENT_BASE_URL", f"http://{mqtt_host}:{pi_agent_port}")
-    _set_env_value(backend_env, "CAMERA_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
+    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", mqtt_host)
+    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{mqtt_host}:{pi_agent_port}")
+    _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", mqtt_host)
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
 
 
 def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
@@ -186,12 +200,13 @@ def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
     mqtt_port = runtime_env("MQTT_BROKER_PORT", "1883").strip() or "1883"
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
     stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
-    backend_env = REPO_ROOT / "backend" / ".env"
-
-    _set_env_value(backend_env, "MQTT_BROKER_HOST", pi_ip)
-    _set_env_value(backend_env, "MQTT_BROKER_PORT", mqtt_port)
-    _set_env_value(backend_env, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
-    _set_env_value(backend_env, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
+    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", pi_ip)
+    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
+    _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", pi_ip)
+    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
 
 
 def _set_env_value(path: Path, key: str, value: str) -> None:
@@ -440,8 +455,7 @@ def _looks_like_private_ipv4(value: str) -> bool:
 
 
 def _remember_pi_agent_url(url: str) -> None:
-    backend_env = REPO_ROOT / "backend" / ".env"
-    _set_env_value(backend_env, "PI_AGENT_BASE_URL", url)
+    _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", url)
 
 
 def _pi_agent_status() -> dict:

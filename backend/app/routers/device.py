@@ -37,6 +37,7 @@ def register_device(data: DeviceRegister, request: Request):
     }
 
     if data.role in {"raspberrypi", "robot"}:
+        print(f"[device] register {data.device_id}: {data.ip} ssid={data.ssid}")
         _sync_backend_env_from_device(data)
         mqtt_client = getattr(request.app.state, "mqtt_client", None)
         mqtt_connected = bool(getattr(mqtt_client, "connected", False))
@@ -73,6 +74,25 @@ def register_device(data: DeviceRegister, request: Request):
 def get_device(device_id: str):
     device = DEVICES.get(device_id)
     if not device:
+        backend_env = read_env_values(
+            BACKEND_ENV,
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
+        )
+        pi_ip = backend_env.get("MQTT_BROKER_HOST", "")
+        if pi_ip and device_id == "myaong-pi-01":
+            return {
+                "ok": True,
+                "device_id": device_id,
+                "saved": {
+                    "ip": pi_ip,
+                    "role": "raspberrypi",
+                    "ssid": "",
+                    "agent_port": "8765",
+                    "stream_port": "8080",
+                    "last_seen": "",
+                    "source": "backendEnv",
+                },
+            }
         return {"ok": False, "message": "device not found"}
     return {"ok": True, "device_id": device_id, "saved": device}
 
