@@ -49,6 +49,8 @@ function LoopWheel({ items, value, unit, onChange }) {
   const lock = useRef(false)   // 프로그램적 스크롤 시 핸들러 무시
   const timer = useRef(null)
   const raf = useRef(0)
+  const wheelLock = useRef(false) // 마우스 휠 한 notch = 1칸 제한
+  const drag = useRef(null)       // 마우스 드래그 스크롤 상태
   const n = items.length
   const REP = 7                // 복사본 개수 (가운데에서 양방향 스크롤)
   const MID = Math.floor(REP / 2)
@@ -71,6 +73,21 @@ function LoopWheel({ items, value, unit, onChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valueIdx, n])
 
+  // 마우스 휠: 한 번에 정확히 1칸만 이동 (나머지는 onScroll 이 값 emit/재배치 처리)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const onWheel = (e) => {
+      e.preventDefault()
+      if (wheelLock.current) return
+      wheelLock.current = true
+      el.scrollTo({ top: el.scrollTop + (e.deltaY > 0 ? 1 : -1) * ITEM, behavior: 'smooth' })
+      setTimeout(() => { wheelLock.current = false }, 200)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   const onScroll = () => {
     const el = ref.current
     if (!el) return
@@ -84,6 +101,7 @@ function LoopWheel({ items, value, unit, onChange }) {
     if (lock.current) { lock.current = false; return }
     clearTimeout(timer.current)
     timer.current = setTimeout(() => {
+      if (drag.current) return // 드래그 중엔 스냅/emit 보류
       const idx = Math.round(el.scrollTop / ITEM)
       const mod = ((idx % n) + n) % n
       const v = items[mod]
@@ -109,11 +127,35 @@ function LoopWheel({ items, value, unit, onChange }) {
     return 0.12
   }
 
+  // 마우스로 잡고 위아래 드래그 → 빠른 스크롤 (터치는 네이티브 스크롤 유지)
+  const onPointerDown = (e) => {
+    if (e.pointerType !== 'mouse') return
+    const el = ref.current
+    if (!el) return
+    drag.current = { y: e.clientY, top: el.scrollTop }
+    el.setPointerCapture?.(e.pointerId)
+  }
+  const onPointerMove = (e) => {
+    if (!drag.current) return
+    const el = ref.current
+    if (el) el.scrollTop = drag.current.top - (e.clientY - drag.current.y)
+  }
+  const onPointerUp = (e) => {
+    if (!drag.current) return
+    drag.current = null
+    ref.current?.releasePointerCapture?.(e.pointerId)
+    onScroll() // 스냅/값 반영
+  }
+
   return (
     <div
       ref={ref}
       onScroll={onScroll}
-      className="no-scrollbar flex-1 h-[200px] overflow-y-auto overscroll-y-contain snap-y snap-mandatory"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      className="no-scrollbar flex-1 h-[200px] overflow-y-auto overscroll-y-contain snap-y snap-mandatory cursor-grab active:cursor-grabbing select-none"
     >
       <div style={{ height: ITEM * 2 }} />
       {long.map((it, i) => {

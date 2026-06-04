@@ -14,7 +14,11 @@ import {
   UserX,
   Plane,
   ChevronRight,
+  Footprints,
 } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+} from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
 import { useNotifications, addNotification } from "../lib/notificationRepository";
@@ -89,6 +93,43 @@ const SHORTCUTS = [
   },
 ];
 
+/* 펫 활동량(발자국 수) — 일/주/월. 백엔드 붙으면 API 로 교체 */
+const ACTIVITY = {
+  day: [
+    { label: "아침", value: 32 },
+    { label: "낮", value: 58 },
+    { label: "오후", value: 45 },
+    { label: "저녁", value: 70 },
+    { label: "밤", value: 16 },
+  ],
+  week: [
+    { label: "월", value: 240 },
+    { label: "화", value: 310 },
+    { label: "수", value: 280 },
+    { label: "목", value: 330 },
+    { label: "금", value: 300 },
+    { label: "토", value: 380 },
+    { label: "일", value: 420 },
+  ],
+  month: [
+    { label: "1주", value: 1520 },
+    { label: "2주", value: 1680 },
+    { label: "3주", value: 1430 },
+    { label: "4주", value: 1750 },
+  ],
+};
+const ACT_PRIMARY = "#F08D86";
+const actTooltip = {
+  contentStyle: {
+    borderRadius: 12,
+    border: "1px solid #EFE3D2",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#4B3621",
+  },
+  labelStyle: { color: "#9C8A78", fontWeight: 700 },
+};
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
@@ -130,6 +171,14 @@ export function Dashboard() {
   const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
   const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
+
+  // 활동량 통계 (일/주/월)
+  const [actPeriod, setActPeriod] = useState("day");
+  const actData = ACTIVITY[actPeriod];
+  const actTotal = actData.reduce((s, d) => s + d.value, 0);
+  const actAvg = Math.round(actTotal / actData.length);
+  const actAvgLabel =
+    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "주 평균";
 
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
   const AWAY_KEY = "aimyaong:awayMode";
@@ -384,23 +433,91 @@ export function Dashboard() {
         </CreamCard>
       </section>
 
-      {/* 5) 급여 통계 바로가기 (최하단) */}
-      <button
-        type="button"
-        onClick={() => navigate("/feeding")}
-        className="mt-6 w-full text-left touch-active"
-      >
-        <Card className="px-5 py-4 flex items-center gap-3">
-          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
-            <UtensilsCrossed className="w-5 h-5" />
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-brand-brown">급여 통계 보기</p>
-            <p className="text-xs text-brand-mute">일·주·월 급여량과 자동 스케줄 관리</p>
+      {/* 5) 펫 활동량 통계 (일/주/월) */}
+      <section className="mt-6">
+        <Card className="px-5 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+                <Footprints className="w-5 h-5" />
+              </span>
+              <div>
+                <p className="font-display text-base font-bold text-brand-brown leading-tight">
+                  활동량
+                </p>
+                <p className="text-[11px] text-brand-mute">우리 아이 발자국 🐾</p>
+              </div>
+            </div>
+            {/* 일/주/월 탭 */}
+            <div className="inline-flex bg-brand-cream rounded-full p-1 shadow-soft-inset">
+              {[
+                ["day", "일간"],
+                ["week", "주간"],
+                ["month", "월간"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActPeriod(id)}
+                  className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
+                    actPeriod === id ? "bg-brand-primary text-white shadow-soft" : "text-brand-mute"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+
+          {/* 영역(라인) 차트 */}
+          <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={actData} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
+                    <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "#9C8A78" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={ACT_PRIMARY}
+                  strokeWidth={2.5}
+                  fill="url(#actFill)"
+                  dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                  animationDuration={500}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* 요약 */}
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <div className="rounded-2xl bg-brand-cream px-4 py-3">
+              <p className="text-[11px] font-semibold text-brand-mute">총 발자국 🐾</p>
+              <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
+                {actTotal.toLocaleString()}회
+              </p>
+            </div>
+            <div className="rounded-2xl bg-brand-cream px-4 py-3">
+              <p className="text-[11px] font-semibold text-brand-mute">{actAvgLabel}</p>
+              <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
+                {actAvg.toLocaleString()}회
+              </p>
+            </div>
+          </div>
         </Card>
-      </button>
+      </section>
 
       {/* 토스트 */}
       {toast && (
