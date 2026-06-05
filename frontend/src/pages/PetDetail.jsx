@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, PawPrint, Calendar, Scale, Ruler, Activity, Heart, Pencil } from 'lucide-react'
-import { Card } from '../components/ui'
-import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet } from '../lib/accountRepository'
+import { Card, PrimaryButton } from '../components/ui'
+import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet, addPet, getAccount, saveAccount } from '../lib/accountRepository'
 import { AddPetModal } from '../components/AddPetModal'
 
 const C = {
-  cream: '#FBEFDD',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
+  cream: 'rgb(var(--brand-cream))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
 }
 
 export function PetDetail() {
@@ -21,10 +21,26 @@ export function PetDetail() {
   const pets = account?.pets ?? []
   const pet = pets[Number(idx)] || null
   const [showEdit, setShowEdit] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
 
   const handleEdit = (updated) => {
     updatePet(Number(idx), updated)
     setShowEdit(false)
+  }
+
+  // 펫이 없을 때 새로 등록 (계정이 없으면 최소 계정도 함께 생성)
+  const handleRegister = (newPet) => {
+    if (!getAccount()) {
+      saveAccount({
+        provider: 'guest',
+        user: { userId: 'guest', nickname: '집사' },
+        pets: [newPet],
+        createdAt: new Date().toISOString(),
+      })
+    } else {
+      addPet(newPet)
+    }
+    setShowRegister(false)
   }
 
   return (
@@ -52,8 +68,15 @@ export function PetDetail() {
       </header>
 
       {!pet ? (
-        <Card className="px-5 py-10 text-center">
-          <p className="text-sm text-brand-mute">반려동물 정보를 찾을 수 없어요.</p>
+        <Card className="px-5 py-12 text-center">
+          <span className="mx-auto w-16 h-16 rounded-3xl bg-brand-cream flex items-center justify-center mb-3">
+            <PawPrint className="w-8 h-8 text-brand-primary/70" />
+          </span>
+          <p className="font-display text-lg font-bold text-brand-brown">아직 등록된 반려동물이 없어요</p>
+          <p className="text-sm text-brand-mute mt-1">우리 아이를 등록하고 건강을 관리해 보세요 🐾</p>
+          <PrimaryButton className="mt-5 mx-auto" onClick={() => setShowRegister(true)}>
+            <PawPrint className="w-4 h-4" /> 반려동물 등록하기
+          </PrimaryButton>
         </Card>
       ) : (
         <PetBody pet={pet} />
@@ -66,6 +89,15 @@ export function PetDetail() {
           submitLabel="저장"
           onClose={() => setShowEdit(false)}
           onSave={handleEdit}
+        />
+      )}
+
+      {showRegister && (
+        <AddPetModal
+          title="반려동물 등록"
+          submitLabel="등록"
+          onClose={() => setShowRegister(false)}
+          onSave={handleRegister}
         />
       )}
     </div>

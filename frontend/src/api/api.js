@@ -17,6 +17,12 @@ function resolveStreamUrl(url) {
   return url;
 }
 
+/* 저장된 미디어(클립 등) 경로 → 재생 가능한 절대 URL.
+ * CLIPS.storage_path 같은 상대경로를 API_BASE 기준으로 변환한다. */
+export function resolveMediaUrl(path) {
+  return resolveStreamUrl(path);
+}
+
 async function request(path, options = {}) {
   const token = sessionStorage.getItem("aimyaong:token");
   let response;
@@ -84,6 +90,12 @@ export const api = {
       throw error;
     }
   },
+  /* 감지 클립 재생 URL — 백엔드가 영상 저장/서빙하면 동작.
+   * 응답 예: { url } 또는 { storage_path }. 미구현 시 호출 측에서 폴백 처리. */
+  getClipUrl: async (clipId) => {
+    const data = await request(`/api/clips/${clipId}`);
+    return resolveStreamUrl(data.url || data.storage_path || "");
+  },
   moveRobot: (command) =>
     request("/api/robot/move", {
       method: "POST",
@@ -103,6 +115,21 @@ export const api = {
     request("/api/dispenser/water", {
       method: "POST",
       body: JSON.stringify({ amount }),
+    }),
+  /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
+   * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
+   * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */
+  // 즉시 1회 스냅샷 캡처 — 응답 예: { imageUrl }
+  captureSnapshot: () =>
+    request("/api/robot/capture", { method: "POST" }),
+  // 양방향 음성 호출 시작
+  voiceCall: () =>
+    request("/api/robot/voice-call", { method: "POST" }),
+  // 외출 모드 on/off 서버 동기화
+  setAwayMode: (on) =>
+    request("/api/robot/away-mode", {
+      method: "POST",
+      body: JSON.stringify({ on }),
     }),
   getNetworkStatus: () => request("/api/network/status"),
   scanPiWifi: () => request("/api/network/pi-wifi-scan"),
@@ -160,5 +187,11 @@ export const api = {
   getMe: (token) =>
     request("/api/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  googleAuth: ({ email, name, oauth_id, picture }) =>
+    request("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ email, name, oauth_id, picture }),
     }),
 };

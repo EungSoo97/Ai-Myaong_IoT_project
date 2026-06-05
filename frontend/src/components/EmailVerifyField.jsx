@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Mail, Check, Clock } from 'lucide-react'
 import { sendVerificationEmail, emailjsConfigured } from '../lib/sendVerificationEmail'
 
 /* Warm-tone 팔레트 */
 const C = {
-  input: '#FFF6E9',
-  panel: '#FBF1E2',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  primaryDeep: '#D6814A',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
+  input: 'rgb(var(--brand-input))',
+  panel: 'rgb(var(--brand-cream))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  danger: 'rgb(var(--brand-danger))',
+  ok: 'rgb(var(--brand-success))',
 }
 
 const genCode = () => String(Math.floor(100000 + Math.random() * 900000))
@@ -39,6 +39,7 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
   const [sending, setSending] = useState(false)
   const [deadline, setDeadline] = useState(null) // 만료 시각(ms) or null
   const [remaining, setRemaining] = useState(0)  // 남은 초
+  const failRef = useRef(0)                       // 연속 발송 실패 횟수
 
   // 만료 카운트다운
   useEffect(() => {
@@ -79,13 +80,23 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
     setSending(true)
     try {
       await sendVerificationEmail(email, c)
+      failRef.current = 0
       setSentCode(c)
       setCode('')
       setNotice('인증번호를 이메일로 보냈어요. 메일함(스팸함)을 확인해 주세요.')
       startTimer()
     } catch (e) {
       console.error('[EmailVerifyField] 발송 실패', e)
-      setError('메일 발송에 실패했어요. 잠시 후 다시 시도해 주세요.')
+      failRef.current += 1
+      if (failRef.current >= 5) {
+        // 5회 연속 실패 → 가입이 막히지 않도록 임시 인증번호(화면 표시)로 폴백
+        setSentCode(c)
+        setCode('')
+        setNotice(`메일 발송이 계속 실패해 임시 인증번호로 진행해요: ${c}`)
+        startTimer()
+      } else {
+        setError(`메일 발송에 실패했어요. 다시 시도해 주세요. (${failRef.current}/5)`)
+      }
     } finally {
       setSending(false)
     }
@@ -183,7 +194,7 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
             disabled={expired}
             placeholder="● ● ● ● ● ●"
             className="font-sans mt-3 w-full rounded-2xl px-4 py-4 text-center text-lg font-bold tracking-[0.4em] outline-none placeholder:text-base placeholder:tracking-[0.25em] placeholder:font-normal placeholder:opacity-40 disabled:opacity-60"
-            style={{ background: '#FFFFFF', border: `1.5px solid ${expired ? C.danger : C.border}`, color: C.brown }}
+            style={{ background: C.input, border: `1.5px solid ${expired ? C.danger : C.border}`, color: C.brown }}
           />
 
           {/* 확인 버튼 (전체폭) */}

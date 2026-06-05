@@ -9,6 +9,7 @@ echo %CMDCMDLINE% | findstr /I /C:" /c " >nul
 if not errorlevel 1 set "AUTO_PAUSE=1"
 
 pushd "%PROJECT_PATH%"
+set "PYTHONPATH=%SCRIPT_DIR%.."
 
 if exist ".venv\Scripts\python.exe" (
   .venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

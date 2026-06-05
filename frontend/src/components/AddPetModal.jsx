@@ -4,13 +4,13 @@ import { DateWheel } from './DateWheel'
 
 /* Warm-tone 팔레트 */
 const C = {
-  card: '#FFFFFF',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  danger: '#E26D5C',
+  card: 'rgb(var(--brand-card))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  danger: 'rgb(var(--brand-danger))',
 }
 
 const TODAY = new Date().toISOString().slice(0, 10) // 미래 생일 선택 방지
