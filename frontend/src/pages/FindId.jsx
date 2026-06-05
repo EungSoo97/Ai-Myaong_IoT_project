@@ -45,7 +45,7 @@ export default function FindId({ onBackToLogin }) {
   }
 
   return (
-    <div className="font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
+    <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
       <Brand subtitle="아이디 찾기" />
 
       {result ? (

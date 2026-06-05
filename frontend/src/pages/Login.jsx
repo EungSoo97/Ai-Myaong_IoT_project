@@ -123,7 +123,7 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
   return (
     <div
       ref={stageRef}
-      className="flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
+      className="page-enter flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
       style={{ background: C.bg }}
     >
       {/* 브랜드 */}

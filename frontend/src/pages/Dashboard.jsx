@@ -93,6 +93,20 @@ const SHORTCUTS = [
   },
 ];
 
+/* 최근 N개월 활동량(발자국) — 현재 달이 오른쪽 끝, "N월" 라벨 */
+function buildMonthlyActivity(count = 12) {
+  const now = new Date();
+  const arr = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const m = d.getMonth() + 1;
+    const seed = d.getFullYear() * 12 + m;
+    const value = 1300 + Math.round(Math.sin(seed) * 250) + (m % 4) * 80;
+    arr.push({ label: `${m}월`, value });
+  }
+  return arr;
+}
+
 /* 펫 활동량(발자국 수) — 일/주/월. 백엔드 붙으면 API 로 교체 */
 const ACTIVITY = {
   day: [
@@ -111,12 +125,7 @@ const ACTIVITY = {
     { label: "토", value: 380 },
     { label: "일", value: 420 },
   ],
-  month: [
-    { label: "1주", value: 1520 },
-    { label: "2주", value: 1680 },
-    { label: "3주", value: 1430 },
-    { label: "4주", value: 1750 },
-  ],
+  month: buildMonthlyActivity(12),
 };
 const ACT_PRIMARY = "#F08D86";
 const actTooltip = {
@@ -129,6 +138,35 @@ const actTooltip = {
   },
   labelStyle: { color: "#9C8A78", fontWeight: 700 },
 };
+
+/* 활동량 영역 차트 (일/주/월 공용) */
+function ActivityArea({ data }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
+        <defs>
+          <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9C8A78" }} axisLine={false} tickLine={false} />
+        <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={ACT_PRIMARY}
+          strokeWidth={2.5}
+          fill="url(#actFill)"
+          dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
+          activeDot={{ r: 5 }}
+          animationDuration={500}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -178,7 +216,42 @@ export function Dashboard() {
   const actTotal = actData.reduce((s, d) => s + d.value, 0);
   const actAvg = Math.round(actTotal / actData.length);
   const actAvgLabel =
-    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "주 평균";
+    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "월 평균";
+
+  // 월간 차트: 진입 시 최신(현재 달, 오른쪽 끝)으로 스크롤
+  const monthScrollRef = useRef(null);
+  const monthDrag = useRef(null);
+  useEffect(() => {
+    if (actPeriod === "month" && monthScrollRef.current) {
+      monthScrollRef.current.scrollLeft = monthScrollRef.current.scrollWidth;
+    }
+  }, [actPeriod]);
+
+  // 마우스 휠 → 가로 스크롤
+  const onMonthWheel = (e) => {
+    const el = monthScrollRef.current;
+    if (!el) return;
+    const delta = e.deltaY || e.deltaX;
+    if (delta) el.scrollLeft += delta;
+  };
+  // 마우스로 잡고 좌우 드래그 (터치는 네이티브 스크롤 유지)
+  const onMonthDown = (e) => {
+    if (e.pointerType === "touch") return;
+    const el = monthScrollRef.current;
+    if (!el) return;
+    monthDrag.current = { x: e.clientX, left: el.scrollLeft };
+    el.setPointerCapture?.(e.pointerId);
+  };
+  const onMonthMove = (e) => {
+    if (!monthDrag.current) return;
+    const el = monthScrollRef.current;
+    if (el) el.scrollLeft = monthDrag.current.left - (e.clientX - monthDrag.current.x);
+  };
+  const onMonthUp = (e) => {
+    if (!monthDrag.current) return;
+    monthDrag.current = null;
+    monthScrollRef.current?.releasePointerCapture?.(e.pointerId);
+  };
 
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
   const AWAY_KEY = "aimyaong:awayMode";
@@ -469,37 +542,27 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* 영역(라인) 차트 */}
-          <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={actData} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
-                    <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11, fill: "#9C8A78" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={ACT_PRIMARY}
-                  strokeWidth={2.5}
-                  fill="url(#actFill)"
-                  dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
-                  activeDot={{ r: 5 }}
-                  animationDuration={500}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {/* 영역(라인) 차트 — 월간은 가로 스크롤 */}
+          {actPeriod === "month" ? (
+            <div
+              ref={monthScrollRef}
+              onWheel={onMonthWheel}
+              onPointerDown={onMonthDown}
+              onPointerMove={onMonthMove}
+              onPointerUp={onMonthUp}
+              onPointerCancel={onMonthUp}
+              tabIndex={-1}
+              className="mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
+            >
+              <div style={{ width: Math.max(actData.length * 52, 320), height: 160 }}>
+                <ActivityArea data={actData} />
+              </div>
+            </div>
+          ) : (
+            <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+              <ActivityArea data={actData} />
+            </div>
+          )}
 
           {/* 요약 */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">

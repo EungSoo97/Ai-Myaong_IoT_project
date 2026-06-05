@@ -184,6 +184,14 @@ body {
   .page-enter { animation: none; }
 }
 
+/* recharts 차트 클릭/포커스 시 생기는 검은 아웃라인 제거 */
+.recharts-wrapper,
+.recharts-surface,
+.recharts-wrapper :focus,
+.recharts-surface:focus {
+  outline: none !important;
+}
+
 /* Soft 3D card */
 .soft-card {
   background: rgb(var(--brand-card));
