@@ -13,20 +13,21 @@ const DEMO_PW = "meow1234";
 
 /* Warm-tone 팔레트 */
 const C = {
-  bg: "#FFF3E2",
-  card: "#FFFFFF",
-  input: "#FFF6E9",
-  border: "#F1DEC2",
-  brown: "#5C3D1F",
-  mute: "#A98A6B",
-  primary: "#F2A06A",
-  primaryDeep: "#D6814A",
-  outline: "#2D2520",
-  catOrange: "#F0A56E",
-  catOrangeDark: "#E58A4F",
-  catCream: "#FAF1E2",
-  catPink: "#F5B5A4",
-};
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  outline: 'rgb(var(--brand-brown))',
+  // 고양이 일러스트 색은 의도된 고정값 (다크에서도 동일 유지)
+  catOrange: '#F0A56E',
+  catOrangeDark: '#E58A4F',
+  catCream: '#FAF1E2',
+  catPink: '#F5B5A4',
+}
 
 /**
  * 로그인 화면.
@@ -102,21 +103,20 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
-  // 구글 로그인: 계정 없으면 프로필로 최소 계정 생성 후 로그인
-  const handleGoogleLogin = (profile) => {
-    if (!getAccount()) {
-      saveAccount({
-        provider: "google",
-        user: {
-          userId: profile.email?.split("@")[0] || "google",
-          email: profile.email,
-          nickname: profile.name || "구글유저",
-        },
-        pets: [],
-        createdAt: new Date().toISOString(),
-      });
+  const handleGoogleLogin = async (profile) => {
+    try {
+      const result = await api.googleAuth({
+        email: profile.email,
+        name: profile.name,
+        oauth_id: profile.sub,
+        picture: profile.picture,
+      })
+      sessionStorage.setItem('aimyaong:token', result.access_token)
+      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
+      onLogin?.()
+    } catch (e) {
+      setErr(e.message || '구글 로그인 실패')
     }
-    onLogin?.();
   };
 
   return (

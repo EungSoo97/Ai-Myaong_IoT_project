@@ -4,15 +4,15 @@ import { EmailVerifyField } from '../components/EmailVerifyField'
 
 /* Warm-tone 팔레트 (Login.jsx 와 동일) */
 const C = {
-  bg: '#FFF3E2',
-  card: '#FFFFFF',
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  primary: '#F2A06A',
-  primaryDeep: '#D6814A',
-  danger: '#E26D5C',
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  danger: 'rgb(var(--brand-danger))',
 }
 
 /* 가짜 아이디 생성 — DB 없으므로 이메일 앞부분으로 흉내만 냄 */

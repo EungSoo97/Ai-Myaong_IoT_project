@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
-from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse
+from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse, GoogleAuthRequest
 from database.base import get_db
 from database.user import User
 from database.pets import Pet
@@ -84,3 +84,31 @@ def me(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
     return UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname)
+
+
+@router.post("/google", response_model=AuthResponse)
+def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.oauth_id == body.oauth_id).first()
+
+    if not user:
+        user = db.query(User).filter(User.email == body.email).first()
+        if user:
+            user.oauth_provider = "google"
+            user.oauth_id = body.oauth_id
+            db.commit()
+        else:
+            user = User(
+                email=body.email,
+                nickname=body.name,
+                oauth_provider="google",
+                oauth_id=body.oauth_id,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+    token = create_access_token(user.user_id, user.email)
+    return AuthResponse(
+        access_token=token,
+        user=UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname),
+    )

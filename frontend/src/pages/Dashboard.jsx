@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -6,6 +6,7 @@ import { getWebSocketUrl } from "../lib/backendUrls";
 
 import {
   Wifi,
+  Bell,
   PhoneCall,
   Camera,
   PawPrint,
@@ -14,9 +15,15 @@ import {
   UserX,
   Plane,
   ChevronRight,
+  Footprints,
 } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+} from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
+import { useNotifications, addNotification } from "../lib/notificationRepository";
+import { useFeedSettings } from "../lib/dispenserSettings";
 
 const RECENT = [
   {
@@ -87,10 +94,50 @@ const SHORTCUTS = [
   },
 ];
 
+/* 펫 활동량(발자국 수) — 일/주/월. 백엔드 붙으면 API 로 교체 */
+const ACTIVITY = {
+  day: [
+    { label: "아침", value: 32 },
+    { label: "낮", value: 58 },
+    { label: "오후", value: 45 },
+    { label: "저녁", value: 70 },
+    { label: "밤", value: 16 },
+  ],
+  week: [
+    { label: "월", value: 240 },
+    { label: "화", value: 310 },
+    { label: "수", value: 280 },
+    { label: "목", value: 330 },
+    { label: "금", value: 300 },
+    { label: "토", value: 380 },
+    { label: "일", value: 420 },
+  ],
+  month: [
+    { label: "1주", value: 1520 },
+    { label: "2주", value: 1680 },
+    { label: "3주", value: 1430 },
+    { label: "4주", value: 1750 },
+  ],
+};
+const ACT_PRIMARY = "#F08D86";
+const actTooltip = {
+  contentStyle: {
+    borderRadius: 12,
+    border: "1px solid #EFE3D2",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#4B3621",
+  },
+  labelStyle: { color: "#9C8A78", fontWeight: 700 },
+};
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
+  const notifications = useNotifications();
+  const unread = notifications.filter((n) => !n.read).length;
+  const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
   const [streamUrl, setStreamUrl] = useState("");
@@ -126,28 +173,127 @@ export function Dashboard() {
   const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
+  // 활동량 통계 (일/주/월)
+  const [actPeriod, setActPeriod] = useState("day");
+  const actData = ACTIVITY[actPeriod];
+  const actTotal = actData.reduce((s, d) => s + d.value, 0);
+  const actAvg = Math.round(actTotal / actData.length);
+  const actAvgLabel =
+    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "주 평균";
+
+  // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
+  const AWAY_KEY = "aimyaong:awayMode";
+  const [awayMode, setAwayMode] = useState(() => {
+    try {
+      return localStorage.getItem(AWAY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [busyId, setBusyId] = useState(null);
+
+  // 토스트
+  const [toast, setToast] = useState(null);
+  const [toastOn, setToastOn] = useState(false);
+  const toastTimer = useRef(null);
+  const showToast = (msg) => {
+    clearTimeout(toastTimer.current);
+    setToast(msg);
+    requestAnimationFrame(() => setToastOn(true));
+    toastTimer.current = setTimeout(() => {
+      setToastOn(false);
+      setTimeout(() => setToast(null), 300);
+    }, 2200);
+  };
+
+  // 외출 모드 토글 (즉시 반영 + 서버 동기화 시도 · 실패해도 프론트는 동작)
+  const toggleAway = () => {
+    const next = !awayMode;
+    setAwayMode(next);
+    try {
+      localStorage.setItem(AWAY_KEY, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    showToast(next ? "✈️ 외출 모드를 켰어요" : "🏠 외출 모드를 껐어요");
+    api.setAwayMode(next).catch(() => {
+      /* 백엔드 미구현 — 프론트 상태만 유지 */
+    });
+  };
+
+  // 단축 작업 핸들러 (백엔드 있으면 실연결, 없으면 안내)
+  const handleShortcut = async (id) => {
+    if (id === "away") return toggleAway();
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      if (id === "feed") {
+        await api.dispenserFeed(feed.food);
+        showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
+        addNotification({
+          type: "feed",
+          title: "빠른 배식",
+          desc: `사료 ${feed.food}g을 배식했어요`,
+          link: "/feeding",
+        });
+      } else if (id === "call") {
+        await api.voiceCall();
+        showToast("📞 음성 호출을 시작했어요");
+      } else if (id === "cap") {
+        await api.captureSnapshot();
+        showToast("📸 화면을 캡처했어요");
+      }
+    } catch {
+      // 서버 미연결/미구현
+      const msg = {
+        feed: "배식 실패 — 기기 연결을 확인해 주세요",
+        call: "음성 호출은 곧 지원돼요 (기기 연동 준비 중)",
+        cap: "캡처는 곧 지원돼요 (기기 연동 준비 중)",
+      }[id];
+      showToast(msg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="px-5 pb-6">
       <PageHeader
         title={`안녕하세요, ${nickname}님! 🐾`}
         subtitle="오늘도 우리 아이를 살펴봐요"
         right={
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
-            className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
-            aria-label="설정"
-          >
-            <Wifi
-              className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
-            />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/notifications")}
+              className="relative w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
+              aria-label="알림"
+            >
+              <Bell className="w-5 h-5" />
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-danger text-white text-[10px] font-bold flex items-center justify-center border-2 border-brand-bg">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/settings")}
+              className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
+              aria-label="설정"
+            >
+              <Wifi
+                className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
+              />
+            </button>
+          </div>
         }
       />
 
       {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
       <button
         type="button"
+        data-tour="dash-pet"
         onClick={() => navigate("/pet/0")}
         className="w-full text-left touch-active"
       >
@@ -183,6 +329,7 @@ export function Dashboard() {
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
         type="button"
+        data-tour="dash-cam"
         onClick={() => navigate("/vision")}
         className="mt-4 w-full text-left touch-active"
       >
@@ -220,27 +367,34 @@ export function Dashboard() {
       </button>
 
       {/* 3) 숏컷 (Grid) */}
-      <section className="mt-5">
+      <section className="mt-5" data-tour="dash-shortcuts">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
         <div className="grid grid-cols-4 gap-3">
-          {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => (
-            <button
-              key={id}
-              type="button"
-              className="flex flex-col items-center gap-2 touch-active"
-            >
-              <span
-                className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft ${tone}`}
+          {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
+            const active = id === "away" && awayMode;
+            const isBusy = busyId === id;
+            const toneCls = active ? "bg-brand-primary text-white" : tone;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => handleShortcut(id)}
+                disabled={isBusy}
+                className="flex flex-col items-center gap-2 touch-active disabled:opacity-60"
               >
-                <Icon className="w-6 h-6" />
-              </span>
-              <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
-                {label}
-              </span>
-            </button>
-          ))}
+                <span
+                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft transition-colors ${toneCls} ${isBusy ? "animate-pulse" : ""}`}
+                >
+                  <Icon className="w-6 h-6" />
+                </span>
+                <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
+                  {id === "away" ? (awayMode ? "외출 모드 ON" : "외출 모드") : label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -280,23 +434,107 @@ export function Dashboard() {
         </CreamCard>
       </section>
 
-      {/* 5) 급여 통계 바로가기 (최하단) */}
-      <button
-        type="button"
-        onClick={() => navigate("/feeding")}
-        className="mt-6 w-full text-left touch-active"
-      >
-        <Card className="px-5 py-4 flex items-center gap-3">
-          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
-            <UtensilsCrossed className="w-5 h-5" />
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-brand-brown">급여 통계 보기</p>
-            <p className="text-xs text-brand-mute">일·주·월 급여량과 자동 스케줄 관리</p>
+      {/* 5) 펫 활동량 통계 (일/주/월) */}
+      <section className="mt-6">
+        <Card className="px-5 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+                <Footprints className="w-5 h-5" />
+              </span>
+              <div>
+                <p className="font-display text-base font-bold text-brand-brown leading-tight">
+                  활동량
+                </p>
+                <p className="text-[11px] text-brand-mute">우리 아이 발자국 🐾</p>
+              </div>
+            </div>
+            {/* 일/주/월 탭 */}
+            <div className="inline-flex bg-brand-cream rounded-full p-1 shadow-soft-inset">
+              {[
+                ["day", "일간"],
+                ["week", "주간"],
+                ["month", "월간"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActPeriod(id)}
+                  className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
+                    actPeriod === id ? "bg-brand-primary text-white shadow-soft" : "text-brand-mute"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+
+          {/* 영역(라인) 차트 */}
+          <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={actData} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
+                    <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "#9C8A78" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={ACT_PRIMARY}
+                  strokeWidth={2.5}
+                  fill="url(#actFill)"
+                  dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                  animationDuration={500}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* 요약 */}
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <div className="rounded-2xl bg-brand-cream px-4 py-3">
+              <p className="text-[11px] font-semibold text-brand-mute">총 발자국 🐾</p>
+              <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
+                {actTotal.toLocaleString()}회
+              </p>
+            </div>
+            <div className="rounded-2xl bg-brand-cream px-4 py-3">
+              <p className="text-[11px] font-semibold text-brand-mute">{actAvgLabel}</p>
+              <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
+                {actAvg.toLocaleString()}회
+              </p>
+            </div>
+          </div>
         </Card>
-      </button>
+      </section>
+
+      {/* 토스트 */}
+      {toast && (
+        <div
+          className="fixed left-1/2 bottom-24 z-50 px-5 py-3 rounded-2xl shadow-soft-lg text-sm font-bold text-white"
+          style={{
+            transform: `translateX(-50%) translateY(${toastOn ? "0" : "10px"})`,
+            opacity: toastOn ? 1 : 0,
+            transition: "all 250ms ease",
+            background: "#4B3621",
+            maxWidth: "88%",
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
