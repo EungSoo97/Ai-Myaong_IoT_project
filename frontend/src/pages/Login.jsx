@@ -102,21 +102,20 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
-  // 구글 로그인: 계정 없으면 프로필로 최소 계정 생성 후 로그인
-  const handleGoogleLogin = (profile) => {
-    if (!getAccount()) {
-      saveAccount({
-        provider: "google",
-        user: {
-          userId: profile.email?.split("@")[0] || "google",
-          email: profile.email,
-          nickname: profile.name || "구글유저",
-        },
-        pets: [],
-        createdAt: new Date().toISOString(),
-      });
+  const handleGoogleLogin = async (profile) => {
+    try {
+      const result = await api.googleAuth({
+        email: profile.email,
+        name: profile.name,
+        oauth_id: profile.sub,
+        picture: profile.picture,
+      })
+      sessionStorage.setItem('aimyaong:token', result.access_token)
+      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
+      onLogin?.()
+    } catch (e) {
+      setErr(e.message || '구글 로그인 실패')
     }
-    onLogin?.();
   };
 
   return (

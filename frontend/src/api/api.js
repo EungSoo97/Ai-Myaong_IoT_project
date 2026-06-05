@@ -161,4 +161,10 @@ export const api = {
     request("/api/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     }),
+
+  googleAuth: ({ email, name, oauth_id, picture }) =>
+    request("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ email, name, oauth_id, picture }),
+    }),
 };
