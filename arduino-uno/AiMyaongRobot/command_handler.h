@@ -3,7 +3,7 @@
 #include "motor_control.h"
 #include "servo_control.h"
 
-inline void handleCommand(const String& command) {
+inline bool handleCommand(const String& command) {
   if (command == "FORWARD") {
     moveForward();
   } else if (command == "BACKWARD") {
@@ -24,7 +24,11 @@ inline void handleCommand(const String& command) {
     cameraRight();
   } else if (command == "CAM_CENTER") {
     cameraCenter();
+  } else {
+    return false;
   }
+
+  return true;
 }
 
 inline void processIncomingCommands() {
@@ -39,5 +43,14 @@ inline void processIncomingCommands() {
     return;
   }
 
-  handleCommand(command);
+  Serial.print("RX ");
+  Serial.println(command);
+
+  if (handleCommand(command)) {
+    Serial.print("ACK ");
+    Serial.println(command);
+  } else {
+    Serial.print("UNKNOWN ");
+    Serial.println(command);
+  }
 }

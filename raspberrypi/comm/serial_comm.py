@@ -1,4 +1,5 @@
 import os
+import time
 from glob import glob
 
 
@@ -19,6 +20,7 @@ class SerialComm:
         self.port = self._resolve_port()
         self._serial = serial.Serial(self.port, self.baud, timeout=1)
         print(f"[serial] connected to {self.port} @ {self.baud}")
+        self._drain_startup_output()
 
     def send(self, command: str) -> None:
         if self.simulation_mode or not self._serial:
@@ -26,7 +28,9 @@ class SerialComm:
             return
 
         self._serial.write(f"{command}\n".encode("utf-8"))
+        self._serial.flush()
         print(f"[serial] -> robot-controller {command}")
+        self._read_available_output()
 
     def close(self) -> None:
         if self._serial and self._serial.is_open:
@@ -51,3 +55,32 @@ class SerialComm:
             return self.port
 
         raise FileNotFoundError("Arduino serial port was not found. Check /dev/ttyACM* or /dev/ttyUSB*.")
+
+    def _drain_startup_output(self) -> None:
+        if not self._serial:
+            return
+
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if self._read_available_output():
+                deadline = time.monotonic() + 0.2
+            time.sleep(0.05)
+
+    def _read_available_output(self) -> bool:
+        if not self._serial:
+            return False
+
+        saw_output = False
+        deadline = time.monotonic() + 0.2
+        while time.monotonic() < deadline:
+            waiting = getattr(self._serial, "in_waiting", 0)
+            if not waiting:
+                time.sleep(0.02)
+                continue
+
+            line = self._serial.readline().decode("utf-8", "replace").strip()
+            if line:
+                saw_output = True
+                print(f"[serial] <- robot-controller {line}")
+
+        return saw_output
