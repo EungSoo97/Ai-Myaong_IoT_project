@@ -7,6 +7,7 @@ import {
   saveAccount,
 } from "../lib/accountRepository";
 import { api } from "../api/api";
+import { fromApiPet } from "../lib/petMap";
 
 const DEMO_ID = "admin";
 const DEMO_PW = "meow1234";
@@ -30,16 +31,21 @@ const C = {
 }
 
 /* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
- * 같은 유저(email 일치)면 기존 펫 유지, 다른 유저면 펫 초기화(이전 계정 잔재 제거). */
-function applyLoggedInUser(result, provider) {
+ * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
+async function applyLoggedInUser(result, provider) {
   const u = result?.user || {};
-  const prev = getAccount();
-  const samePerson = prev?.user?.email && u.email && prev.user.email === u.email;
+  let pets = [];
+  try {
+    const me = await api.getMe(); // user + pets (DB)
+    pets = (me.pets || []).map((p) => fromApiPet(p));
+  } catch {
+    /* DB 조회 실패 → 펫 없이 진행 */
+  }
   saveAccount({
     provider,
     user: { userId: u.username, email: u.email, nickname: u.nickname },
-    pets: samePerson ? prev.pets || [] : [],
-    createdAt: prev?.createdAt || new Date().toISOString(),
+    pets,
+    createdAt: new Date().toISOString(),
   });
 }
 
@@ -125,6 +131,7 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         name: profile.name,
         oauth_id: profile.sub,
         picture: profile.picture,
+        allow_create: false, // 로그인은 기존 회원만 (신규는 회원가입으로)
       })
       sessionStorage.setItem('aimyaong:token', result.access_token)
       sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))

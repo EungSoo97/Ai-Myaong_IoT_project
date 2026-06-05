@@ -9,7 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { petAgeLabel, speciesLabel, clearAccount } from "../lib/accountRepository";
+import { useAccount, petAgeLabel, speciesLabel, clearAccount } from "../lib/accountRepository";
 import { GoogleButton } from "../components/GoogleButton";
 import { api } from "../api/api";
 
@@ -24,8 +24,13 @@ function handleLogout() {
   window.location.href = "/splash";
 }
 
-function handleWithdraw() {
-  // 회원 탈퇴 (현재: 로컬 데이터 삭제 · 내일 백엔드 붙으면 DELETE /api/me 로 교체)
+async function handleWithdraw() {
+  // 회원 탈퇴 — 백엔드에서 계정+펫 삭제(DELETE /api/auth/me), 그 후 로컬 정리
+  try {
+    await api.deleteMe();
+  } catch {
+    /* 백엔드 미연결/오류여도 로컬은 정리하고 로그아웃 */
+  }
   try {
     sessionStorage.removeItem("aimyaong:auth");
     sessionStorage.removeItem("aimyaong:token");
@@ -53,34 +58,21 @@ function fmtDate(iso) {
 export function MyPage() {
   const navigate = useNavigate();
   const [showWithdraw, setShowWithdraw] = useState(false);
-  const [userData, setUserData] = useState(null);
 
-  useEffect(() => {
-    api.getMe()
-      .then(setUserData)
-      .catch(() => setUserData(null));
-  }, []);
-
-  const rawPet = userData?.pets?.[0] || null;
-  const pet = rawPet
-    ? {
-        name: rawPet.name,
-        breed: rawPet.breed,
-        species: rawPet.species,
-        birthDate: rawPet.birth_date,
-        weightKg: rawPet.weight_kg,
-        photo: rawPet.photo_path,
-      }
-    : FALLBACK_PET;
+  // 대시보드와 동일한 소스(useAccount) 사용 → 닉네임/펫 일치
+  const account = useAccount();
+  const user = account?.user || {};
+  const rawPet = account?.pets?.[0] || null;
   const hasPet = Boolean(rawPet);
+  const pet = rawPet || {};
 
-  const nickname = userData?.nickname || "묘냥집사";
-  const email = userData?.email || "";
-  const initial = nickname.trim().charAt(0) || "집";
-  const registeredAt = "2024-09-01";
+  const nickname = user.nickname || "집사";
+  const email = user.email || "";
+  const initial = (nickname.trim().charAt(0) || "집");
+  const registeredAt = fmtDate(account?.createdAt);
 
-  const googleLinked = userData?.oauth_provider === "google";
-  const googleEmail = googleLinked ? userData?.email : null;
+  const googleLinked = account?.provider === "google";
+  const googleEmail = googleLinked ? email : null;
   const handleGoogleLink = () => {};
 
   return (
@@ -131,53 +123,73 @@ export function MyPage() {
           펫 프로필
         </h3>
 
-        <button
-          type="button"
-          onClick={() => hasPet && navigate("/pet/0")}
-          disabled={!hasPet}
-          className="w-full text-left touch-active disabled:cursor-default"
-        >
-          <Card className="paw-watermark px-5 py-5">
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden shrink-0">
-                {pet.photo ? (
-                  <img
-                    src={pet.photo}
-                    alt={pet.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <PawPrint className="w-10 h-10 text-brand-primary" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-display text-2xl font-bold text-brand-brown leading-tight truncate">
-                  {pet.name}
-                </p>
-                <p className="text-xs text-brand-mute truncate">
-                  {pet.breed || speciesLabel(pet.species)}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {petAgeLabel(pet.birthDate) && (
-                    <Badge tone="brown">{petAgeLabel(pet.birthDate)}</Badge>
-                  )}
-                  {pet.weightKg && (
-                    <Badge tone="primary">{pet.weightKg}kg</Badge>
+        {hasPet ? (
+          <button
+            type="button"
+            onClick={() => navigate("/pet/0")}
+            className="w-full text-left touch-active"
+          >
+            <Card className="paw-watermark px-5 py-5">
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-3xl bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden shrink-0">
+                  {pet.photo ? (
+                    <img
+                      src={pet.photo}
+                      alt={pet.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <PawPrint className="w-10 h-10 text-brand-primary" />
                   )}
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display text-2xl font-bold text-brand-brown leading-tight truncate">
+                    {pet.name}
+                  </p>
+                  <p className="text-xs text-brand-mute truncate">
+                    {pet.breed || speciesLabel(pet.species)}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {petAgeLabel(pet.birthDate) && (
+                      <Badge tone="brown">{petAgeLabel(pet.birthDate)}</Badge>
+                    )}
+                    {pet.weightKg && (
+                      <Badge tone="primary">{pet.weightKg}kg</Badge>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-4 pt-4 border-t border-brand-line grid grid-cols-2 gap-3">
-              <InfoCell
-                label="생일"
-                value={pet.birthDate || "-"}
-                icon={<Calendar className="w-4 h-4" />}
-              />
-              <InfoCell label="등록일" value={registeredAt} />
-            </div>
+              <div className="mt-4 pt-4 border-t border-brand-line grid grid-cols-2 gap-3">
+                <InfoCell
+                  label="생일"
+                  value={pet.birthDate || "-"}
+                  icon={<Calendar className="w-4 h-4" />}
+                />
+                <InfoCell label="등록일" value={registeredAt} />
+              </div>
+            </Card>
+          </button>
+        ) : (
+          <Card className="paw-watermark px-5 py-8 text-center">
+            <span className="mx-auto w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mb-3">
+              <PawPrint className="w-8 h-8 text-brand-primary/70" />
+            </span>
+            <p className="font-display text-lg font-bold text-brand-brown">
+              등록된 반려동물이 없어요
+            </p>
+            <p className="text-sm text-brand-mute mt-1">
+              우리 아이를 등록하고 관리해 보세요 🐾
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/pet/0")}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-2xl bg-brand-primary text-white font-bold px-5 py-2.5 shadow-soft touch-active"
+            >
+              <PawPrint className="w-4 h-4" /> 반려동물 등록하기
+            </button>
           </Card>
-        </button>
+        )}
       </section>
 
       {/* 계정 연동 (구글) */}

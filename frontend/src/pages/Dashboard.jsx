@@ -25,6 +25,7 @@ import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount 
 import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
+import { toApiPet, fromApiPet } from "../lib/petMap";
 
 const RECENT = [
   {
@@ -212,20 +213,28 @@ export function Dashboard() {
   const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
-  // 펫 등록 (없을 때 바로 등록)
+  // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
   const [showRegister, setShowRegister] = useState(false);
-  const handleRegister = (newPet) => {
+  const handleRegister = async (newPet) => {
+    setShowRegister(false);
+    let saved = newPet;
+    try {
+      const r = await api.createPet(toApiPet(newPet)); // DB 저장 → pet_id 반환
+      saved = fromApiPet(r, newPet.photo);
+    } catch {
+      /* 백엔드 미연결 → 로컬만 */
+    }
     if (!getAccount()) {
       saveAccount({
         provider: "guest",
-        user: { userId: "guest", nickname: nickname },
-        pets: [newPet],
+        user: { userId: "guest", nickname },
+        pets: [saved],
         createdAt: new Date().toISOString(),
       });
     } else {
-      addPet(newPet);
+      addPet(saved);
     }
-    setShowRegister(false);
+    showToast(`🐾 ${saved.name || "반려동물"} 등록 완료`);
   };
 
   // 활동량 통계 (일/주/월)

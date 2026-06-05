@@ -68,3 +68,9 @@ class GoogleAuthRequest(BaseModel):
     name: Optional[str] = None
     oauth_id: str
     picture: Optional[str] = None
+    allow_create: bool = True  # 로그인은 False(기존 회원만), 회원가입 흐름은 True
+
+
+class UpdateMeRequest(BaseModel):
+    nickname: Optional[str] = None
+    email: Optional[EmailStr] = None
