@@ -6,11 +6,11 @@ import database.feed_logs
 import database.pet_health_reports
 import database.settings
 import database.water_logs
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
-from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse, GoogleAuthRequest
+from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse, PetResponse, GoogleAuthRequest
 from database.base import get_db
 from database.user import User
 from database.pets import Pet
@@ -74,7 +74,10 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-def me(token: str, db: Session = Depends(get_db)):
+def me(authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 없습니다.")
+    token = authorization.split(" ", 1)[1]
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
@@ -83,7 +86,14 @@ def me(token: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
-    return UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname)
+    return UserResponse(
+        user_id=user.user_id,
+        username=user.username,
+        email=user.email,
+        nickname=user.nickname,
+        oauth_provider=user.oauth_provider,
+        pets=[PetResponse.model_validate(p) for p in user.pets],
+    )
 
 
 @router.post("/google", response_model=AuthResponse)
