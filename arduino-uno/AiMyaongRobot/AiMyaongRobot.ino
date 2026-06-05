@@ -4,8 +4,10 @@
 
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(50);
   setupMotors();
   setupServos();
+  Serial.println("AiMyaongRobot ready");
 }
 
 void loop() {

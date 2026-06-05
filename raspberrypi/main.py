@@ -125,22 +125,33 @@ class RaspberryPiAgent:
             print(f"[raspberrypi] MQTT disconnected: {reason_code}")
 
     def on_message(self, _client, _userdata, message) -> None:
-    topic = message.topic
-    payload = message.payload.decode("utf-8").strip()
+        topic = message.topic
+        payload_text = message.payload.decode("utf-8").strip()
 
-    # ✅ 여기 추가 (backend discovery 용)
-    if topic == "system/backend/announce":
-        try:
-            data = json.loads(payload)
-            url = data.get("url")
-            if url:
-                print(f"[mqtt] backend discovered: {url}")
+        if topic == "system/backend/announce":
+            try:
+                data = json.loads(payload_text)
+                url = str(data.get("url") or "").strip().rstrip("/")
+                if url:
+                    print(f"[mqtt] backend discovered: {url}")
+                    MQTT_BACKEND_CACHE["url"] = url
+                    os.environ["DESKTOP_BACKEND_URL"] = url
+                    set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", url)
+            except Exception as exc:
+                print(f"[mqtt] backend announce parse error: {exc}")
+            return
 
-                # 🔥 핵심 캐시 저장
-                MQTT_BACKEND_CACHE["url"] = url
-                os.environ["DESKTOP_BACKEND_URL"] = url
-        except Exception as e:
-            print(f"[mqtt] backend announce parse error: {e}")
+        command = self._extract_command(message.payload)
+        if not command:
+            print(f"[raspberrypi] ignored empty command on {topic}")
+            return
+
+        if command not in ROBOT_COMMANDS:
+            print(f"[raspberrypi] ignored unsupported command on {topic}: {command}")
+            return
+
+        print(f"[raspberrypi] MQTT {topic} -> Arduino {command}")
+        self.serial.send(command)
 
     def _extract_command(self, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()

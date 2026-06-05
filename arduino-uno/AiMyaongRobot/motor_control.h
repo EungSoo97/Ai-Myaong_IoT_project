@@ -1,25 +1,81 @@
 #pragma once
 
+#include <Arduino.h>
+
+// L298N default wiring. Change these constants if your wiring is different.
+constexpr uint8_t LEFT_MOTOR_PWM_PIN = 5;
+constexpr uint8_t LEFT_MOTOR_IN1_PIN = 4;
+constexpr uint8_t LEFT_MOTOR_IN2_PIN = 7;
+constexpr uint8_t RIGHT_MOTOR_PWM_PIN = 6;
+constexpr uint8_t RIGHT_MOTOR_IN1_PIN = 8;
+constexpr uint8_t RIGHT_MOTOR_IN2_PIN = 12;
+constexpr uint8_t MOTOR_SPEED = 190;
+
+inline void stopMotors();
+
+inline void driveLeft(int direction, uint8_t speed = MOTOR_SPEED) {
+  if (direction > 0) {
+    digitalWrite(LEFT_MOTOR_IN1_PIN, HIGH);
+    digitalWrite(LEFT_MOTOR_IN2_PIN, LOW);
+  } else if (direction < 0) {
+    digitalWrite(LEFT_MOTOR_IN1_PIN, LOW);
+    digitalWrite(LEFT_MOTOR_IN2_PIN, HIGH);
+  } else {
+    digitalWrite(LEFT_MOTOR_IN1_PIN, LOW);
+    digitalWrite(LEFT_MOTOR_IN2_PIN, LOW);
+    speed = 0;
+  }
+
+  analogWrite(LEFT_MOTOR_PWM_PIN, speed);
+}
+
+inline void driveRight(int direction, uint8_t speed = MOTOR_SPEED) {
+  if (direction > 0) {
+    digitalWrite(RIGHT_MOTOR_IN1_PIN, HIGH);
+    digitalWrite(RIGHT_MOTOR_IN2_PIN, LOW);
+  } else if (direction < 0) {
+    digitalWrite(RIGHT_MOTOR_IN1_PIN, LOW);
+    digitalWrite(RIGHT_MOTOR_IN2_PIN, HIGH);
+  } else {
+    digitalWrite(RIGHT_MOTOR_IN1_PIN, LOW);
+    digitalWrite(RIGHT_MOTOR_IN2_PIN, LOW);
+    speed = 0;
+  }
+
+  analogWrite(RIGHT_MOTOR_PWM_PIN, speed);
+}
+
 inline void setupMotors() {
-  // TODO: configure motor driver pins and default safe state.
+  pinMode(LEFT_MOTOR_PWM_PIN, OUTPUT);
+  pinMode(LEFT_MOTOR_IN1_PIN, OUTPUT);
+  pinMode(LEFT_MOTOR_IN2_PIN, OUTPUT);
+  pinMode(RIGHT_MOTOR_PWM_PIN, OUTPUT);
+  pinMode(RIGHT_MOTOR_IN1_PIN, OUTPUT);
+  pinMode(RIGHT_MOTOR_IN2_PIN, OUTPUT);
+  stopMotors();
 }
 
 inline void moveForward() {
-  // TODO: drive both tracks forward.
+  driveLeft(1);
+  driveRight(1);
 }
 
 inline void moveBackward() {
-  // TODO: drive both tracks backward.
+  driveLeft(-1);
+  driveRight(-1);
 }
 
 inline void turnLeft() {
-  // TODO: drive tracks for left turn.
+  driveLeft(-1);
+  driveRight(1);
 }
 
 inline void turnRight() {
-  // TODO: drive tracks for right turn.
+  driveLeft(1);
+  driveRight(-1);
 }
 
 inline void stopMotors() {
-  // TODO: stop both tracks.
+  driveLeft(0);
+  driveRight(0);
 }

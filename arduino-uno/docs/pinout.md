@@ -4,12 +4,12 @@ Use this page to lock down the final Arduino Uno wiring.
 
 ## Motor Driver
 
-- Left motor PWM:
-- Left motor direction A:
-- Left motor direction B:
-- Right motor PWM:
-- Right motor direction A:
-- Right motor direction B:
+- Left motor PWM: D5
+- Left motor direction A: D4
+- Left motor direction B: D7
+- Right motor PWM: D6
+- Right motor direction A: D8
+- Right motor direction B: D12
 
 ## Pan/Tilt Servos
 
