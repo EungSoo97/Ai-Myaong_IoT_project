@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
 from datetime import datetime
@@ -6,7 +6,7 @@ from datetime import datetime
 class Settings(Base):
     __tablename__ = "SETTINGS"
 
-    setting_id    = Column(Integer, primary_key=True, autoincrement=True)
+    setting_id    = Column(Integer, Identity(start=1), primary_key=True)
     user_id       = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     away_mode     = Column(String(1),   default="N")
     wifi_ssid     = Column(String(100), nullable=True)

@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { Lock, LogIn, User } from 'lucide-react'
-import { GoogleButton } from '../components/GoogleButton'
-import { getAccount, getCurrentUser, saveAccount } from '../lib/accountRepository'
+import { useEffect, useRef, useState } from "react";
+import { Lock, LogIn, User } from "lucide-react";
+import { GoogleButton } from "../components/GoogleButton";
+import {
+  getAccount,
+  getCurrentUser,
+  saveAccount,
+} from "../lib/accountRepository";
+import { api } from "../api/api";
 
-const DEMO_ID = 'admin'
-const DEMO_PW = 'meow1234'
+const DEMO_ID = "admin";
+const DEMO_PW = "meow1234";
 
 /* Warm-tone 팔레트 */
 const C = {
@@ -30,92 +35,90 @@ const C = {
  * - 좌표 변화 시 꼬리만 살짝 흔들림.
  */
 export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
-  const [id, setId] = useState('')
-  const [pw, setPw] = useState('')
-  const [err, setErr] = useState('')
+  const [id, setId] = useState("");
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
 
-  const stageRef = useRef(null)
-  const headRef = useRef(null)
-  const tailRef = useRef(null)
-  const eyeLRef = useRef(null)
-  const eyeRRef = useRef(null)
+  const stageRef = useRef(null);
+  const headRef = useRef(null);
+  const tailRef = useRef(null);
+  const eyeLRef = useRef(null);
+  const eyeRRef = useRef(null);
 
   useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
+    const stage = stageRef.current;
+    if (!stage) return;
 
     const apply = (clientX, clientY) => {
-      const rect = stage.getBoundingClientRect()
-      const cx = rect.left + rect.width / 2
-      const cy = rect.top + rect.height / 2.4
-      const nx = Math.max(-1, Math.min(1, (clientX - cx) / (rect.width / 2)))
-      const ny = Math.max(-1, Math.min(1, (clientY - cy) / (rect.height / 2)))
+      const rect = stage.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2.4;
+      const nx = Math.max(-1, Math.min(1, (clientX - cx) / (rect.width / 2)));
+      const ny = Math.max(-1, Math.min(1, (clientY - cy) / (rect.height / 2)));
 
       // 고양이: 커서 향해 갸웃 (translate + rotate)
       if (headRef.current) {
-        const tx = nx * 7
-        const ty = ny * 5
-        const rotZ = nx * 8
-        headRef.current.style.transform = `translate(${tx}px, ${ty}px) rotate(${rotZ}deg)`
+        const tx = nx * 7;
+        const ty = ny * 5;
+        const rotZ = nx * 8;
+        headRef.current.style.transform = `translate(${tx}px, ${ty}px) rotate(${rotZ}deg)`;
       }
       // 눈동자: 살짝 따라감 (±3px / ±2px)
-      const ex = nx * 3
-      const ey = ny * 2
-      if (eyeLRef.current) eyeLRef.current.style.transform = `translate(${ex}px, ${ey}px)`
-      if (eyeRRef.current) eyeRRef.current.style.transform = `translate(${ex}px, ${ey}px)`
+      const ex = nx * 3;
+      const ey = ny * 2;
+      if (eyeLRef.current)
+        eyeLRef.current.style.transform = `translate(${ex}px, ${ey}px)`;
+      if (eyeRRef.current)
+        eyeRRef.current.style.transform = `translate(${ex}px, ${ey}px)`;
       // 꼬리: 좌우 살짝 흔들림 (±6deg)
       if (tailRef.current) {
-        const rotZ = nx * 6
-        tailRef.current.style.transform = `rotate(${rotZ}deg)`
+        const rotZ = nx * 6;
+        tailRef.current.style.transform = `rotate(${rotZ}deg)`;
       }
-    }
+    };
 
-    const onMouse = (e) => apply(e.clientX, e.clientY)
+    const onMouse = (e) => apply(e.clientX, e.clientY);
     const onTouch = (e) => {
-      if (e.touches?.length) apply(e.touches[0].clientX, e.touches[0].clientY)
-    }
-    window.addEventListener('mousemove', onMouse, { passive: true })
-    window.addEventListener('touchmove', onTouch, { passive: true })
-    window.addEventListener('touchstart', onTouch, { passive: true })
+      if (e.touches?.length) apply(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    window.addEventListener("mousemove", onMouse, { passive: true });
+    window.addEventListener("touchmove", onTouch, { passive: true });
+    window.addEventListener("touchstart", onTouch, { passive: true });
     return () => {
-      window.removeEventListener('mousemove', onMouse)
-      window.removeEventListener('touchmove', onTouch)
-      window.removeEventListener('touchstart', onTouch)
-    }
-  }, [])
+      window.removeEventListener("mousemove", onMouse);
+      window.removeEventListener("touchmove", onTouch);
+      window.removeEventListener("touchstart", onTouch);
+    };
+  }, []);
 
-  const submit = (e) => {
-    e.preventDefault()
-    // 1) 가입한 계정으로 검증 (localStorage · 내일 백엔드 인증으로 교체)
-    const acc = getCurrentUser()
-    if (acc && id === acc.userId && pw === acc.password) {
-      onLogin?.()
-      return
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    try {
+      const result = await api.login({ username: id, password: pw });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      onLogin?.();
+    } catch (e) {
+      setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
-    // 2) 데모 계정 (편의용 fallback)
-    if (id === DEMO_ID && pw === DEMO_PW) {
-      onLogin?.()
-      return
-    }
-    setErr('아이디 또는 비밀번호를 확인해 주세요')
-  }
-
+  };
   // 구글 로그인: 계정 없으면 프로필로 최소 계정 생성 후 로그인
   const handleGoogleLogin = (profile) => {
     if (!getAccount()) {
       saveAccount({
-        provider: 'google',
+        provider: "google",
         user: {
-          userId: profile.email?.split('@')[0] || 'google',
+          userId: profile.email?.split("@")[0] || "google",
           email: profile.email,
-          nickname: profile.name || '구글유저',
+          nickname: profile.name || "구글유저",
         },
         pets: [],
         createdAt: new Date().toISOString(),
-      })
+      });
     }
-    onLogin?.()
-  }
+    onLogin?.();
+  };
 
   return (
     <div
@@ -125,7 +128,10 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
     >
       {/* 브랜드 */}
       <div className="text-center">
-        <h1 className="font-display text-3xl font-bold tracking-tight" style={{ color: C.brown }}>
+        <h1
+          className="font-display text-3xl font-bold tracking-tight"
+          style={{ color: C.brown }}
+        >
           Ai<span style={{ color: C.primary }}>:</span>Myaong
         </h1>
         <p className="mt-1 text-xs font-semibold" style={{ color: C.mute }}>
@@ -146,7 +152,10 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         className="mt-4 sm:mt-6 rounded-3xl p-5 shadow-lg"
         style={{ background: C.card, border: `1px solid ${C.border}` }}
       >
-        <p className="text-center text-xs font-bold tracking-widest uppercase" style={{ color: C.primary }}>
+        <p
+          className="text-center text-xs font-bold tracking-widest uppercase"
+          style={{ color: C.primary }}
+        >
           로그인
         </p>
 
@@ -169,7 +178,12 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         />
 
         {err && (
-          <p className="mt-2 text-xs font-semibold" style={{ color: '#E26D5C' }}>{err}</p>
+          <p
+            className="mt-2 text-xs font-semibold"
+            style={{ color: "#E26D5C" }}
+          >
+            {err}
+          </p>
         )}
 
         <button
@@ -184,11 +198,16 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         {/* 또는 구글 로그인 */}
         <div className="mt-5 flex items-center gap-3">
           <div className="flex-1 h-px" style={{ background: C.border }} />
-          <span className="text-xs font-bold" style={{ color: C.mute }}>또는</span>
+          <span className="text-xs font-bold" style={{ color: C.mute }}>
+            또는
+          </span>
           <div className="flex-1 h-px" style={{ background: C.border }} />
         </div>
         <div className="mt-4">
-          <GoogleButton label="Google 계정으로 로그인" onSuccess={handleGoogleLogin} />
+          <GoogleButton
+            label="Google 계정으로 로그인"
+            onSuccess={handleGoogleLogin}
+          />
         </div>
 
         <div className="mt-5 grid grid-cols-3 gap-2">
@@ -196,7 +215,11 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
             type="button"
             onClick={onFindId}
             className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
-            style={{ background: C.input, color: C.brown, border: `1.5px solid ${C.border}` }}
+            style={{
+              background: C.input,
+              color: C.brown,
+              border: `1.5px solid ${C.border}`,
+            }}
           >
             아이디 찾기
           </button>
@@ -204,7 +227,11 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
             type="button"
             onClick={onFindPassword}
             className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
-            style={{ background: C.input, color: C.brown, border: `1.5px solid ${C.border}` }}
+            style={{
+              background: C.input,
+              color: C.brown,
+              border: `1.5px solid ${C.border}`,
+            }}
           >
             비밀번호 찾기
           </button>
@@ -223,14 +250,27 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         </p>
       </form>
     </div>
-  )
+  );
 }
 
 /* ─────────────── Warm Input ─────────────── */
-function WarmField({ icon, label, value, onChange, type = 'text', placeholder, autoComplete }) {
+function WarmField({
+  icon,
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  autoComplete,
+}) {
   return (
     <label className="mt-4 block">
-      <span className="text-[11px] font-semibold pl-1" style={{ color: C.mute }}>{label}</span>
+      <span
+        className="text-[11px] font-semibold pl-1"
+        style={{ color: C.mute }}
+      >
+        {label}
+      </span>
       <div
         className="mt-1 flex items-center gap-2 rounded-2xl px-4 py-3 transition-colors"
         style={{ background: C.input, border: `1.5px solid ${C.border}` }}
@@ -247,7 +287,7 @@ function WarmField({ icon, label, value, onChange, type = 'text', placeholder, a
         />
       </div>
     </label>
-  )
+  );
 }
 
 /* ─────────────── 반응형 고양이 이미지 (public/AAA.png) ───────────────
@@ -260,7 +300,11 @@ function ReactiveCat({ headRef }) {
   return (
     <div
       ref={headRef}
-      style={{ transformOrigin: 'center bottom', transition: 'transform 200ms ease-out', willChange: 'transform' }}
+      style={{
+        transformOrigin: "center bottom",
+        transition: "transform 200ms ease-out",
+        willChange: "transform",
+      }}
     >
       <div className="cat-bob">
         <img
@@ -268,11 +312,11 @@ function ReactiveCat({ headRef }) {
           alt="고양이"
           draggable={false}
           className="w-full h-auto select-none transition-transform duration-300 hover:scale-105 active:scale-95"
-          style={{ filter: 'drop-shadow(0 16px 22px rgba(92,61,31,0.18))' }}
+          style={{ filter: "drop-shadow(0 16px 22px rgba(92,61,31,0.18))" }}
         />
       </div>
     </div>
-  )
+  );
 }
 
 /* ─────────────── 잠자는 둥근 고양이 (참조 이미지 기반) ───────────────
@@ -289,19 +333,27 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       className="w-full h-auto"
-      style={{ filter: 'drop-shadow(0 16px 22px rgba(92,61,31,0.18))' }}
+      style={{ filter: "drop-shadow(0 16px 22px rgba(92,61,31,0.18))" }}
     >
       {/* 발 밑 그림자 (파스텔 민트 살짝) */}
       <ellipse cx="120" cy="200" rx="80" ry="10" fill="#B8D9CC" opacity="0.7" />
-      <ellipse cx="120" cy="201" rx="80" ry="10" fill="none" stroke={C.outline} strokeWidth="2" />
+      <ellipse
+        cx="120"
+        cy="201"
+        rx="80"
+        ry="10"
+        fill="none"
+        stroke={C.outline}
+        strokeWidth="2"
+      />
 
       {/* 꼬리 (오른쪽으로 휘어진 줄무늬) — 트래킹 그룹 */}
       <g
         ref={tailRef}
         style={{
-          transformOrigin: '170px 170px',
-          transition: 'transform 250ms ease-out',
-          willChange: 'transform',
+          transformOrigin: "170px 170px",
+          transition: "transform 250ms ease-out",
+          willChange: "transform",
         }}
       >
         {/* 꼬리 본체 */}
@@ -320,9 +372,27 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
           fill="none"
         />
         {/* 꼬리 줄무늬 */}
-        <path d="M190 176 q2 -8 6 -8" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
-        <path d="M205 170 q3 -7 5 -10" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
-        <path d="M216 156 q3 -6 4 -10" stroke={C.catOrange} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path
+          d="M190 176 q2 -8 6 -8"
+          stroke={C.catOrange}
+          strokeWidth="6"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M205 170 q3 -7 5 -10"
+          stroke={C.catOrange}
+          strokeWidth="6"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M216 156 q3 -6 4 -10"
+          stroke={C.catOrange}
+          strokeWidth="6"
+          strokeLinecap="round"
+          fill="none"
+        />
       </g>
 
       {/* ─── 몸통 ─── */}
@@ -368,18 +438,50 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         strokeLinejoin="round"
       />
       {/* 발가락 라인 */}
-      <line x1="96" y1="200" x2="96" y2="196" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="104" y1="201" x2="104" y2="197" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="136" y1="200" x2="136" y2="196" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="144" y1="201" x2="144" y2="197" stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" />
+      <line
+        x1="96"
+        y1="200"
+        x2="96"
+        y2="196"
+        stroke={C.outline}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <line
+        x1="104"
+        y1="201"
+        x2="104"
+        y2="197"
+        stroke={C.outline}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <line
+        x1="136"
+        y1="200"
+        x2="136"
+        y2="196"
+        stroke={C.outline}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <line
+        x1="144"
+        y1="201"
+        x2="144"
+        y2="197"
+        stroke={C.outline}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
 
       {/* ─── 머리 (트래킹 그룹) ─── */}
       <g
         ref={headRef}
         style={{
-          transformOrigin: '120px 92px',
-          transition: 'transform 200ms ease-out',
-          willChange: 'transform',
+          transformOrigin: "120px 92px",
+          transition: "transform 200ms ease-out",
+          willChange: "transform",
         }}
       >
         {/* 귀 (왼쪽) */}
@@ -390,10 +492,7 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
           strokeWidth="2.4"
           strokeLinejoin="round"
         />
-        <path
-          d="M74 56 Q72 38 90 48 L92 62 Z"
-          fill={C.catPink}
-        />
+        <path d="M74 56 Q72 38 90 48 L92 62 Z" fill={C.catPink} />
         {/* 귀 (오른쪽) */}
         <path
           d="M176 60 Q182 22 144 40 L140 70 Z"
@@ -402,10 +501,7 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
           strokeWidth="2.4"
           strokeLinejoin="round"
         />
-        <path
-          d="M166 56 Q168 38 150 48 L148 62 Z"
-          fill={C.catPink}
-        />
+        <path d="M166 56 Q168 38 150 48 L148 62 Z" fill={C.catPink} />
 
         {/* 머리 (흰 베이스) */}
         <ellipse
@@ -432,9 +528,33 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         />
 
         {/* 정수리 줄무늬 (참조: 머리 위 3줄) */}
-        <line x1="112" y1="60" x2="112" y2="72" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
-        <line x1="120" y1="56" x2="120" y2="70" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
-        <line x1="128" y1="60" x2="128" y2="72" stroke={C.outline} strokeWidth="2" strokeLinecap="round" />
+        <line
+          x1="112"
+          y1="60"
+          x2="112"
+          y2="72"
+          stroke={C.outline}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <line
+          x1="120"
+          y1="56"
+          x2="120"
+          y2="70"
+          stroke={C.outline}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <line
+          x1="128"
+          y1="60"
+          x2="128"
+          y2="72"
+          stroke={C.outline}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
 
         {/* 흰 페이스 마스크 (눈 아래쪽 강조용 - 살짝만) */}
         <path
@@ -454,7 +574,10 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         {/* 큰 까만 눈 - 트래킹 */}
         <g
           ref={eyeLRef}
-          style={{ transition: 'transform 120ms ease-out', willChange: 'transform' }}
+          style={{
+            transition: "transform 120ms ease-out",
+            willChange: "transform",
+          }}
         >
           <circle cx="103" cy="108" r="8.5" fill={C.outline} />
           {/* 큰 하이라이트 */}
@@ -464,7 +587,10 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         </g>
         <g
           ref={eyeRRef}
-          style={{ transition: 'transform 120ms ease-out', willChange: 'transform' }}
+          style={{
+            transition: "transform 120ms ease-out",
+            willChange: "transform",
+          }}
         >
           <circle cx="137" cy="108" r="8.5" fill={C.outline} />
           <circle cx="134" cy="105" r="2.6" fill="#FFFFFF" />
@@ -497,7 +623,12 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         />
 
         {/* 수염 (3쌍) */}
-        <g stroke={C.outline} strokeWidth="1.4" strokeLinecap="round" opacity="0.85">
+        <g
+          stroke={C.outline}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          opacity="0.85"
+        >
           <line x1="60" y1="112" x2="80" y2="114" />
           <line x1="58" y1="120" x2="80" y2="118" />
           <line x1="60" y1="128" x2="80" y2="122" />
@@ -507,7 +638,7 @@ function ChubbyCat({ headRef, tailRef, eyeLRef, eyeRRef }) {
         </g>
       </g>
     </svg>
-  )
+  );
 }
 
-export default Login
+export default Login;
