@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$SCRIPT_DIR/../backend"
 
 cd "$PROJECT_PATH"
+export PYTHONPATH="$SCRIPT_DIR/.."
 
 if [[ -x ".venv/bin/python" ]]; then
   exec .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
