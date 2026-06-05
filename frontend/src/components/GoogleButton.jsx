@@ -80,6 +80,7 @@ export function GoogleButton({ onSuccess, onError, label = 'Google 계정으로 
         name: info.name || info.given_name || info.email?.split('@')[0],
         picture: info.picture,
         verified: info.email_verified,
+        sub: info.sub,
       })
     } catch (e) {
       cbRef.current.onError?.(e)
