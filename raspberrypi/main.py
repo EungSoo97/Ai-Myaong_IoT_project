@@ -125,22 +125,21 @@ class RaspberryPiAgent:
             print(f"[raspberrypi] MQTT disconnected: {reason_code}")
 
     def on_message(self, _client, _userdata, message) -> None:
-    topic = message.topic
-    payload = message.payload.decode("utf-8").strip()
+        topic = message.topic
+        payload = message.payload.decode("utf-8").strip()
 
-    # ✅ 여기 추가 (backend discovery 용)
-    if topic == "system/backend/announce":
-        try:
-            data = json.loads(payload)
-            url = data.get("url")
-            if url:
-                print(f"[mqtt] backend discovered: {url}")
+        # Backend discovery announcement.
+        if topic == "system/backend/announce":
+            try:
+                data = json.loads(payload)
+                url = data.get("url")
+                if url:
+                    print(f"[mqtt] backend discovered: {url}")
 
-                # 🔥 핵심 캐시 저장
-                MQTT_BACKEND_CACHE["url"] = url
-                os.environ["DESKTOP_BACKEND_URL"] = url
-        except Exception as e:
-            print(f"[mqtt] backend announce parse error: {e}")
+                    MQTT_BACKEND_CACHE["url"] = url
+                    os.environ["DESKTOP_BACKEND_URL"] = url
+            except Exception as e:
+                print(f"[mqtt] backend announce parse error: {e}")
 
     def _extract_command(self, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()
