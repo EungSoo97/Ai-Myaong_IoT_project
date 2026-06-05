@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
 from datetime import datetime
@@ -7,7 +7,7 @@ from datetime import datetime
 class WaterLog(Base):
     __tablename__ = "WATER_LOGS"
 
-    water_log_id = Column(Integer, primary_key=True, autoincrement=True)
+    water_log_id = Column(Integer, Identity(start=1), primary_key=True)
 
     user_id = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     pet_id = Column(Integer, ForeignKey("PETS.pet_id"), nullable=False)
