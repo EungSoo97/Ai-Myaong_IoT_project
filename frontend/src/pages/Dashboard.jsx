@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { api } from "../api/api";
 
 import {
   Wifi,
-  Play,
   PhoneCall,
   Camera,
   PawPrint,
@@ -14,7 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAge, speciesLabel } from "../lib/accountRepository";
+import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
 
 const RECENT = [
   {
@@ -90,6 +91,30 @@ export function Dashboard() {
   const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
   const account = useAccount();
 
+  // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
+  const [streamUrl, setStreamUrl] = useState("");
+  const [streamFailed, setStreamFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getStreamUrl()
+      .then((data) => {
+        if (alive) {
+          setStreamUrl(data.url || "");
+          setStreamFailed(false);
+        }
+      })
+      .catch(() => {
+        if (alive) setStreamFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const showLive = streamUrl && !streamFailed;
+
   // 가입 데이터 기반 값 (없으면 샘플 fallback)
   const nickname = account?.user?.nickname || "묘냥집사";
   const pets = account?.pets ?? [];
@@ -97,22 +122,20 @@ export function Dashboard() {
   const petName = pet?.name || "미야옹";
   const petBreed = pet?.breed || "코숏";
   const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
-  const age = pet ? petAge(pet.birthDate) : 3;
-  const ageBreed = [age != null ? `${age}살` : null, petBreed]
-    .filter(Boolean)
-    .join(" · ");
+  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
+  const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   return (
     <div className="px-5 pb-6">
       <PageHeader
-        title={`안녕, ${nickname} 🐾`}
+        title={`안녕하세요, ${nickname}님! 🐾`}
         subtitle="오늘도 우리 아이를 살펴봐요"
         right={
           <button
             type="button"
-            onClick={() => navigate("/wifi-setup")}
+            onClick={() => navigate("/settings")}
             className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
-            aria-label="네트워크 설정"
+            aria-label="설정"
           >
             <Wifi
               className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
@@ -121,40 +144,40 @@ export function Dashboard() {
         }
       />
 
-      {/* 1) 펫 프로필 (가입 데이터 기반) */}
-      <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
-        <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-            {pet?.photo ? (
-              <img
-                src={pet.photo}
-                alt={petName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <PawPrint className="w-9 h-9 text-brand-primary" />
-            )}
+      {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
+      <button
+        type="button"
+        onClick={() => navigate("/pet/0")}
+        className="w-full text-left touch-active"
+      >
+        <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+              {pet?.photo ? (
+                <img
+                  src={pet.photo}
+                  alt={petName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <PawPrint className="w-9 h-9 text-brand-primary" />
+              )}
+            </div>
+            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
           </div>
-          <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-brand-mute font-semibold">우리집 고양이</p>
-          <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
-            미야옹
-          </h2>
-          <p className="text-xs text-brand-mute font-semibold">
-            우리집 {petSpecies}
-            {pets.length > 1 ? ` · 외 ${pets.length - 1}마리` : ""}
-          </p>
-          <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
-            {petName}
-          </h2>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
-            <Badge tone="success">건강 양호</Badge>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+            <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+              {petName}
+            </h2>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
+              <Badge tone="success">건강 양호</Badge>
+            </div>
           </div>
-        </div>
-      </Card>
+          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+        </Card>
+      </button>
 
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
@@ -164,16 +187,29 @@ export function Dashboard() {
       >
         <Card className="overflow-hidden">
           <div className="relative aspect-video bg-gradient-to-br from-brand-brown to-brand-brown-soft">
-            <div className="absolute inset-0 flex items-center justify-center text-white/85">
-              <div className="text-center">
-                <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
-                <p className="text-sm font-semibold">실시간 캠 보기</p>
-                <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+            {showLive ? (
+              <img
+                src={streamUrl}
+                alt="실시간 캠"
+                onError={() => setStreamFailed(true)}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white/85">
+                <div className="text-center">
+                  <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
+                  <p className="text-sm font-semibold">
+                    {streamFailed ? "캠 연결 대기 중" : "실시간 캠 보기"}
+                  </p>
+                  <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+                </div>
               </div>
-            </div>
+            )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-              LIVE
+              <span
+                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : "bg-white/50"}`}
+              />
+              {showLive ? "LIVE" : "OFF"}
             </span>
             <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-white/85 text-brand-brown text-[11px] font-bold">
               HD
@@ -182,7 +218,7 @@ export function Dashboard() {
         </Card>
       </button>
 
-      {/* 4) 숏컷 (Grid) */}
+      {/* 3) 숏컷 (Grid) */}
       <section className="mt-5">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
@@ -207,13 +243,17 @@ export function Dashboard() {
         </div>
       </section>
 
-      {/* 3) 최근 활동 */}
+      {/* 4) 최근 활동 */}
       <section className="mt-6">
         <div className="flex items-center justify-between px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">
             최근 활동
           </h3>
-          <button className="text-xs text-brand-mute font-semibold flex items-center">
+          <button
+            type="button"
+            onClick={() => navigate("/activity")}
+            className="text-xs text-brand-mute font-semibold flex items-center touch-active"
+          >
             전체보기 <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -238,6 +278,24 @@ export function Dashboard() {
           ))}
         </CreamCard>
       </section>
+
+      {/* 5) 급여 통계 바로가기 (최하단) */}
+      <button
+        type="button"
+        onClick={() => navigate("/feeding")}
+        className="mt-6 w-full text-left touch-active"
+      >
+        <Card className="px-5 py-4 flex items-center gap-3">
+          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
+            <UtensilsCrossed className="w-5 h-5" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-brand-brown">급여 통계 보기</p>
+            <p className="text-xs text-brand-mute">일·주·월 급여량과 자동 스케줄 관리</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+        </Card>
+      </button>
     </div>
   );
 }

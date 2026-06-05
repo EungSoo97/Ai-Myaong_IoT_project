@@ -10,6 +10,7 @@
 - `start-backend.sh`
 - `start-frontend.sh`
 - `start-mqtt-broker.sh`
+- `allow-backend-firewall-windows.ps1`
 - `setup-raspberrypi-wifi.sh`
 - `start-raspberrypi.sh`
 - `setup-dev-env.sh`
@@ -54,6 +55,12 @@ setup-python-venv.bat -Target frontend
 setup-toolchain.bat
 check-versions.bat desktop
 rebuild-env.bat desktop
+```
+
+If Raspberry Pi cannot reach the desktop backend on port 8000, run PowerShell as Administrator:
+
+```powershell
+.\scripts\allow-backend-firewall-windows.ps1
 ```
 
 Other macOS or Linux examples:

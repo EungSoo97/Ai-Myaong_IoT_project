@@ -8,6 +8,8 @@ from urllib.request import urlopen
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
+from app.runtime_config import runtime_env
+
 router = APIRouter(prefix="/api/stream", tags=["stream"])
 _camera_lock = threading.Lock()
 
@@ -18,20 +20,20 @@ _FRAME = base64.b64decode(
 
 @router.get("/url")
 def stream_url():
-    camera_stream_url = os.getenv("CAMERA_STREAM_URL", "").strip()
-    if camera_stream_url and os.getenv("CAMERA_PROXY", "false").lower() != "true":
+    camera_stream_url = runtime_env("CAMERA_STREAM_URL", "").strip()
+    if camera_stream_url and runtime_env("CAMERA_PROXY", "false").lower() != "true":
         return {"url": camera_stream_url, "mode": "external"}
 
-    base_url = os.getenv("STREAM_BASE_URL", "").strip().rstrip("/")
+    base_url = runtime_env("STREAM_BASE_URL", "").strip().rstrip("/")
     if base_url.endswith("/api/stream"):
         stream_prefix = base_url
     else:
         stream_prefix = f"{base_url}/api/stream" if base_url else "/api/stream"
 
-    if camera_stream_url or os.getenv("SIMULATION_MODE", "true").lower() != "true":
+    if camera_stream_url or runtime_env("SIMULATION_MODE", "true").lower() != "true":
         return {"url": f"{stream_prefix}/live.mjpg", "mode": "live"}
 
-    if os.getenv("SIMULATION_MODE", "true").lower() == "true":
+    if runtime_env("SIMULATION_MODE", "true").lower() == "true":
         return {"url": f"{stream_prefix}/simulated.mjpg", "mode": "simulated"}
 
     return {"url": f"{stream_prefix}/live.mjpg", "mode": "live"}
@@ -39,7 +41,7 @@ def stream_url():
 
 @router.get("/live.mjpg")
 def live_mjpeg():
-    camera_stream_url = os.getenv("CAMERA_STREAM_URL", "").strip()
+    camera_stream_url = runtime_env("CAMERA_STREAM_URL", "").strip()
     if camera_stream_url:
         return StreamingResponse(
             _proxy_mjpeg(camera_stream_url),
@@ -79,7 +81,7 @@ def _opencv_mjpeg() -> Iterator[bytes]:
         yield from _frame_generator()
         return
 
-    source = os.getenv("CAMERA_SOURCE", "0").strip()
+    source = runtime_env("CAMERA_SOURCE", "0").strip()
     capture_source = int(source) if source.isdigit() else source
     if isinstance(capture_source, int) and hasattr(cv2, "CAP_AVFOUNDATION"):
         capture = cv2.VideoCapture(capture_source, cv2.CAP_AVFOUNDATION)
@@ -90,9 +92,9 @@ def _opencv_mjpeg() -> Iterator[bytes]:
         yield from _frame_generator()
         return
 
-    width = int(os.getenv("CAMERA_WIDTH", "640"))
-    height = int(os.getenv("CAMERA_HEIGHT", "360"))
-    fps = max(1, int(os.getenv("CAMERA_FPS", "10")))
+    width = int(runtime_env("CAMERA_WIDTH", "640"))
+    height = int(runtime_env("CAMERA_HEIGHT", "360"))
+    fps = max(1, int(runtime_env("CAMERA_FPS", "10")))
     frame_delay = 1 / fps
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)

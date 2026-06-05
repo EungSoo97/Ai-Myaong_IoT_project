@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
 from datetime import datetime
@@ -6,7 +6,7 @@ from datetime import datetime
 class Alert(Base):
     __tablename__ = "ALERTS"
 
-    alert_id     = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id     = Column(Integer, Identity(start=1), primary_key=True)
     user_id      = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     pet_id       = Column(Integer, ForeignKey("PETS.pet_id"),   nullable=False)
     alert_type   = Column(String(50),  nullable=False)

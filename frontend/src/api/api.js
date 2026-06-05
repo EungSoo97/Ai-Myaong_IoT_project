@@ -1,7 +1,14 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://10.1.82.109:8000/";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
 const API_BASE = API_BASE_URL.replace(/\/$/, "");
 const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+
+function defaultApiBaseUrl() {
+  const host = window.location.hostname;
+  if (!host || host === "localhost" || host === "127.0.0.1") {
+    return "http://127.0.0.1:8000/";
+  }
+  return `${window.location.protocol}//${host}:8000/`;
+}
 
 function resolveStreamUrl(url) {
   if (!url) return "";
@@ -11,17 +18,21 @@ function resolveStreamUrl(url) {
 }
 
 async function request(path, options = {}) {
+  const token = sessionStorage.getItem("aimyaong:token");
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
       ...options,
     });
   } catch {
-    throw new Error(`백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`);
+    throw new Error(
+      `백엔드 서버에 연결할 수 없습니다. ${API_BASE} 실행 상태를 확인하세요.`,
+    );
   }
 
   if (!response.ok) {
@@ -43,8 +54,15 @@ function extractErrorMessage(value) {
   if (!value) return "";
   if (typeof value === "string") return value;
   if (value.detail) return extractErrorMessage(value.detail);
-  if (typeof value.stderr === "string" && value.stderr.trim()) return value.stderr.trim();
-  if (typeof value.stdout === "string" && value.stdout.trim()) return value.stdout.trim();
+  if (typeof value.stderr === "string" && value.stderr.trim())
+    return value.stderr.trim();
+  if (typeof value.stdout === "string" && value.stdout.trim())
+    return value.stdout.trim();
+  if (Array.isArray(value.tried) && value.tried.length) {
+    return value.tried
+      .map((item) => `${item.baseUrl}: ${item.error}`)
+      .join("\n");
+  }
   if (typeof value.message === "string") return value.message;
   return "";
 }
@@ -125,5 +143,22 @@ export const api = {
         esp32_setup_url: esp32SetupUrl,
         pi_ap_fallback: piApFallback,
       }),
+    }),
+
+  signup: ({ username, email, password, nickname, pets }) =>
+    request("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password, nickname, pets }),
+    }),
+
+  login: ({ username, password }) =>
+    request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  getMe: (token) =>
+    request("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
     }),
 };
