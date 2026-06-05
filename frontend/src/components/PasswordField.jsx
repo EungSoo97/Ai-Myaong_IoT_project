@@ -3,12 +3,12 @@ import { Lock, Eye, EyeOff, Check, X } from 'lucide-react'
 
 /* Warm-tone 팔레트 */
 const C = {
-  input: '#FFF6E9',
-  border: '#F1DEC2',
-  brown: '#5C3D1F',
-  mute: '#A98A6B',
-  danger: '#E26D5C',
-  ok: '#7FB28A',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  danger: 'rgb(var(--brand-danger))',
+  ok: 'rgb(var(--brand-success))',
 }
 
 /* 비밀번호 조건 평가 */

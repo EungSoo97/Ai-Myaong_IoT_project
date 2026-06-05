@@ -327,7 +327,7 @@ export function WifiSetup() {
         <input
           value={mqttHost}
           onChange={(event) => setMqttHost(event.target.value)}
-          className="mt-3 w-full rounded-2xl border border-brand-line bg-white px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+          className="mt-3 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-2.5 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
           placeholder="MQTT 호스트 IP 또는 비우면 자동"
         />
       </Card>
@@ -391,7 +391,7 @@ export function WifiSetup() {
             <input
               value={modalSsid}
               onChange={(event) => setModalSsid(event.target.value)}
-              className="mt-4 w-full rounded-2xl border border-brand-line bg-white px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+              className="mt-4 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
               placeholder="SSID"
             />
 
@@ -401,7 +401,7 @@ export function WifiSetup() {
                 onChange={(event) => setModalPassword(event.target.value)}
                 type="password"
                 autoFocus
-                className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
+                className="mt-2 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-3 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
                 placeholder="Wi-Fi 비밀번호"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !busy) saveSharedWifiFromModal()
@@ -481,7 +481,7 @@ function NetworkRow({ network, selected, onClick }) {
   return (
     <button
       type="button"
-      className={`w-full flex items-center gap-3 border-b border-brand-line px-4 py-3 text-left last:border-b-0 touch-active ${selected ? 'bg-brand-primary/10' : 'bg-white'}`}
+      className={`w-full flex items-center gap-3 border-b border-brand-line px-4 py-3 text-left last:border-b-0 touch-active ${selected ? 'bg-brand-primary/10' : 'bg-brand-card'}`}
       onClick={onClick}
     >
       <span className="w-10 h-10 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">

@@ -1,5 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // .dark 클래스 전략 (Tailwind 3.4.1+ 'selector' = 최신 방식의 class 전략)
+  darkMode: 'selector',
   content: [
     "./index.html",
     "./src/**/*.{js,jsx}",
@@ -7,19 +9,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        'brand-primary': '#F08D86',
-        'brand-primary-soft': '#F7B5B0',
-        'brand-brown': '#4B3621',
-        'brand-brown-soft': '#6B4F36',
-        'brand-bg': '#FFF9F1',
-        'brand-card': '#FFFFFF',
-        'brand-cream': '#FBEFDD',
-        'brand-paw': '#F5B5A8',
-        'brand-mute': '#9C8A78',
-        'brand-line': '#EFE3D2',
-        'brand-success': '#7FB77E',
-        'brand-warning': '#F0B860',
-        'brand-danger': '#E26D5C',
+        // 값은 index.css 의 CSS 변수(RGB 채널)에서 가져옴 → .dark 에서 자동 전환.
+        // rgb(var(--x) / <alpha-value>) 형태라 bg-brand-primary/15 같은 투명도 모디파이어도 그대로 동작.
+        'brand-primary': 'rgb(var(--brand-primary) / <alpha-value>)',
+        'brand-primary-soft': 'rgb(var(--brand-primary-soft) / <alpha-value>)',
+        'brand-brown': 'rgb(var(--brand-brown) / <alpha-value>)',
+        'brand-brown-soft': 'rgb(var(--brand-brown-soft) / <alpha-value>)',
+        'brand-bg': 'rgb(var(--brand-bg) / <alpha-value>)',
+        'brand-card': 'rgb(var(--brand-card) / <alpha-value>)',
+        'brand-cream': 'rgb(var(--brand-cream) / <alpha-value>)',
+        'brand-paw': 'rgb(var(--brand-paw) / <alpha-value>)',
+        'brand-mute': 'rgb(var(--brand-mute) / <alpha-value>)',
+        'brand-line': 'rgb(var(--brand-line) / <alpha-value>)',
+        'brand-success': 'rgb(var(--brand-success) / <alpha-value>)',
+        'brand-warning': 'rgb(var(--brand-warning) / <alpha-value>)',
+        'brand-danger': 'rgb(var(--brand-danger) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Pretendard', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],

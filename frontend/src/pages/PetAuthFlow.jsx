@@ -9,9 +9,9 @@ import { useState, useRef, useEffect } from 'react'
 
 /* Warm-tone 팔레트 */
 const C = {
-  bg: '#FFF3E2', card: '#FFFFFF', input: '#FFF6E9', border: '#F1DEC2',
-  brown: '#5C3D1F', mute: '#A98A6B', primary: '#F2A06A', primaryDeep: '#D6814A',
-  danger: '#E26D5C', ok: '#7FB28A',
+  bg: 'rgb(var(--brand-bg))', card: 'rgb(var(--brand-card))', input: 'rgb(var(--brand-input))', border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))', mute: 'rgb(var(--brand-mute))', primary: 'rgb(var(--brand-primary))', primaryDeep: 'rgb(var(--brand-primary-deep))',
+  danger: 'rgb(var(--brand-danger))', ok: 'rgb(var(--brand-success))',
 }
 
 const TEST_CODE = '123456'
@@ -448,7 +448,7 @@ function BranchStep({ petList, onAdd, onRemove }) {
       <div className="mt-5 space-y-2.5">
         {petList.map((p, i) => (
           <div key={i} className="flex items-center gap-3 rounded-2xl px-3.5 py-3" style={{ background: C.input, border: `1.5px solid ${C.border}` }}>
-            <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center text-2xl shrink-0" style={{ background: '#fff', border: `1px solid ${C.border}` }}>
+            <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center text-2xl shrink-0" style={{ background: C.card, border: `1px solid ${C.border}` }}>
               {p.photo ? <img src={p.photo} alt={p.name} className="w-full h-full object-cover" /> : (p.species === 'DOG' ? '🐶' : '🐱')}
             </div>
             <div className="flex-1 min-w-0">
@@ -615,7 +615,7 @@ function Dashboard({ account, onLogout, onToast }) {
 function GoogleModal({ onApprove, onClose }) {
   return (
     <Overlay onClose={onClose}>
-      <div className="rounded-3xl p-6 w-[88%] max-w-[360px] shadow-2xl" style={{ background: '#fff', fontFamily: 'Pretendard,system-ui,sans-serif' }} onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-3xl p-6 w-[88%] max-w-[360px] shadow-2xl" style={{ background: C.card, fontFamily: 'Pretendard,system-ui,sans-serif' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-center gap-2">
           <GoogleG size={22} />
           <span className="text-lg font-bold" style={{ color: '#3c4043' }}>Google 계정으로 로그인</span>
@@ -642,7 +642,7 @@ function GoogleModal({ onApprove, onClose }) {
 function InfoModal({ title, body, onClose }) {
   return (
     <Overlay onClose={onClose}>
-      <div className="rounded-3xl p-6 w-[88%] max-w-[340px] shadow-2xl text-center" style={{ background: '#fff' }} onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-3xl p-6 w-[88%] max-w-[340px] shadow-2xl text-center" style={{ background: C.card }} onClick={(e) => e.stopPropagation()}>
         <div className="text-3xl">🔐</div>
         <h3 className="mt-2 text-lg font-bold" style={{ color: C.brown }}>{title}</h3>
         <p className="mt-2 text-sm" style={{ color: C.mute, fontFamily: 'Pretendard,system-ui,sans-serif' }}>{body}</p>
