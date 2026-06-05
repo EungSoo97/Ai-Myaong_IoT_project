@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
+import { getWebSocketUrl } from "../lib/backendUrls";
 
 import {
   Wifi,
@@ -88,7 +89,7 @@ const SHORTCUTS = [
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
+  const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
