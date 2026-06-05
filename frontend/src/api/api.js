@@ -1,7 +1,14 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://10.1.82.109:8000/";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
 const API_BASE = API_BASE_URL.replace(/\/$/, "");
 const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+
+function defaultApiBaseUrl() {
+  const host = window.location.hostname;
+  if (!host || host === "localhost" || host === "127.0.0.1") {
+    return "http://127.0.0.1:8000/";
+  }
+  return `${window.location.protocol}//${host}:8000/`;
+}
 
 function resolveStreamUrl(url) {
   if (!url) return "";
@@ -11,7 +18,7 @@ function resolveStreamUrl(url) {
 }
 
 async function request(path, options = {}) {
-  const token = sessionStorage.getItem('aimyaong:token')
+  const token = sessionStorage.getItem("aimyaong:token");
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
@@ -51,6 +58,11 @@ function extractErrorMessage(value) {
     return value.stderr.trim();
   if (typeof value.stdout === "string" && value.stdout.trim())
     return value.stdout.trim();
+  if (Array.isArray(value.tried) && value.tried.length) {
+    return value.tried
+      .map((item) => `${item.baseUrl}: ${item.error}`)
+      .join("\n");
+  }
   if (typeof value.message === "string") return value.message;
   return "";
 }
