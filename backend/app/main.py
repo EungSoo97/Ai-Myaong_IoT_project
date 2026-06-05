@@ -56,11 +56,8 @@ app.include_router(feed.router)
 app.include_router(stream.router)
 app.include_router(ws.router)  
 app.include_router(network.router)
-<<<<<<< HEAD
 app.include_router(auth.router)
-=======
 app.include_router(device.router)
->>>>>>> 260c71b8cfecfc127f973424bb09d0f7414684aa
 
 
 @app.on_event("startup")
