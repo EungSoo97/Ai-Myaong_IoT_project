@@ -29,6 +29,20 @@ const C = {
   catPink: '#F5B5A4',
 }
 
+/* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
+ * 같은 유저(email 일치)면 기존 펫 유지, 다른 유저면 펫 초기화(이전 계정 잔재 제거). */
+function applyLoggedInUser(result, provider) {
+  const u = result?.user || {};
+  const prev = getAccount();
+  const samePerson = prev?.user?.email && u.email && prev.user.email === u.email;
+  saveAccount({
+    provider,
+    user: { userId: u.username, email: u.email, nickname: u.nickname },
+    pets: samePerson ? prev.pets || [] : [],
+    createdAt: prev?.createdAt || new Date().toISOString(),
+  });
+}
+
 /**
  * 로그인 화면.
  * - 마우스/터치 좌표 → 머리 전체가 부드럽게 갸웃 (눈은 감겨 있어 눈동자 트래킹은 생략).
@@ -98,26 +112,27 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const result = await api.login({ username: id, password: pw });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      applyLoggedInUser(result, "email");
       onLogin?.();
     } catch (e) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
-  // 구글 로그인: 계정 없으면 프로필로 최소 계정 생성 후 로그인
-  const handleGoogleLogin = (profile) => {
-    if (!getAccount()) {
-      saveAccount({
-        provider: "google",
-        user: {
-          userId: profile.email?.split("@")[0] || "google",
-          email: profile.email,
-          nickname: profile.name || "구글유저",
-        },
-        pets: [],
-        createdAt: new Date().toISOString(),
-      });
+  const handleGoogleLogin = async (profile) => {
+    try {
+      const result = await api.googleAuth({
+        email: profile.email,
+        name: profile.name,
+        oauth_id: profile.sub,
+        picture: profile.picture,
+      })
+      sessionStorage.setItem('aimyaong:token', result.access_token)
+      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
+      applyLoggedInUser(result, 'google')
+      onLogin?.()
+    } catch (e) {
+      setErr(e.message || '구글 로그인 실패')
     }
-    onLogin?.();
   };
 
   return (
@@ -207,6 +222,14 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           <GoogleButton
             label="Google 계정으로 로그인"
             onSuccess={handleGoogleLogin}
+            onError={(e) =>
+              setErr(
+                e?.message ||
+                  e?.error_description ||
+                  e?.error ||
+                  "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
+              )
+            }
           />
         </div>
 

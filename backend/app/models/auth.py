@@ -43,3 +43,10 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class GoogleAuthRequest(BaseModel):
+    email: EmailStr
+    name: Optional[str] = None
+    oauth_id: str
+    picture: Optional[str] = None

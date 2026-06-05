@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
+import { getWebSocketUrl } from "../lib/backendUrls";
 
 import {
   Wifi,
@@ -20,7 +21,8 @@ import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
+import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
+import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 
@@ -170,7 +172,7 @@ function ActivityArea({ data }) {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { isConnected } = useWebSocket("ws://localhost:8000/ws/connect");
+  const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
   const notifications = useNotifications();
   const unread = notifications.filter((n) => !n.read).length;
@@ -209,6 +211,22 @@ export function Dashboard() {
   const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
   const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
+
+  // 펫 등록 (없을 때 바로 등록)
+  const [showRegister, setShowRegister] = useState(false);
+  const handleRegister = (newPet) => {
+    if (!getAccount()) {
+      saveAccount({
+        provider: "guest",
+        user: { userId: "guest", nickname: nickname },
+        pets: [newPet],
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      addPet(newPet);
+    }
+    setShowRegister(false);
+  };
 
   // 활동량 통계 (일/주/월)
   const [actPeriod, setActPeriod] = useState("day");
@@ -362,41 +380,58 @@ export function Dashboard() {
         }
       />
 
-      {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
-      <button
-        type="button"
-        data-tour="dash-pet"
-        onClick={() => navigate("/pet/0")}
-        className="w-full text-left touch-active"
-      >
-        <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-              {pet?.photo ? (
-                <img
-                  src={pet.photo}
-                  alt={petName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <PawPrint className="w-9 h-9 text-brand-primary" />
-              )}
+      {/* 1) 펫 프로필 — 등록된 펫 있으면 카드, 없으면 귀여운 빈 상태 */}
+      {pet ? (
+        <button
+          type="button"
+          data-tour="dash-pet"
+          onClick={() => navigate("/pet/0")}
+          className="w-full text-left touch-active"
+        >
+          <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+                {pet.photo ? (
+                  <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
+                ) : (
+                  <PawPrint className="w-9 h-9 text-brand-primary" />
+                )}
+              </div>
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
             </div>
-            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
-            <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
-              {petName}
-            </h2>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
-              <Badge tone="success">건강 양호</Badge>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+              <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+                {petName}
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
+                <Badge tone="success">건강 양호</Badge>
+              </div>
             </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+            <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+          </Card>
+        </button>
+      ) : (
+        <Card data-tour="dash-pet" className="paw-watermark px-5 py-6 text-center">
+          <span className="mx-auto w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mb-3">
+            <PawPrint className="w-8 h-8 text-brand-primary/70" />
+          </span>
+          <p className="font-display text-lg font-bold text-brand-brown">
+            아직 등록된 반려동물이 없어요
+          </p>
+          <p className="text-sm text-brand-mute mt-1">
+            우리 아이를 등록하고 건강을 관리해 보세요 🐾
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowRegister(true)}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-2xl bg-brand-primary text-white font-bold px-5 py-2.5 shadow-soft touch-active"
+          >
+            <PawPrint className="w-4 h-4" /> 반려동물 등록하기
+          </button>
         </Card>
-      </button>
+      )}
 
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
@@ -596,6 +631,16 @@ export function Dashboard() {
         >
           {toast}
         </div>
+      )}
+
+      {/* 반려동물 등록 모달 */}
+      {showRegister && (
+        <AddPetModal
+          title="반려동물 등록"
+          submitLabel="등록"
+          onClose={() => setShowRegister(false)}
+          onSave={handleRegister}
+        />
       )}
     </div>
   );

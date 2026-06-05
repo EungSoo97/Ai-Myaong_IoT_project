@@ -1,14 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
-const API_BASE = API_BASE_URL.replace(/\/$/, "");
-const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+import { getApiBaseUrl } from "../lib/backendUrls";
 
-function defaultApiBaseUrl() {
-  const host = window.location.hostname;
-  if (!host || host === "localhost" || host === "127.0.0.1") {
-    return "http://127.0.0.1:8000/";
-  }
-  return `${window.location.protocol}//${host}:8000/`;
-}
+const API_BASE = getApiBaseUrl();
+const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
 
 function resolveStreamUrl(url) {
   if (!url) return "";
@@ -187,5 +180,11 @@ export const api = {
   getMe: (token) =>
     request("/api/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  googleAuth: ({ email, name, oauth_id, picture }) =>
+    request("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ email, name, oauth_id, picture }),
     }),
 };
