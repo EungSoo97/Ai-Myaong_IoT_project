@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   PawPrint,
@@ -9,14 +9,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import {
-  useAccount,
-  petAgeLabel,
-  speciesLabel,
-  clearAccount,
-  updateUser,
-} from "../lib/accountRepository";
+import { petAgeLabel, speciesLabel, clearAccount } from "../lib/accountRepository";
 import { GoogleButton } from "../components/GoogleButton";
+import { api } from "../api/api";
 
 function handleLogout() {
   try {
@@ -58,27 +53,35 @@ function fmtDate(iso) {
 export function MyPage() {
   const navigate = useNavigate();
   const [showWithdraw, setShowWithdraw] = useState(false);
-  const account = useAccount();
-  const user = account?.user || null;
-  const pet = account?.pets?.[0] || FALLBACK_PET;
-  const hasPet = Boolean(account?.pets?.[0]);
+  const [userData, setUserData] = useState(null);
 
-  const nickname = user?.nickname || "묘냥집사";
-  const email = user?.email || "nyce18711@gmail.com";
+  useEffect(() => {
+    api.getMe()
+      .then(setUserData)
+      .catch(() => setUserData(null));
+  }, []);
+
+  const rawPet = userData?.pets?.[0] || null;
+  const pet = rawPet
+    ? {
+        name: rawPet.name,
+        breed: rawPet.breed,
+        species: rawPet.species,
+        birthDate: rawPet.birth_date,
+        weightKg: rawPet.weight_kg,
+        photo: rawPet.photo_path,
+      }
+    : FALLBACK_PET;
+  const hasPet = Boolean(rawPet);
+
+  const nickname = userData?.nickname || "묘냥집사";
+  const email = userData?.email || "";
   const initial = nickname.trim().charAt(0) || "집";
-  const registeredAt =
-    fmtDate(account?.createdAt) === "-"
-      ? "2024-09-01"
-      : fmtDate(account.createdAt);
+  const registeredAt = "2024-09-01";
 
-  // 구글 연동 상태
-  const googleLinked =
-    account?.provider === "google" || Boolean(user?.googleLinked);
-  const googleEmail =
-    user?.googleEmail || (account?.provider === "google" ? user?.email : null);
-  const handleGoogleLink = (profile) => {
-    updateUser({ googleLinked: true, googleEmail: profile.email });
-  };
+  const googleLinked = userData?.oauth_provider === "google";
+  const googleEmail = googleLinked ? userData?.email : null;
+  const handleGoogleLink = () => {};
 
   return (
     <div className="px-5 pb-6">

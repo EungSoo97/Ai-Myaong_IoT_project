@@ -177,10 +177,7 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  getMe: (token) =>
-    request("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  getMe: () => request("/api/auth/me"),
 
   googleAuth: ({ email, name, oauth_id, picture }) =>
     request("/api/auth/google", {
