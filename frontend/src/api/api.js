@@ -11,11 +11,13 @@ function resolveStreamUrl(url) {
 }
 
 async function request(path, options = {}) {
+  const token = sessionStorage.getItem('aimyaong:token')
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
       ...options,

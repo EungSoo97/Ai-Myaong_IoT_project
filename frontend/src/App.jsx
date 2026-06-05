@@ -26,20 +26,18 @@ const AUTH_KEY = "aimyaong:auth";
 function App() {
   const [authenticated, setAuthenticated] = useState(() => {
     try {
-      return sessionStorage.getItem(AUTH_KEY) === "1";
+      return !!sessionStorage.getItem('aimyaong:token')
     } catch {
-      return false;
+      return false
     }
-  });
+  })
 
-  useEffect(() => {
-    try {
-      if (authenticated) sessionStorage.setItem(AUTH_KEY, "1");
-      else sessionStorage.removeItem(AUTH_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, [authenticated]);
+  const logout = () => {
+    sessionStorage.removeItem('aimyaong:token')
+    sessionStorage.removeItem('aimyaong:user')
+    sessionStorage.removeItem(AUTH_KEY)
+    setAuthenticated(false)
+  }
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
