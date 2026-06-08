@@ -1,3 +1,6 @@
+import database.oauth2_providers
+import database.user_credentials
+import database.user_oauth_connections
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from typing import List

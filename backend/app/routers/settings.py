@@ -4,6 +4,9 @@ import database.detection_logs
 import database.emergency_clips
 import database.feed_logs
 import database.pet_health_reports
+import database.oauth2_providers
+import database.user_credentials
+import database.user_oauth_connections
 import database.water_logs
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
