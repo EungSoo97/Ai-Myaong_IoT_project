@@ -579,7 +579,7 @@ export function Settings() {
         <CreamCard className="px-4 py-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold text-brand-brown">테마</p>
-            <p className="text-xs text-brand-mute">라이트 · 다크 · 시스템 설정</p>
+            <p className="text-xs text-brand-mute">라이트 · 다크</p>
           </div>
           <ThemeToggle />
         </CreamCard>

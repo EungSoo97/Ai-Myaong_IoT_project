@@ -1,51 +1,47 @@
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useState,
 } from 'react'
-import {
-  getStoredTheme, setStoredTheme, getSystemTheme, subscribeSystemTheme, applyResolvedTheme,
-} from './themePlatform'
+import { getStoredTheme, setStoredTheme, applyResolvedTheme } from './themePlatform'
 
 /* ───────────────────────────────────────────────────────────
  * 테마 전역 상태 (React Context)
  *
- * 이 파일에는 "순수 비즈니스 로직"만 둔다 (상태 값, 전이 규칙).
- * 웹 전용 API 접근은 전부 ./themePlatform 어댑터를 통해서만 한다.
- * → RN 이식 시 themePlatform 만 교체하면 이 Provider 는 그대로 재사용.
+ * 라이트 / 다크 2가지만 지원한다. (시스템 모드 없음)
+ * 기본값은 라이트. 과거에 저장된 'system' 값은 라이트로 흡수한다.
  *
- * theme         : 사용자가 고른 모드 ('light' | 'dark' | 'system')
- * resolvedTheme : 실제 화면에 적용되는 값 ('light' | 'dark')
+ * theme         : 사용자가 고른 모드 ('light' | 'dark')
+ * resolvedTheme : 실제 화면에 적용되는 값 ('light' | 'dark') — theme 과 동일
  * ─────────────────────────────────────────────────────────── */
 
-const THEMES = ['light', 'dark', 'system']
+const THEMES = ['light', 'dark']
 const ThemeContext = createContext(null)
 
+// 'dark' 만 다크로, 그 외(system·null·기타)는 라이트로 정규화
+function normalizeTheme(value) {
+  return value === 'dark' ? 'dark' : 'light'
+}
+
 export function ThemeProvider({ children }) {
-  // 기본값은 '밝은 모드'(light). 사용자가 직접 고른 값이 있으면 그걸 사용.
-  const [theme, setThemeState] = useState(() => getStoredTheme() || 'light')
-  const [systemTheme, setSystemTheme] = useState(() => getSystemTheme())
+  const [theme, setThemeState] = useState(() => normalizeTheme(getStoredTheme()))
 
-  // OS 테마 변화 구독 (웹: matchMedia / RN: Appearance)
-  useEffect(() => subscribeSystemTheme(setSystemTheme), [])
-
-  // 'system' 이면 OS 값을 따르고, 아니면 사용자가 고른 값을 그대로 적용
-  const resolvedTheme = theme === 'system' ? systemTheme : theme
+  const resolvedTheme = theme
 
   // 결정된 테마를 화면에 적용 (웹: html.dark 토글)
   useEffect(() => {
     applyResolvedTheme(resolvedTheme)
   }, [resolvedTheme])
 
-  // 특정 모드로 설정 + 저장
+  // 특정 모드로 설정 + 저장 (light/dark 외 값은 light 로 정규화)
   const setTheme = useCallback((next) => {
-    if (!THEMES.includes(next)) return
-    setThemeState(next)
-    setStoredTheme(next)
+    const value = normalizeTheme(next)
+    setThemeState(value)
+    setStoredTheme(value)
   }, [])
 
-  // 순환 토글: light → dark → system → light ...
+  // 순환 토글: light ↔ dark
   const cycleTheme = useCallback(() => {
     setThemeState((prev) => {
-      const next = THEMES[(THEMES.indexOf(prev) + 1) % THEMES.length]
+      const next = prev === 'dark' ? 'light' : 'dark'
       setStoredTheme(next)
       return next
     })
@@ -70,3 +66,5 @@ export function useTheme() {
   if (!ctx) throw new Error('useTheme 는 <ThemeProvider> 안에서만 사용할 수 있어요.')
   return ctx
 }
+
+export { THEMES }
