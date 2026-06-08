@@ -189,6 +189,11 @@ export const api = {
   // 회원 탈퇴 (계정 + 펫 DB 삭제)
   deleteMe: () => request("/api/auth/me", { method: "DELETE" }),
 
+  // 유저별 설정 (settings 테이블)
+  getSettings: () => request("/api/settings"),
+  updateSettings: (body) =>
+    request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+
   // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
   getPets: () => request("/api/pets"),
   createPet: (body) =>
