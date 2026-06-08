@@ -57,6 +57,7 @@ export function RobotVision() {
   const [streamInfo, setStreamInfo] = useState({ url: '', mode: 'loading' })
   const [streamError, setStreamError] = useState('')
   const controlBusyRef = useRef(false)
+  const commandQueueRef = useRef(Promise.resolve())
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false)
@@ -155,27 +156,35 @@ export function RobotVision() {
     setForceCssLandscape(false)
   }
 
-  const sendCommand = async (kind, command) => {
-    if (!command || controlBusyRef.current) return
+  const sendCommand = (kind, command) => {
+    if (!command) return
 
-    controlBusyRef.current = true
-    setControlBusy(true)
-    try {
-      if (kind === 'camera') {
-        await api.moveCamera(command)
-      } else {
-        await api.moveRobot(command)
-      }
-    } catch (error) {
-      console.error(`[RobotVision] ${kind} command failed:`, error)
-    } finally {
-      controlBusyRef.current = false
-      setControlBusy(false)
-    }
+    commandQueueRef.current = commandQueueRef.current
+      .catch(() => {})
+      .then(async () => {
+        controlBusyRef.current = true
+        setControlBusy(true)
+        try {
+          if (kind === 'camera') {
+            await api.moveCamera(command)
+          } else {
+            await api.moveRobot(command)
+          }
+        } catch (error) {
+          console.error(`[RobotVision] ${kind} command failed:`, error)
+        } finally {
+          controlBusyRef.current = false
+          setControlBusy(false)
+        }
+      })
   }
 
   const onMove = (dir) => {
     sendCommand('move', MOVE_COMMANDS[dir])
+  }
+
+  const onMoveStop = () => {
+    sendCommand('move', 'STOP')
   }
 
   const onPan = (dir) => {
@@ -205,6 +214,7 @@ export function RobotVision() {
               <FullscreenView
                 onExit={exitFullscreen}
                 onMove={onMove}
+                onMoveStop={onMoveStop}
                 onPan={onPan}
                 recording={recording}
                 irOn={irOn}
@@ -248,7 +258,7 @@ export function RobotVision() {
         <Card className="px-4 py-6">
           <div className="flex items-start justify-between gap-2">
             <div className="flex flex-col items-center gap-2">
-              <DPad label="이동" onPress={onMove} tone="light" />
+              <DPad label="이동" onPress={onMove} onRelease={onMoveStop} tone="light" holdToPress />
               <span className="text-[11px] font-bold text-brand-mute">기기 이동</span>
             </div>
             <div className="flex flex-col items-center gap-2">
@@ -372,7 +382,7 @@ export function RobotVision() {
  *
  * 양손 엄지 동선을 고려해 컨트롤은 하단 좌우, 토글은 상단에 배치.
  */
-function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
+function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
   const [micOn, setMicOn] = useState(false)
   const toggleMic = () => {
     setMicOn((v) => {
@@ -421,6 +431,8 @@ function FullscreenView({ onExit, onMove, onPan, recording, irOn, setIrOn, strea
         className="absolute bottom-6 left-6 z-50"
         label="이동"
         onPress={onMove}
+        onRelease={onMoveStop}
+        holdToPress
       />
 
       {/* 우측 하단: 카메라 Pan/Tilt D-Pad */}
@@ -598,7 +610,7 @@ function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
  *  - 영상 위 시인성을 위해 반투명 배경 + 블러.
  *  - 누름 피드백: scale 변화 없이 배경색만 brand-brown 으로 즉시 전환.
  */
-function DPad({ centerAction = null, className = '', label, onPress, muted = false, tone = 'dark' }) {
+function DPad({ centerAction = null, className = '', holdToPress = false, label, onPress, onRelease = null, muted = false, tone = 'dark' }) {
   const light = tone === 'light'
   const baseBg = light ? 'bg-brand-cream' : muted ? 'bg-white/12' : 'bg-white/18'
   const labelBox = light ? 'bg-brand-primary/15 text-brand-primary' : 'bg-black/35 backdrop-blur-sm text-white/85'
@@ -607,9 +619,9 @@ function DPad({ centerAction = null, className = '', label, onPress, muted = fal
       <div className="relative">
         <div className="grid grid-cols-3 gap-1.5 w-[148px]">
           <span />
-          <DBtn onClick={() => onPress('up')} bg={baseBg} tone={tone} aria="Up" />
+          <DBtn onClick={() => onPress('up')} onRelease={onRelease} holdToPress={holdToPress} bg={baseBg} tone={tone} aria="Up" />
           <span />
-          <DBtn onClick={() => onPress('left')} bg={baseBg} tone={tone} aria="Left" rotate="rotate-[270deg]" />
+          <DBtn onClick={() => onPress('left')} onRelease={onRelease} holdToPress={holdToPress} bg={baseBg} tone={tone} aria="Left" rotate="rotate-[270deg]" />
           {centerAction ? (
             <CenterBtn onClick={() => onPress(centerAction)} tone={tone} />
           ) : (
@@ -617,9 +629,9 @@ function DPad({ centerAction = null, className = '', label, onPress, muted = fal
               <span className="text-[10px] font-bold tracking-wider">{label}</span>
             </div>
           )}
-          <DBtn onClick={() => onPress('right')} bg={baseBg} tone={tone} aria="Right" rotate="rotate-90" />
+          <DBtn onClick={() => onPress('right')} onRelease={onRelease} holdToPress={holdToPress} bg={baseBg} tone={tone} aria="Right" rotate="rotate-90" />
           <span />
-          <DBtn onClick={() => onPress('down')} bg={baseBg} tone={tone} aria="Down" rotate="rotate-180" />
+          <DBtn onClick={() => onPress('down')} onRelease={onRelease} holdToPress={holdToPress} bg={baseBg} tone={tone} aria="Down" rotate="rotate-180" />
           <span />
         </div>
       </div>
@@ -627,25 +639,23 @@ function DPad({ centerAction = null, className = '', label, onPress, muted = fal
   )
 }
 
-function DBtn({ onClick, bg, aria, rotate = '', tone = 'dark' }) {
-  const repeatTimerRef = useRef(null)
-  const repeatDelayTimerRef = useRef(null)
+function DBtn({ onClick, onRelease = null, holdToPress = false, bg, aria, rotate = '', tone = 'dark' }) {
+  const activePointerRef = useRef(null)
 
-  const stopRepeat = () => {
-    window.clearTimeout(repeatDelayTimerRef.current)
-    window.clearInterval(repeatTimerRef.current)
-    repeatDelayTimerRef.current = null
-    repeatTimerRef.current = null
-  }
-
-  const startRepeat = (event) => {
+  const startPress = (event) => {
     event.preventDefault()
     event.currentTarget.setPointerCapture?.(event.pointerId)
+    activePointerRef.current = event.pointerId
     onClick()
-    stopRepeat()
-    repeatDelayTimerRef.current = window.setTimeout(() => {
-      repeatTimerRef.current = window.setInterval(onClick, 120)
-    }, 240)
+  }
+
+  const endPress = (event) => {
+    if (activePointerRef.current !== event.pointerId) return
+    activePointerRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    if (holdToPress && onRelease) {
+      onRelease()
+    }
   }
 
   return (
@@ -654,12 +664,14 @@ function DBtn({ onClick, bg, aria, rotate = '', tone = 'dark' }) {
       onClick={(event) => {
         if (event.detail === 0) {
           onClick()
+          if (holdToPress && onRelease) {
+            onRelease()
+          }
         }
       }}
-      onPointerCancel={stopRepeat}
-      onPointerDown={startRepeat}
-      onPointerLeave={stopRepeat}
-      onPointerUp={stopRepeat}
+      onPointerCancel={endPress}
+      onPointerDown={startPress}
+      onPointerUp={endPress}
       aria-label={aria}
       className={`
         w-12 h-12 rounded-2xl

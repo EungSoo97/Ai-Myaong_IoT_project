@@ -8,6 +8,7 @@ class SerialComm:
         self.port = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
         self.baud = int(os.getenv("SERIAL_BAUD", "115200"))
         self.simulation_mode = os.getenv("SIMULATION_MODE", "false").lower() == "true"
+        self.debug = os.getenv("SERIAL_DEBUG", "false").lower() == "true"
         self._serial = None
 
     def connect(self) -> None:
@@ -29,8 +30,9 @@ class SerialComm:
 
         self._serial.write(f"{command}\n".encode("utf-8"))
         self._serial.flush()
-        print(f"[serial] -> robot-controller {command}")
-        self._read_available_output()
+        if self.debug:
+            print(f"[serial] -> robot-controller {command}")
+            self._read_available_output()
 
     def close(self) -> None:
         if self._serial and self._serial.is_open:

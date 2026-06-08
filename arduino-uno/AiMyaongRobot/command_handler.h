@@ -3,6 +3,8 @@
 #include "motor_control.h"
 #include "servo_control.h"
 
+constexpr bool SERIAL_COMMAND_DEBUG = false;
+
 inline bool handleCommand(const String& command) {
   if (command == "FORWARD") {
     moveForward();
@@ -14,6 +16,12 @@ inline bool handleCommand(const String& command) {
     turnRight();
   } else if (command == "STOP") {
     stopMotors();
+  } else if (command == "MOTOR_TEST") {
+    testMotors();
+  } else if (command == "LEFT_MOTOR_TEST") {
+    testLeftMotor();
+  } else if (command == "RIGHT_MOTOR_TEST") {
+    testRightMotor();
   } else if (command == "CAM_UP") {
     cameraUp();
   } else if (command == "CAM_DOWN") {
@@ -43,12 +51,21 @@ inline void processIncomingCommands() {
     return;
   }
 
-  Serial.print("RX ");
-  Serial.println(command);
+  if (SERIAL_COMMAND_DEBUG) {
+    Serial.print("RX ");
+    Serial.println(command);
+  }
 
   if (handleCommand(command)) {
-    Serial.print("ACK ");
-    Serial.println(command);
+    if (
+      SERIAL_COMMAND_DEBUG ||
+      command == "MOTOR_TEST" ||
+      command == "LEFT_MOTOR_TEST" ||
+      command == "RIGHT_MOTOR_TEST"
+    ) {
+      Serial.print("ACK ");
+      Serial.println(command);
+    }
   } else {
     Serial.print("UNKNOWN ");
     Serial.println(command);
