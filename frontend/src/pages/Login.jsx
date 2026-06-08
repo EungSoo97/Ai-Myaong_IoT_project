@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Lock, LogIn, User } from "lucide-react";
 import { GoogleButton } from "../components/GoogleButton";
-import {
-  getAccount,
-  getCurrentUser,
-  saveAccount,
-} from "../lib/accountRepository";
+import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
 import { fromApiPet } from "../lib/petMap";
 
@@ -118,12 +114,13 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const result = await api.login({ username: id, password: pw });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
-      applyLoggedInUser(result, "email");
+      await applyLoggedInUser(result, "email");
       onLogin?.();
     } catch (e) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
+
   const handleGoogleLogin = async (profile) => {
     try {
       const result = await api.googleAuth({
@@ -131,14 +128,14 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         name: profile.name,
         oauth_id: profile.sub,
         picture: profile.picture,
-        allow_create: false, // 로그인은 기존 회원만 (신규는 회원가입으로)
-      })
-      sessionStorage.setItem('aimyaong:token', result.access_token)
-      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
-      applyLoggedInUser(result, 'google')
-      onLogin?.()
+        allow_create: false,
+      });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      await applyLoggedInUser(result, "google");
+      onLogin?.();
     } catch (e) {
-      setErr(e.message || '구글 로그인 실패')
+      setErr(e.message || "구글 로그인 실패");
     }
   };
 
@@ -217,7 +214,6 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           들어가기
         </button>
 
-        {/* 또는 구글 로그인 */}
         <div className="mt-5 flex items-center gap-3">
           <div className="flex-1 h-px" style={{ background: C.border }} />
           <span className="text-xs font-bold" style={{ color: C.mute }}>

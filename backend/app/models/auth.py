@@ -29,6 +29,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SetCredentialsRequest(BaseModel):
+    username: str
+    password: str
+
+
 class PetResponse(BaseModel):
     pet_id: int
     name: str

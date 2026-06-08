@@ -165,6 +165,9 @@ export const api = {
       }),
     }),
 
+  checkUsername: (username) =>
+    request(`/api/auth/check-username?username=${encodeURIComponent(username)}`),
+
   signup: ({ username, email, password, nickname, pets }) =>
     request("/api/auth/signup", {
       method: "POST",
@@ -184,6 +187,12 @@ export const api = {
     request("/api/auth/me", {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+
+  setCredentials: ({ username, password }) =>
+    request("/api/auth/me/credentials", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
     }),
 
   // 회원 탈퇴 (계정 + 펫 DB 삭제)
