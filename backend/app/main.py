@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import device,feed, network, robot, stream, ws, auth
+from app.routers import device, feed, network, robot, stream, ws, auth, settings , pets
 from app.mqtt.mqtt_client import MqttClient
 from app.services.database import Database
 from app.services.feed_service import FeedService
@@ -57,6 +57,8 @@ app.include_router(stream.router)
 app.include_router(ws.router)  
 app.include_router(network.router)
 app.include_router(auth.router)
+app.include_router(pets.router)
+app.include_router(settings.router)
 app.include_router(device.router)
 
 

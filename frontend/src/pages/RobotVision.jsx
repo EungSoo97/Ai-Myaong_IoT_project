@@ -22,6 +22,8 @@ import {
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
+import { useWebSocket } from '../hooks/useWebSocket'
+import { getWebSocketUrl } from '../lib/backendUrls'
 
 /* 이벤트 로그 — clip_id 로 백엔드 클립(CLIPS) 참조 (활동 기록과 동일 구조) */
 const EVENT_LOG = [
@@ -49,6 +51,7 @@ const CAMERA_COMMANDS = {
 
 export function RobotVision() {
   const navigate = useNavigate()
+  const { isConnected } = useWebSocket(getWebSocketUrl())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [irOn, setIrOn] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -203,7 +206,9 @@ export function RobotVision() {
           <ChevronLeft className="w-5 h-5" />
         </button>
         <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown">로봇 비전</h1>
-        <Badge tone="success">연결됨</Badge>
+        <Badge tone={isConnected ? "success" : "danger"}>
+          {isConnected ? "연결됨" : "연결 끊김"}
+        </Badge>
       </div>
 
       {/* 일반 모드 비디오 */}

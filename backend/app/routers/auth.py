@@ -6,11 +6,11 @@ import database.feed_logs
 import database.pet_health_reports
 import database.settings
 import database.water_logs
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
-from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse, GoogleAuthRequest
+from app.models.auth import SignupRequest, LoginRequest, AuthResponse, UserResponse, PetResponse, GoogleAuthRequest, UpdateMeRequest
 from database.base import get_db
 from database.user import User
 from database.pets import Pet
@@ -74,7 +74,10 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-def me(token: str, db: Session = Depends(get_db)):
+def me(authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 없습니다.")
+    token = authorization.split(" ", 1)[1]
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
@@ -83,7 +86,67 @@ def me(token: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
-    return UserResponse(user_id=user.user_id, username=user.username, email=user.email, nickname=user.nickname)
+    return UserResponse(
+        user_id=user.user_id,
+        username=user.username,
+        email=user.email,
+        nickname=user.nickname,
+        oauth_provider=user.oauth_provider,
+        pets=[PetResponse.model_validate(p) for p in user.pets],
+    )
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(body: UpdateMeRequest, authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 없습니다.")
+    token = authorization.split(" ", 1)[1]
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+    user = db.query(User).filter(User.user_id == int(payload["sub"])).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    if body.nickname is not None:
+        user.nickname = body.nickname
+    if body.email is not None and body.email != user.email:
+        # 이메일 중복 검사
+        if db.query(User).filter(User.email == body.email, User.user_id != user.user_id).first():
+            raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
+        user.email = body.email
+
+    db.commit()
+    db.refresh(user)
+
+    return UserResponse(
+        user_id=user.user_id,
+        username=user.username,
+        email=user.email,
+        nickname=user.nickname,
+        oauth_provider=user.oauth_provider,
+        pets=[PetResponse.model_validate(p) for p in user.pets],
+    )
+
+
+@router.delete("/me")
+def delete_me(authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 없습니다.")
+    payload = decode_access_token(authorization.split(" ", 1)[1])
+    if not payload:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+    user = db.query(User).filter(User.user_id == int(payload["sub"])).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    # 연결된 펫 먼저 삭제 (FK) → 유저 삭제
+    db.query(Pet).filter(Pet.user_id == user.user_id).delete()
+    db.delete(user)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/google", response_model=AuthResponse)
@@ -97,6 +160,12 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
             user.oauth_id = body.oauth_id
             db.commit()
         else:
+            # 로그인 흐름(allow_create=False)인데 계정이 없으면 → 회원가입으로 유도
+            if not body.allow_create:
+                raise HTTPException(
+                    status_code=404,
+                    detail="가입된 계정이 없어요. 회원가입을 먼저 진행해 주세요.",
+                )
             user = User(
                 email=body.email,
                 nickname=body.name,

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, User, Mail, Smile, Lock } from 'lucide-react'
 import { Card } from '../components/ui'
 import { useAccount, updateUser } from '../lib/accountRepository'
+import { api } from '../api/api'
 
 const C = {
   card: 'rgb(var(--brand-card))',
@@ -23,15 +24,36 @@ export function ProfileEdit() {
   const [email, setEmail] = useState(user.email || '')
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     setErr('')
-    if (!nickname.trim()) { setErr('닉네임을 입력해 주세요.'); return }
-    if (!email.includes('@')) { setErr('올바른 이메일을 입력해 주세요.'); return }
-    updateUser({ nickname: nickname.trim(), email: email.trim() })
-    setSaved(true)
-    setTimeout(() => navigate(-1), 600) // 저장 후 잠깐 안내 → 복귀
+    const nn = nickname.trim()
+    const em = email.trim()
+    if (!nn) { setErr('닉네임을 입력해 주세요.'); return }
+    if (!em.includes('@')) { setErr('올바른 이메일을 입력해 주세요.'); return }
+
+    setBusy(true)
+    try {
+      // 1) DB 반영 (백엔드 PATCH /me 준비되면 실제 컬럼 변경)
+      const updated = await api.updateMe({ nickname: nn, email: em })
+      const data = updated && (updated.nickname || updated.email) ? updated : { nickname: nn, email: em }
+      // 2) 토큰 유저(sessionStorage) 동기화
+      try {
+        const su = JSON.parse(sessionStorage.getItem('aimyaong:user') || '{}')
+        sessionStorage.setItem('aimyaong:user', JSON.stringify({ ...su, nickname: data.nickname, email: data.email }))
+      } catch { /* ignore */ }
+      // 3) 화면용 로컬(useAccount) 동기화
+      updateUser({ nickname: data.nickname, email: data.email })
+    } catch {
+      // 백엔드 미구현/오류 → 로컬만이라도 반영 (기존 동작 유지)
+      updateUser({ nickname: nn, email: em })
+    } finally {
+      setBusy(false)
+      setSaved(true)
+      setTimeout(() => navigate(-1), 600)
+    }
   }
 
   return (
@@ -81,9 +103,9 @@ export function ProfileEdit() {
             className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active">
             취소
           </button>
-          <button type="submit"
-            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white shadow-soft touch-active" style={{ background: C.primary }}>
-            저장
+          <button type="submit" disabled={busy}
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white shadow-soft touch-active disabled:opacity-60" style={{ background: C.primary }}>
+            {busy ? '저장 중…' : '저장'}
           </button>
         </div>
       </form>

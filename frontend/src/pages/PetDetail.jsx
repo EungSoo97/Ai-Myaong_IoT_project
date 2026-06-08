@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, PawPrint, Calendar, Scale, Ruler, Activity, Heart, Pencil } from 'lucide-react'
 import { Card, PrimaryButton } from '../components/ui'
-import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet, addPet, getAccount, saveAccount } from '../lib/accountRepository'
+import { useAccount, petAgeLabel, speciesLabel, petBmi, bmiGrade, updatePet, addPet, removePet, getAccount, saveAccount } from '../lib/accountRepository'
 import { AddPetModal } from '../components/AddPetModal'
+import { api } from '../api/api'
+import { toApiPet, fromApiPet } from '../lib/petMap'
 
 const C = {
   cream: 'rgb(var(--brand-cream))',
@@ -22,25 +24,76 @@ export function PetDetail() {
   const pet = pets[Number(idx)] || null
   const [showEdit, setShowEdit] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  const handleEdit = (updated) => {
-    updatePet(Number(idx), updated)
-    setShowEdit(false)
+  // 토스트
+  const [toast, setToast] = useState('')
+  const [toastOn, setToastOn] = useState(false)
+  const toastTimer = useRef(null)
+  const showToast = (msg) => {
+    clearTimeout(toastTimer.current)
+    setToast(msg)
+    requestAnimationFrame(() => setToastOn(true))
+    toastTimer.current = setTimeout(() => {
+      setToastOn(false)
+      setTimeout(() => setToast(''), 300)
+    }, 2000)
   }
 
-  // 펫이 없을 때 새로 등록 (계정이 없으면 최소 계정도 함께 생성)
-  const handleRegister = (newPet) => {
+  // 수정 — DB 반영 + 로컬 동기화
+  const handleEdit = async (updated) => {
+    setShowEdit(false)
+    let saved = updated
+    try {
+      if (pet?.pet_id) {
+        const r = await api.updatePetApi(pet.pet_id, toApiPet(updated))
+        saved = fromApiPet(r, updated.photo)
+      }
+    } catch {
+      /* 백엔드 미연결 → 로컬만 */
+    }
+    updatePet(Number(idx), saved)
+    showToast('정보를 수정했어요 ✨')
+  }
+
+  // 펫이 없을 때 새로 등록 — DB 반영 + 로컬 동기화
+  const handleRegister = async (newPet) => {
+    setShowRegister(false)
+    let saved = newPet
+    try {
+      const r = await api.createPet(toApiPet(newPet))
+      saved = fromApiPet(r, newPet.photo)
+    } catch {
+      /* 백엔드 미연결 → 로컬만 */
+    }
     if (!getAccount()) {
       saveAccount({
         provider: 'guest',
         user: { userId: 'guest', nickname: '집사' },
-        pets: [newPet],
+        pets: [saved],
         createdAt: new Date().toISOString(),
       })
     } else {
-      addPet(newPet)
+      addPet(saved)
     }
-    setShowRegister(false)
+    showToast(`🐾 ${saved.name || '반려동물'} 등록 완료`)
+  }
+
+  // 삭제 — DB 반영 + 로컬 동기화
+  const handleDelete = async () => {
+    setBusy(true)
+    const name = pet?.name || '반려동물'
+    try {
+      if (pet?.pet_id) await api.deletePetApi(pet.pet_id)
+    } catch {
+      /* 백엔드 미연결 → 로컬만 */
+    }
+    removePet(Number(idx))
+    setBusy(false)
+    setShowDelete(false)
+    showToast(`${name} 정보를 삭제했어요`)
+    setTimeout(() => navigate('/'), 700)
   }
 
   return (
@@ -82,6 +135,16 @@ export function PetDetail() {
         <PetBody pet={pet} />
       )}
 
+      {pet && (
+        <button
+          type="button"
+          onClick={() => setShowDelete(true)}
+          className="mt-6 mx-auto block text-xs font-semibold text-brand-mute/70 hover:underline underline-offset-2 touch-active"
+        >
+          반려동물 삭제
+        </button>
+      )}
+
       {showEdit && pet && (
         <AddPetModal
           initial={pet}
@@ -99,6 +162,62 @@ export function PetDetail() {
           onClose={() => setShowRegister(false)}
           onSave={handleRegister}
         />
+      )}
+
+      {showDelete && pet && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center"
+          onClick={() => !busy && setShowDelete(false)}
+        >
+          <div className="absolute inset-0" style={{ background: 'rgba(45,37,32,0.45)' }} />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[480px] rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg"
+          >
+            <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+            <div className="text-center">
+              <p className="font-display text-lg font-bold text-brand-brown">
+                {pet.name}, 정말 보내줄까요?
+              </p>
+              <p className="text-sm text-brand-mute mt-1.5">
+                삭제하면 등록된 정보가 사라져요.
+              </p>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDelete(false)}
+                disabled={busy}
+                className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active disabled:opacity-60"
+              >
+                조금 더 둘게요
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white bg-brand-danger shadow-soft touch-active disabled:opacity-60"
+              >
+                {busy ? '삭제 중…' : '보내주기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className="fixed left-1/2 bottom-24 z-[70] px-5 py-3 rounded-2xl shadow-soft-lg text-sm font-bold text-white"
+          style={{
+            transform: `translateX(-50%) translateY(${toastOn ? '0' : '10px'})`,
+            opacity: toastOn ? 1 : 0,
+            transition: 'all 250ms ease',
+            background: '#4B3621',
+            maxWidth: '88%',
+          }}
+        >
+          {toast}
+        </div>
       )}
     </div>
   )
