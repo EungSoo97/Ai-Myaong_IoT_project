@@ -99,9 +99,14 @@ export function Settings() {
         setStrangerAlert(s.stranger_alert !== "N");
         setFeedAlert(s.feed_alert === "Y");
         if (s.dark_mode) setTheme(s.dark_mode); // DB 테마 → 화면 반영
-        if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
-        if (s.mqtt_host) setMqttHost(s.mqtt_host);
         if (s.robot_serial) setSerial(s.robot_serial);
+        // esp32/mqtt: DB에 있으면 반영, 없으면(null) 현재 기본값을 DB에 자동 저장
+        const patch = {};
+        if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
+        else patch.esp32_setup_url = setupUrl;
+        if (s.mqtt_host) setMqttHost(s.mqtt_host);
+        else patch.mqtt_host = mqttHost;
+        if (Object.keys(patch).length) saveSettings(patch);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps

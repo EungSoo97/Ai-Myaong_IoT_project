@@ -59,6 +59,56 @@ export function Dispenser() {
   ])
   const [editing, setEditing] = useState(null) // { id?, time, type, amount } | null
 
+  // ── 스케줄 DB 연동 (settings.feed_schedule / water_schedule 에 JSON 직렬화 저장) ──
+  // 한 배열을 type 으로 나눠 각 컬럼에 저장하고, 불러올 때 다시 합친다. id 는 로컬 전용.
+  const scheduleFirst = useRef(false) // 첫 렌더(기본값) 저장 방지
+  const applyingFromDb = useRef(false) // DB 로드로 인한 변경은 재저장(에코) 방지
+
+  useEffect(() => {
+    // 마운트 시 DB 에서 스케줄 불러오기
+    api
+      .getSettings()
+      .then((s) => {
+        const parse = (raw, type) => {
+          try {
+            const arr = JSON.parse(raw || '[]')
+            return Array.isArray(arr)
+              ? arr.map((x) => ({ time: x.time, type, amount: Number(x.amount), on: x.on !== false }))
+              : []
+          } catch {
+            return []
+          }
+        }
+        const loaded = [...parse(s.feed_schedule, 'food'), ...parse(s.water_schedule, 'water')]
+          .map((x, i) => ({ ...x, id: Date.now() + i }))
+          .sort((a, b) => a.time.localeCompare(b.time))
+        if (loaded.length) {
+          applyingFromDb.current = true
+          setSchedule(loaded)
+        }
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // 스케줄 변경(추가/수정/삭제/토글) 시 DB 저장
+    if (!scheduleFirst.current) {
+      scheduleFirst.current = true
+      return
+    }
+    if (applyingFromDb.current) {
+      applyingFromDb.current = false
+      return
+    }
+    const pack = (type) =>
+      JSON.stringify(
+        schedule.filter((x) => x.type === type).map((x) => ({ time: x.time, amount: x.amount, on: x.on })),
+      )
+    api.updateSettings({ feed_schedule: pack('food'), water_schedule: pack('water') }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule])
+
   // 토스트
   const [toast, setToast] = useState(null)
   const [toastOn, setToastOn] = useState(false)

@@ -292,6 +292,23 @@ export function Dashboard() {
   });
   const [busyId, setBusyId] = useState(null);
 
+  // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((s) => {
+        const on = s.away_mode === "Y";
+        setAwayMode(on);
+        try {
+          localStorage.setItem(AWAY_KEY, on ? "1" : "0");
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 토스트
   const [toast, setToast] = useState(null);
   const [toastOn, setToastOn] = useState(false);
@@ -316,8 +333,9 @@ export function Dashboard() {
       /* ignore */
     }
     showToast(next ? "✈️ 외출 모드를 켰어요" : "🏠 외출 모드를 껐어요");
+    api.updateSettings({ away_mode: next ? "Y" : "N" }).catch(() => {}); // settings DB 저장
     api.setAwayMode(next).catch(() => {
-      /* 백엔드 미구현 — 프론트 상태만 유지 */
+      /* 로봇 기기 명령 — 미구현/미연결이어도 프론트 상태는 유지 */
     });
   };
 
