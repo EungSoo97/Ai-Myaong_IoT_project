@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Lock, LogIn, User } from "lucide-react";
-import { GoogleButton } from "../components/GoogleButton";
 import {
-  getAccount,
-  getCurrentUser,
   saveAccount,
 } from "../lib/accountRepository";
 import { api } from "../api/api";
@@ -118,30 +115,12 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const result = await api.login({ username: id, password: pw });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
-      applyLoggedInUser(result, "email");
+      await applyLoggedInUser(result, "email");
       onLogin?.();
     } catch (e) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
-  const handleGoogleLogin = async (profile) => {
-    try {
-      const result = await api.googleAuth({
-        email: profile.email,
-        name: profile.name,
-        oauth_id: profile.sub,
-        picture: profile.picture,
-        allow_create: false, // 로그인은 기존 회원만 (신규는 회원가입으로)
-      })
-      sessionStorage.setItem('aimyaong:token', result.access_token)
-      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
-      applyLoggedInUser(result, 'google')
-      onLogin?.()
-    } catch (e) {
-      setErr(e.message || '구글 로그인 실패')
-    }
-  };
-
   return (
     <div
       ref={stageRef}
@@ -216,29 +195,6 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           <LogIn className="w-4 h-4" />
           들어가기
         </button>
-
-        {/* 또는 구글 로그인 */}
-        <div className="mt-5 flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ background: C.border }} />
-          <span className="text-xs font-bold" style={{ color: C.mute }}>
-            또는
-          </span>
-          <div className="flex-1 h-px" style={{ background: C.border }} />
-        </div>
-        <div className="mt-4">
-          <GoogleButton
-            label="Google 계정으로 로그인"
-            onSuccess={handleGoogleLogin}
-            onError={(e) =>
-              setErr(
-                e?.message ||
-                  e?.error_description ||
-                  e?.error ||
-                  "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
-              )
-            }
-          />
-        </div>
 
         <div className="mt-5 grid grid-cols-3 gap-2">
           <button

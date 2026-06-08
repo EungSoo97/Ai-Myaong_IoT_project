@@ -7,11 +7,12 @@ import {
   LogOut,
   Calendar,
   AlertTriangle,
+  KeyRound,
 } from "lucide-react";
-import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel, clearAccount } from "../lib/accountRepository";
-import { GoogleButton } from "../components/GoogleButton";
+import { Card, CreamCard, Badge } from "../components/ui";
+import { useAccount, petAgeLabel, speciesLabel, clearAccount, saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
+import { isStrongPassword } from "../components/PasswordField";
 
 function handleLogout() {
   try {
@@ -58,6 +59,7 @@ function fmtDate(iso) {
 export function MyPage() {
   const navigate = useNavigate();
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showCredentialSetup, setShowCredentialSetup] = useState(false);
 
   // 대시보드와 동일한 소스(useAccount) 사용 → 닉네임/펫 일치
   const account = useAccount();
@@ -73,7 +75,7 @@ export function MyPage() {
 
   const googleLinked = account?.provider === "google";
   const googleEmail = googleLinked ? email : null;
-  const handleGoogleLink = () => {};
+  const hasLocalLogin = Boolean(user.userId);
 
   return (
     <div className="px-5 pb-6">
@@ -216,15 +218,11 @@ export function MyPage() {
               <Badge tone="success">연결됨</Badge>
             </div>
           ) : (
-            <>
+            <div>
               <p className="text-sm text-brand-mute mb-3">
-                Google 계정을 연결하면 더 빠르게 로그인할 수 있어요.
+                연결된 소셜 계정이 없어요.
               </p>
-              <GoogleButton
-                label="Google 계정 연결"
-                onSuccess={handleGoogleLink}
-              />
-            </>
+            </div>
           )}
         </CreamCard>
       </section>
@@ -235,6 +233,13 @@ export function MyPage() {
           계정 관리
         </h3>
         <Card className="divide-y divide-brand-line">
+          {!hasLocalLogin && (
+            <ActionRow
+              icon={<KeyRound className="w-5 h-5 text-brand-brown" />}
+              title="아이디/비밀번호 설정"
+              onClick={() => setShowCredentialSetup(true)}
+            />
+          )}
           <ActionRow
             icon={<LogOut className="w-5 h-5 text-brand-brown" />}
             title="로그아웃"
@@ -264,7 +269,198 @@ export function MyPage() {
           onConfirm={handleWithdraw}
         />
       )}
+      {showCredentialSetup && (
+        <CredentialSetupModal
+          account={account}
+          onCancel={() => setShowCredentialSetup(false)}
+          onDone={() => setShowCredentialSetup(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function CredentialSetupModal({ account, onCancel, onDone }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [check, setCheck] = useState({ value: "", available: false, message: "" });
+  const [err, setErr] = useState("");
+
+  const confirmed = check.available && check.value === username.trim();
+  const passwordOk = isStrongPassword(password);
+  const passwordMatch = password && password === passwordConfirm;
+
+  const checkUsername = async () => {
+    const value = username.trim();
+    if (!value) {
+      setCheck({ value: "", available: false, message: "아이디를 입력해 주세요." });
+      return;
+    }
+    setChecking(true);
+    setErr("");
+    try {
+      const result = await api.checkUsername(value);
+      setCheck({
+        value,
+        available: result.available,
+        message: result.available ? "사용 가능한 아이디입니다." : "이미 사용 중인 아이디입니다.",
+      });
+    } catch (e) {
+      setCheck({ value, available: false, message: e.message || "중복 확인에 실패했습니다." });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!confirmed) {
+      setErr("아이디 중복 확인을 먼저 해주세요.");
+      return;
+    }
+    if (!passwordOk) {
+      setErr("비밀번호는 8자 이상, 영문/숫자/특수문자를 포함해야 합니다.");
+      return;
+    }
+    if (!passwordMatch) {
+      setErr("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+
+    setSaving(true);
+    setErr("");
+    try {
+      const updated = await api.setCredentials({ username: username.trim(), password });
+      const nextAccount = {
+        ...account,
+        user: {
+          ...(account?.user || {}),
+          userId: updated.username,
+          email: updated.email,
+          nickname: updated.nickname,
+        },
+      };
+      saveAccount(nextAccount);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(updated));
+      onDone();
+    } catch (e) {
+      setErr(e.message || "아이디/비밀번호 설정에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+      style={{ background: "rgba(45,37,32,0.45)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-[380px] rounded-3xl bg-brand-card p-6 shadow-soft-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto w-14 h-14 rounded-full bg-brand-primary/15 flex items-center justify-center">
+          <KeyRound className="w-7 h-7 text-brand-primary" />
+        </div>
+        <h3 className="mt-4 font-display text-lg font-bold text-brand-brown text-center">
+          아이디/비밀번호 설정
+        </h3>
+        <p className="mt-2 text-sm text-brand-mute leading-relaxed text-center">
+          설정하면 다음부터 일반 로그인으로도 들어올 수 있어요.
+        </p>
+
+        <label className="mt-5 block">
+          <span className="text-xs font-bold text-brand-mute pl-1">아이디</span>
+          <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setCheck({ value: "", available: false, message: "" });
+              }}
+              className="min-w-0 rounded-2xl bg-brand-input border border-brand-line px-4 py-3 text-sm font-semibold text-brand-brown outline-none"
+              placeholder="로그인 아이디"
+              autoComplete="username"
+            />
+            <button
+              type="button"
+              onClick={checkUsername}
+              disabled={checking || !username.trim()}
+              className="rounded-2xl bg-brand-primary px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {checking ? "확인 중" : "중복확인"}
+            </button>
+          </div>
+          {check.message && (
+            <p className={`mt-1.5 text-xs font-bold pl-1 ${confirmed ? "text-brand-success" : "text-brand-danger"}`}>
+              {check.message}
+            </p>
+          )}
+        </label>
+
+        <CredentialPasswordField
+          label="비밀번호"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+        />
+        <CredentialPasswordField
+          label="비밀번호 확인"
+          value={passwordConfirm}
+          onChange={setPasswordConfirm}
+          autoComplete="new-password"
+        />
+
+        {password && (
+          <p className={`mt-2 text-xs font-bold ${passwordOk ? "text-brand-success" : "text-brand-danger"}`}>
+            {passwordOk ? "사용 가능한 비밀번호입니다." : "8자 이상, 영문/숫자/특수문자를 포함해 주세요."}
+          </p>
+        )}
+        {passwordConfirm && (
+          <p className={`mt-1 text-xs font-bold ${passwordMatch ? "text-brand-success" : "text-brand-danger"}`}>
+            {passwordMatch ? "비밀번호가 일치합니다." : "비밀번호가 일치하지 않습니다."}
+          </p>
+        )}
+        {err && <p className="mt-3 text-sm font-bold text-brand-danger">{err}</p>}
+
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={saving}
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white touch-active disabled:opacity-50 bg-brand-primary"
+          >
+            {saving ? "저장 중" : "설정"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CredentialPasswordField({ label, value, onChange, autoComplete }) {
+  return (
+    <label className="mt-4 block">
+      <span className="text-xs font-bold text-brand-mute pl-1">{label}</span>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1.5 w-full rounded-2xl bg-brand-input border border-brand-line px-4 py-3 text-sm font-semibold text-brand-brown outline-none"
+        placeholder={label}
+        autoComplete={autoComplete}
+      />
+    </label>
   );
 }
 

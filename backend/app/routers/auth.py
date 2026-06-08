@@ -19,6 +19,7 @@ from app.models.auth import (
     GoogleAuthRequest,
     LoginRequest,
     PetResponse,
+    SetCredentialsRequest,
     SignupRequest,
     UpdateMeRequest,
     UserResponse,
@@ -78,6 +79,16 @@ def _get_or_create_provider(db: Session, provider_name: str) -> OAuth2Provider:
     db.add(provider)
     db.flush()
     return provider
+
+
+@router.get("/check-username")
+def check_username(username: str, db: Session = Depends(get_db)):
+    value = username.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Username is required.")
+
+    exists = db.query(UserCredential).filter(UserCredential.username == value).first()
+    return {"username": value, "available": exists is None}
 
 
 @router.post("/signup", response_model=AuthResponse)
@@ -150,6 +161,35 @@ def update_me(body: UpdateMeRequest, authorization: str = Header(None), db: Sess
             raise HTTPException(status_code=409, detail="Email is already in use.")
         user.email = body.email
 
+    db.commit()
+    db.refresh(user)
+    return _to_user_response(user)
+
+
+@router.post("/me/credentials", response_model=UserResponse)
+def set_credentials(
+    body: SetCredentialsRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    username = body.username.strip()
+
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required.")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if user.credential:
+        raise HTTPException(status_code=409, detail="Local login is already configured.")
+    if db.query(UserCredential).filter(UserCredential.username == username).first():
+        raise HTTPException(status_code=409, detail="Username is already in use.")
+
+    credential = UserCredential(
+        user_id=user.user_id,
+        username=username,
+        password_hash=hash_password(body.password),
+    )
+    db.add(credential)
     db.commit()
     db.refresh(user)
     return _to_user_response(user)

@@ -22,6 +22,7 @@ class Pet(Base):
     # obesity_grade  = Column(String(20),  nullable=True)
     # activity_goal  = Column(Float,       nullable=True)
     photo_path     = Column(String(500), nullable=True)
+    notes = Column(String(1000), nullable=True)
 
     user   = relationship("User",  back_populates="pets")
     alerts = relationship("Alert", back_populates="pet")
