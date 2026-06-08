@@ -13,20 +13,21 @@ const DEMO_PW = "meow1234";
 
 /* Warm-tone 팔레트 */
 const C = {
-  bg: "#FFF3E2",
-  card: "#FFFFFF",
-  input: "#FFF6E9",
-  border: "#F1DEC2",
-  brown: "#5C3D1F",
-  mute: "#A98A6B",
-  primary: "#F2A06A",
-  primaryDeep: "#D6814A",
-  outline: "#2D2520",
-  catOrange: "#F0A56E",
-  catOrangeDark: "#E58A4F",
-  catCream: "#FAF1E2",
-  catPink: "#F5B5A4",
-};
+  bg: 'rgb(var(--brand-bg))',
+  card: 'rgb(var(--brand-card))',
+  input: 'rgb(var(--brand-input))',
+  border: 'rgb(var(--brand-line))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
+  primaryDeep: 'rgb(var(--brand-primary-deep))',
+  outline: 'rgb(var(--brand-brown))',
+  // 고양이 일러스트 색은 의도된 고정값 (다크에서도 동일 유지)
+  catOrange: '#F0A56E',
+  catOrangeDark: '#E58A4F',
+  catCream: '#FAF1E2',
+  catPink: '#F5B5A4',
+}
 
 /**
  * 로그인 화면.

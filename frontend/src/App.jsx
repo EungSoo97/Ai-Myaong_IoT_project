@@ -10,6 +10,7 @@ import ResetPassword from './pages/ResetPassword'
 import PetAuthFlow from './pages/PetAuthFlow'
 import BodyFatCalculator from './pages/BodyFatCalculator'
 import WifiManager from './pages/WifiManager'
+import AlertConsole from './pages/AlertConsole'
 import { Dashboard } from './pages/Dashboard'
 import { RobotVision } from './pages/RobotVision'
 import { Dispenser } from './pages/Dispenser'
@@ -20,6 +21,7 @@ import { ProfileEdit } from './pages/ProfileEdit'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
 import { WifiSetup } from './pages/WifiSetup'
+import { Notifications } from './pages/Notifications'
 
 const AUTH_KEY = "aimyaong:auth";
 
@@ -48,6 +50,8 @@ function App() {
         <Route path="/body-fat" element={<BodyFatCalculator />} />
         {/* 단독: Wi-Fi 스캔/연결 (FastAPI 연동 대비) */}
         <Route path="/wifi-manager" element={<WifiManager />} />
+        {/* 단독: 알림 관제 센터 (2열 대시보드 · INTRUSION/FEEDING 상세) */}
+        <Route path="/console" element={<AlertConsole />} />
 
         {/* Public: Splash / Login - 하단 탭 바 없음 */}
         <Route element={<PublicLayout />}>
@@ -87,6 +91,7 @@ function App() {
           <Route path="dispenser" element={<Dispenser />} />
           <Route path="feeding" element={<Feeding />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="pet/:idx" element={<PetDetail />} />
           <Route path="profile/edit" element={<ProfileEdit />} />
           <Route path="settings" element={<Settings />} />

@@ -9,7 +9,8 @@ export function Splash() {
 
   useEffect(() => {
     const isAuth = (() => {
-      try { return sessionStorage.getItem(AUTH_KEY) === '1' } catch { return false }
+      // App.jsx 와 동일하게 token 기준으로 판단 (키 불일치 시 /splash↔/ 무한 루프 방지)
+      try { return !!sessionStorage.getItem('aimyaong:token') } catch { return false }
     })()
     const t = setTimeout(() => {
       navigate(isAuth ? '/' : '/login', { replace: true })

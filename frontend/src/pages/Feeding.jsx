@@ -111,6 +111,7 @@ export function Feeding() {
             <Legend2 color={COLORS.water} label="급수(ml)" />
           </div>
         </div>
+        <div key={period} className="page-enter">
         {period === 'month' ? (
           <MonthlyPanChart all={MONTHLY} />
         ) : (
@@ -133,6 +134,7 @@ export function Feeding() {
             </ResponsiveContainer>
           </div>
         )}
+        </div>
       </Card>
     </div>
   )

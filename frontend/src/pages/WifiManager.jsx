@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Wifi, Lock, RefreshCw, Loader2, Check, AlertTriangle, ChevronDown } from 'lucide-react'
+import { getApiBaseUrl } from '../lib/backendUrls'
 
 /**
  * 주변 Wi-Fi 스캔 + 연결 UI (FastAPI 연동 대비)
@@ -8,8 +9,7 @@ import { Wifi, Lock, RefreshCw, Loader2, Check, AlertTriangle, ChevronDown } fro
  * 백엔드 미배포 시 Mock 데이터로 UI 흐름을 그대로 테스트할 수 있게 처리.
  */
 
-// 추후 배포 주소로 이 한 줄만 교체하면 됨
-const BACKEND_URL = 'http://localhost:8000'
+const BACKEND_URL = getApiBaseUrl()
 
 /* 샌드박스용 Mock 데이터 (백엔드 OFF일 때 UI 테스트) */
 const MOCK_NETWORKS = [
