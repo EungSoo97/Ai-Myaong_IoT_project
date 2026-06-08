@@ -131,6 +131,7 @@ export function Dispenser() {
     setBusy(true)
     try {
       await api.dispenserFeed(foodAmount)
+      api.createFeedLog({ amount_g: foodAmount, feed_type: 'manual' }).catch(() => {}) // DB 기록
       showToast(`🍚 사료 ${foodAmount}g 배식 완료`)
       addNotification({ type: 'feed', title: '수동 배식', desc: `사료 ${foodAmount}g을 배식했어요`, link: '/feeding' })
     } catch {
@@ -145,6 +146,7 @@ export function Dispenser() {
     setBusy(true)
     try {
       await api.dispenserWater(waterAmount)
+      api.createWaterLog({ amount_ml: waterAmount, water_type: 'manual' }).catch(() => {}) // DB 기록
       showToast(`💧 물 ${waterAmount}ml 급수 완료`)
       addNotification({ type: 'water_low', title: '수동 급수', desc: `물 ${waterAmount}ml을 급수했어요`, link: '/feeding' })
     } catch {

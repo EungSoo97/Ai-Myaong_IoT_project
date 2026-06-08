@@ -109,6 +109,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+  // 배식/급수 기록 저장 (기존 FEED_LOGS / WATER_LOGS 테이블)
+  createFeedLog: ({ amount_g, feed_type = "manual", pet_id } = {}) =>
+    request("/api/dispenser/feed-log", {
+      method: "POST",
+      body: JSON.stringify({ amount_g, feed_type, pet_id }),
+    }),
+  createWaterLog: ({ amount_ml, water_type = "manual", pet_id } = {}) =>
+    request("/api/dispenser/water-log", {
+      method: "POST",
+      body: JSON.stringify({ amount_ml, water_type, pet_id }),
+    }),
   /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
    * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
    * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */

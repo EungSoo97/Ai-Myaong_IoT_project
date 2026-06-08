@@ -9,7 +9,7 @@ import { api } from '../api/api'
  * localStorage·폴백 없음 → DB값 도착 전이나 미설정 시에는 아래 기본값으로 동작한다.
  * ─────────────────────────────────────────────────────────── */
 
-const DEFAULTS = { food: 15, water: 80 } // DB값 도착 전 / 미설정 시 기본값
+const DEFAULTS = { food: 150, water: 160 } // DB값 도착 전 / 미설정 시 기본값 (슬라이더 중앙값)
 let cache = { ...DEFAULTS }
 
 export function getFeedSettings() {

@@ -347,6 +347,7 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
+        api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         addNotification({
           type: "feed",
