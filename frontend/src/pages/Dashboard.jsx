@@ -203,14 +203,15 @@ export function Dashboard() {
 
   const showLive = streamUrl && !streamFailed;
 
-  // 가입 데이터 기반 값 (없으면 샘플 fallback)
-  const nickname = account?.user?.nickname || "묘냥집사";
+  // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
+  const nickname = account?.user?.nickname || "집사";
   const pets = account?.pets ?? [];
   const pet = pets[0] || null;
-  const petName = pet?.name || "미야옹";
-  const petBreed = pet?.breed || "코숏";
-  const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
-  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
+  // 아래 값들은 펫 카드가 pet 있을 때만 렌더되므로 가짜 fallback 불필요
+  const petName = pet?.name || "";
+  const petBreed = pet?.breed || "";
+  const petSpecies = pet ? speciesLabel(pet.species) : "";
+  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
