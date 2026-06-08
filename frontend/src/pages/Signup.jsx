@@ -281,7 +281,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
   /* ───────── 회원가입 단계 화면 ───────── */
   return (
     <div
-      className="font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
+      className="page-enter font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
       style={{ background: C.bg }}
     >
       {/* 상단 고정: 브랜드 + 단계 인디케이터 */}
@@ -316,17 +316,19 @@ export default function Signup({ onComplete, onBackToLogin }) {
           className="rounded-3xl p-6 shadow-lg"
           style={{ background: C.card, border: `1px solid ${C.border}` }}
         >
-          {step === STEP_USER && (
-            <UserStep
-              userInfo={userInfo}
-              setUser={setUser}
-              emailVerified={emailVerified}
-              setEmailVerified={handleEmailVerified}
-              onGoogle={handleGoogleSignup}
-              errors={fieldErrors}
-            />
-          )}
-          {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
+          <div key={step} className="page-enter">
+            {step === STEP_USER && (
+              <UserStep
+                userInfo={userInfo}
+                setUser={setUser}
+                emailVerified={emailVerified}
+                setEmailVerified={handleEmailVerified}
+                onGoogle={handleGoogleSignup}
+                errors={fieldErrors}
+              />
+            )}
+            {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
+          </div>
         </div>
       </div>
 

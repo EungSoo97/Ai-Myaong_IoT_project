@@ -8,12 +8,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-  ShieldCheck,
   Search,
   Lock,
   Signal,
   Cpu,
   Check,
+  X,
 } from "lucide-react";
 import {
   Card,
@@ -58,6 +58,7 @@ export function Settings() {
   const [piApFallback, setPiApFallback] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sheetNetwork, setSheetNetwork] = useState(null); // 연결하려는 네트워크
+  const [showAppInfo, setShowAppInfo] = useState(false); // 앱 정보(빌드 현황) 시트
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
   useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost]);
@@ -519,7 +520,7 @@ export function Settings() {
         </h3>
         <CreamCard className="px-4 py-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-brand-brown">다크 모드</p>
+            <p className="text-sm font-bold text-brand-brown">테마</p>
             <p className="text-xs text-brand-mute">라이트 · 다크 · 시스템 설정</p>
           </div>
           <ThemeToggle />
@@ -614,12 +615,9 @@ export function Settings() {
       <section className="mt-6">
         <Card className="divide-y divide-brand-line">
           <LinkRow
-            icon={<ShieldCheck className="w-5 h-5 text-brand-success" />}
-            title="보안 및 권한"
-          />
-          <LinkRow
             icon={<Info className="w-5 h-5 text-brand-mute" />}
             title="앱 정보 · 버전 1.0.0"
+            onClick={() => setShowAppInfo(true)}
           />
         </Card>
       </section>
@@ -635,6 +633,9 @@ export function Settings() {
           onConnect={connectSelected}
         />
       )}
+
+      {/* 앱 정보(빌드 현황) 바텀 시트 */}
+      {showAppInfo && <AppInfoSheet onClose={() => setShowAppInfo(false)} />}
     </div>
   );
 }
@@ -774,9 +775,75 @@ function Row({ icon, title, desc, right, disabled }) {
   );
 }
 
-function LinkRow({ icon, title }) {
+/* 앱 정보 · 빌드 현황 바텀 시트 */
+function AppInfoSheet({ onClose }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShow(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const dismiss = () => {
+    setShow(false);
+    setTimeout(onClose, 280);
+  };
+
+  const rows = [
+    ["앱 이름", "AiMyaong"],
+    ["버전", "v1.0.0"],
+    ["빌드", "2026.06.05"],
+    ["환경", import.meta.env.MODE],
+    ["프레임워크", "React 18 · Vite"],
+    ["API 서버", import.meta.env.VITE_API_BASE_URL || "기본값 (127.0.0.1:8000)"],
+  ];
+
   return (
-    <button className="w-full flex items-center gap-3 px-4 py-3.5 touch-active text-left">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={dismiss}>
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: "rgba(45,37,32,0.45)", opacity: show ? 1 : 0 }}
+      />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-[480px] rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{ transform: show ? "translateY(0)" : "translateY(100%)" }}
+      >
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+            <Info className="w-5 h-5" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">앱 정보</h3>
+            <p className="text-xs text-brand-mute">빌드 현황</p>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="닫기"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="rounded-2xl bg-brand-card border border-brand-line divide-y divide-brand-line">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="text-sm text-brand-mute shrink-0">{k}</span>
+              <span className="text-sm font-bold text-brand-brown text-right break-all">{v}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-center text-[11px] text-brand-mute">
+          © 2026 AiMyaong · 반려동물 IoT 케어
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LinkRow({ icon, title, onClick }) {
+  return (
+    <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3.5 touch-active text-left">
       <span className="w-10 h-10 rounded-2xl bg-brand-cream flex items-center justify-center shrink-0">
         {icon}
       </span>
