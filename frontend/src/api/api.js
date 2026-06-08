@@ -179,9 +179,28 @@ export const api = {
 
   getMe: () => request("/api/auth/me"),
 
-  googleAuth: ({ email, name, oauth_id, picture }) =>
+  // 회원정보 수정 (백엔드에 PATCH /api/auth/me 추가되면 그대로 DB 반영)
+  updateMe: (body) =>
+    request("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  // 회원 탈퇴 (계정 + 펫 DB 삭제)
+  deleteMe: () => request("/api/auth/me", { method: "DELETE" }),
+
+  // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
+  getPets: () => request("/api/pets"),
+  createPet: (body) =>
+    request("/api/pets", { method: "POST", body: JSON.stringify(body) }),
+  updatePetApi: (petId, body) =>
+    request(`/api/pets/${petId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deletePetApi: (petId) =>
+    request(`/api/pets/${petId}`, { method: "DELETE" }),
+
+  googleAuth: ({ email, name, oauth_id, picture, allow_create = true }) =>
     request("/api/auth/google", {
       method: "POST",
-      body: JSON.stringify({ email, name, oauth_id, picture }),
+      body: JSON.stringify({ email, name, oauth_id, picture, allow_create }),
     }),
 };

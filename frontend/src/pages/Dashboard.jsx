@@ -21,9 +21,11 @@ import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel } from "../lib/accountRepository";
+import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
+import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
+import { toApiPet, fromApiPet } from "../lib/petMap";
 
 const RECENT = [
   {
@@ -94,6 +96,20 @@ const SHORTCUTS = [
   },
 ];
 
+/* 최근 N개월 활동량(발자국) — 현재 달이 오른쪽 끝, "N월" 라벨 */
+function buildMonthlyActivity(count = 12) {
+  const now = new Date();
+  const arr = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const m = d.getMonth() + 1;
+    const seed = d.getFullYear() * 12 + m;
+    const value = 1300 + Math.round(Math.sin(seed) * 250) + (m % 4) * 80;
+    arr.push({ label: `${m}월`, value });
+  }
+  return arr;
+}
+
 /* 펫 활동량(발자국 수) — 일/주/월. 백엔드 붙으면 API 로 교체 */
 const ACTIVITY = {
   day: [
@@ -112,12 +128,7 @@ const ACTIVITY = {
     { label: "토", value: 380 },
     { label: "일", value: 420 },
   ],
-  month: [
-    { label: "1주", value: 1520 },
-    { label: "2주", value: 1680 },
-    { label: "3주", value: 1430 },
-    { label: "4주", value: 1750 },
-  ],
+  month: buildMonthlyActivity(12),
 };
 const ACT_PRIMARY = "#F08D86";
 const actTooltip = {
@@ -130,6 +141,35 @@ const actTooltip = {
   },
   labelStyle: { color: "#9C8A78", fontWeight: 700 },
 };
+
+/* 활동량 영역 차트 (일/주/월 공용) */
+function ActivityArea({ data }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
+        <defs>
+          <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9C8A78" }} axisLine={false} tickLine={false} />
+        <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={ACT_PRIMARY}
+          strokeWidth={2.5}
+          fill="url(#actFill)"
+          dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
+          activeDot={{ r: 5 }}
+          animationDuration={500}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -163,15 +203,40 @@ export function Dashboard() {
 
   const showLive = streamUrl && !streamFailed;
 
-  // 가입 데이터 기반 값 (없으면 샘플 fallback)
-  const nickname = account?.user?.nickname || "묘냥집사";
+  // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
+  const nickname = account?.user?.nickname || "집사";
   const pets = account?.pets ?? [];
   const pet = pets[0] || null;
-  const petName = pet?.name || "미야옹";
-  const petBreed = pet?.breed || "코숏";
-  const petSpecies = pet ? speciesLabel(pet.species) : "고양이";
-  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "3살";
+  // 아래 값들은 펫 카드가 pet 있을 때만 렌더되므로 가짜 fallback 불필요
+  const petName = pet?.name || "";
+  const petBreed = pet?.breed || "";
+  const petSpecies = pet ? speciesLabel(pet.species) : "";
+  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
+
+  // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
+  const [showRegister, setShowRegister] = useState(false);
+  const handleRegister = async (newPet) => {
+    setShowRegister(false);
+    let saved = newPet;
+    try {
+      const r = await api.createPet(toApiPet(newPet)); // DB 저장 → pet_id 반환
+      saved = fromApiPet(r, newPet.photo);
+    } catch {
+      /* 백엔드 미연결 → 로컬만 */
+    }
+    if (!getAccount()) {
+      saveAccount({
+        provider: "guest",
+        user: { userId: "guest", nickname },
+        pets: [saved],
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      addPet(saved);
+    }
+    showToast(`🐾 ${saved.name || "반려동물"} 등록 완료`);
+  };
 
   // 활동량 통계 (일/주/월)
   const [actPeriod, setActPeriod] = useState("day");
@@ -179,7 +244,42 @@ export function Dashboard() {
   const actTotal = actData.reduce((s, d) => s + d.value, 0);
   const actAvg = Math.round(actTotal / actData.length);
   const actAvgLabel =
-    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "주 평균";
+    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "월 평균";
+
+  // 월간 차트: 진입 시 최신(현재 달, 오른쪽 끝)으로 스크롤
+  const monthScrollRef = useRef(null);
+  const monthDrag = useRef(null);
+  useEffect(() => {
+    if (actPeriod === "month" && monthScrollRef.current) {
+      monthScrollRef.current.scrollLeft = monthScrollRef.current.scrollWidth;
+    }
+  }, [actPeriod]);
+
+  // 마우스 휠 → 가로 스크롤
+  const onMonthWheel = (e) => {
+    const el = monthScrollRef.current;
+    if (!el) return;
+    const delta = e.deltaY || e.deltaX;
+    if (delta) el.scrollLeft += delta;
+  };
+  // 마우스로 잡고 좌우 드래그 (터치는 네이티브 스크롤 유지)
+  const onMonthDown = (e) => {
+    if (e.pointerType === "touch") return;
+    const el = monthScrollRef.current;
+    if (!el) return;
+    monthDrag.current = { x: e.clientX, left: el.scrollLeft };
+    el.setPointerCapture?.(e.pointerId);
+  };
+  const onMonthMove = (e) => {
+    if (!monthDrag.current) return;
+    const el = monthScrollRef.current;
+    if (el) el.scrollLeft = monthDrag.current.left - (e.clientX - monthDrag.current.x);
+  };
+  const onMonthUp = (e) => {
+    if (!monthDrag.current) return;
+    monthDrag.current = null;
+    monthScrollRef.current?.releasePointerCapture?.(e.pointerId);
+  };
 
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
   const AWAY_KEY = "aimyaong:awayMode";
@@ -290,41 +390,58 @@ export function Dashboard() {
         }
       />
 
-      {/* 1) 펫 프로필 (가입 데이터 기반 · 탭하면 상세) */}
-      <button
-        type="button"
-        data-tour="dash-pet"
-        onClick={() => navigate("/pet/0")}
-        className="w-full text-left touch-active"
-      >
-        <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-              {pet?.photo ? (
-                <img
-                  src={pet.photo}
-                  alt={petName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <PawPrint className="w-9 h-9 text-brand-primary" />
-              )}
+      {/* 1) 펫 프로필 — 등록된 펫 있으면 카드, 없으면 귀여운 빈 상태 */}
+      {pet ? (
+        <button
+          type="button"
+          data-tour="dash-pet"
+          onClick={() => navigate("/pet/0")}
+          className="w-full text-left touch-active"
+        >
+          <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+                {pet.photo ? (
+                  <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
+                ) : (
+                  <PawPrint className="w-9 h-9 text-brand-primary" />
+                )}
+              </div>
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
             </div>
-            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
-            <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
-              {petName}
-            </h2>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
-              <Badge tone="success">건강 양호</Badge>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+              <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+                {petName}
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
+                <Badge tone="success">건강 양호</Badge>
+              </div>
             </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+            <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+          </Card>
+        </button>
+      ) : (
+        <Card data-tour="dash-pet" className="paw-watermark px-5 py-6 text-center">
+          <span className="mx-auto w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mb-3">
+            <PawPrint className="w-8 h-8 text-brand-primary/70" />
+          </span>
+          <p className="font-display text-lg font-bold text-brand-brown">
+            아직 등록된 반려동물이 없어요
+          </p>
+          <p className="text-sm text-brand-mute mt-1">
+            우리 아이를 등록하고 건강을 관리해 보세요 🐾
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowRegister(true)}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-2xl bg-brand-primary text-white font-bold px-5 py-2.5 shadow-soft touch-active"
+          >
+            <PawPrint className="w-4 h-4" /> 반려동물 등록하기
+          </button>
         </Card>
-      </button>
+      )}
 
       {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
       <button
@@ -470,37 +587,27 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* 영역(라인) 차트 */}
-          <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={actData} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="actFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACT_PRIMARY} stopOpacity={0.32} />
-                    <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11, fill: "#9C8A78" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={ACT_PRIMARY}
-                  strokeWidth={2.5}
-                  fill="url(#actFill)"
-                  dot={{ r: 3, fill: ACT_PRIMARY, strokeWidth: 0 }}
-                  activeDot={{ r: 5 }}
-                  animationDuration={500}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {/* 영역(라인) 차트 — 월간은 가로 스크롤 */}
+          {actPeriod === "month" ? (
+            <div
+              ref={monthScrollRef}
+              onWheel={onMonthWheel}
+              onPointerDown={onMonthDown}
+              onPointerMove={onMonthMove}
+              onPointerUp={onMonthUp}
+              onPointerCancel={onMonthUp}
+              tabIndex={-1}
+              className="mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
+            >
+              <div style={{ width: Math.max(actData.length * 52, 320), height: 160 }}>
+                <ActivityArea data={actData} />
+              </div>
+            </div>
+          ) : (
+            <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+              <ActivityArea data={actData} />
+            </div>
+          )}
 
           {/* 요약 */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">
@@ -534,6 +641,16 @@ export function Dashboard() {
         >
           {toast}
         </div>
+      )}
+
+      {/* 반려동물 등록 모달 */}
+      {showRegister && (
+        <AddPetModal
+          title="반려동물 등록"
+          submitLabel="등록"
+          onClose={() => setShowRegister(false)}
+          onSave={handleRegister}
+        />
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import {
   saveAccount,
 } from "../lib/accountRepository";
 import { api } from "../api/api";
+import { fromApiPet } from "../lib/petMap";
 
 const DEMO_ID = "admin";
 const DEMO_PW = "meow1234";
@@ -27,6 +28,25 @@ const C = {
   catOrangeDark: '#E58A4F',
   catCream: '#FAF1E2',
   catPink: '#F5B5A4',
+}
+
+/* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
+ * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
+async function applyLoggedInUser(result, provider) {
+  const u = result?.user || {};
+  let pets = [];
+  try {
+    const me = await api.getMe(); // user + pets (DB)
+    pets = (me.pets || []).map((p) => fromApiPet(p));
+  } catch {
+    /* DB 조회 실패 → 펫 없이 진행 */
+  }
+  saveAccount({
+    provider,
+    user: { userId: u.username, email: u.email, nickname: u.nickname },
+    pets,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -98,6 +118,7 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const result = await api.login({ username: id, password: pw });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      applyLoggedInUser(result, "email");
       onLogin?.();
     } catch (e) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
@@ -110,9 +131,11 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         name: profile.name,
         oauth_id: profile.sub,
         picture: profile.picture,
+        allow_create: false, // 로그인은 기존 회원만 (신규는 회원가입으로)
       })
       sessionStorage.setItem('aimyaong:token', result.access_token)
       sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
+      applyLoggedInUser(result, 'google')
       onLogin?.()
     } catch (e) {
       setErr(e.message || '구글 로그인 실패')
@@ -122,7 +145,7 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
   return (
     <div
       ref={stageRef}
-      className="flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
+      className="page-enter flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
       style={{ background: C.bg }}
     >
       {/* 브랜드 */}
@@ -206,6 +229,14 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           <GoogleButton
             label="Google 계정으로 로그인"
             onSuccess={handleGoogleLogin}
+            onError={(e) =>
+              setErr(
+                e?.message ||
+                  e?.error_description ||
+                  e?.error ||
+                  "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
+              )
+            }
           />
         </div>
 
