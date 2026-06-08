@@ -17,6 +17,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { GoogleButton } from "../components/GoogleButton";
 import { EmailVerifyField } from "../components/EmailVerifyField";
 import { DateWheel } from "../components/DateWheel";
 import { PasswordField, isStrongPassword } from "../components/PasswordField";
@@ -84,7 +85,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
     nickname: "",
   });
   const [emailVerified, setEmailVerified] = useState(false); // 이메일 인증 완료 여부
-  const provider = "email";
+  const [provider, setProvider] = useState("email"); // 'email' | 'google'
   const [pet, setPet] = useState(emptyPet()); // 펫 1마리
 
   const [finalPayload, setFinalPayload] = useState(null); // 완료 화면용
@@ -117,6 +118,44 @@ export default function Signup({ onComplete, onBackToLogin }) {
   const handleEmailVerified = (v) => {
     setEmailVerified(v);
     if (v) clearFieldError("email");
+  };
+
+  const handleGoogleSignup = async (profile) => {
+    setErr("");
+    setFieldErrors({});
+    setLoading(true);
+    try {
+      const result = await api.googleAuth({
+        email: profile.email,
+        name: profile.name,
+        oauth_id: profile.sub,
+        picture: profile.picture,
+        allow_create: true,
+      });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+
+      const savedPets = (result.user?.pets || []).map((p) => fromApiPet(p));
+      const savedUser = {
+        userId: result.user?.username || "",
+        email: result.user?.email || profile.email,
+        nickname: result.user?.nickname || profile.name || "",
+      };
+
+      saveAccount({
+        provider: "google",
+        user: savedUser,
+        pets: savedPets,
+        createdAt: new Date().toISOString(),
+      });
+      setProvider("google");
+      setFinalPayload({ provider: "google", user: savedUser, pets: savedPets });
+      setScreen("done");
+    } catch (e) {
+      setErr(e.message || "구글 회원가입에 실패했어요.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleUsernameCheck = async () => {
@@ -370,6 +409,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
                 setUser={setUser}
                 emailVerified={emailVerified}
                 setEmailVerified={handleEmailVerified}
+                onGoogle={handleGoogleSignup}
                 errors={fieldErrors}
                 usernameCheck={usernameCheck}
                 checkingUsername={checkingUsername}
@@ -480,6 +520,7 @@ function UserStep({
   setUser,
   emailVerified,
   setEmailVerified,
+  onGoogle,
   errors = {},
   usernameCheck,
   checkingUsername,
@@ -491,6 +532,11 @@ function UserStep({
         icon={<User className="w-5 h-5" />}
         title="회원 정보를 입력해 주세요"
       />
+
+      <div className="mt-5">
+        <GoogleButton label="Google로 빠른 가입" onSuccess={onGoogle} />
+      </div>
+      <Divider />
 
       <div data-field="userId">
         <UsernameField

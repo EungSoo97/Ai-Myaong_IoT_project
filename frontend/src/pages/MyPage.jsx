@@ -8,6 +8,9 @@ import {
   Calendar,
   AlertTriangle,
   KeyRound,
+  Eye,
+  EyeOff,
+  Check,
 } from "lucide-react";
 import { Card, CreamCard, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, clearAccount, saveAccount } from "../lib/accountRepository";
@@ -73,9 +76,18 @@ export function MyPage() {
   const initial = (nickname.trim().charAt(0) || "집");
   const registeredAt = fmtDate(account?.createdAt);
 
-  const googleLinked = account?.provider === "google";
+  let sessionUser = {};
+  try {
+    sessionUser = JSON.parse(sessionStorage.getItem("aimyaong:user") || "{}");
+  } catch {
+    sessionUser = {};
+  }
+
+  const googleLinked =
+    account?.provider === "google" || sessionUser.oauth_provider === "google";
   const googleEmail = googleLinked ? email : null;
-  const hasLocalLogin = Boolean(user.userId);
+  const hasLocalLogin = Boolean(user.userId || sessionUser.username);
+  const canAddLocalLogin = googleLinked && !hasLocalLogin;
 
   return (
     <div className="px-5 pb-6">
@@ -214,6 +226,11 @@ export function MyPage() {
                     {googleEmail}
                   </p>
                 )}
+                {canAddLocalLogin && (
+                  <p className="mt-1 text-[11px] text-brand-mute">
+                    원하면 아이디/비밀번호 로그인도 추가할 수 있어요.
+                  </p>
+                )}
               </div>
               <Badge tone="success">연결됨</Badge>
             </div>
@@ -233,11 +250,17 @@ export function MyPage() {
           계정 관리
         </h3>
         <Card className="divide-y divide-brand-line">
-          {!hasLocalLogin && (
+          {canAddLocalLogin && (
             <ActionRow
               icon={<KeyRound className="w-5 h-5 text-brand-brown" />}
               title="아이디/비밀번호 설정"
               onClick={() => setShowCredentialSetup(true)}
+            />
+          )}
+          {googleLinked && hasLocalLogin && (
+            <InfoRow
+              icon={<KeyRound className="w-5 h-5 text-brand-brown" />}
+              title="아이디/비밀번호 설정됨"
             />
           )}
           <ActionRow
@@ -389,9 +412,12 @@ function CredentialSetupModal({ account, onCancel, onDone }) {
               type="button"
               onClick={checkUsername}
               disabled={checking || !username.trim()}
-              className="rounded-2xl bg-brand-primary px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50 ${
+                confirmed ? "bg-brand-success" : "bg-brand-primary"
+              }`}
             >
-              {checking ? "확인 중" : "중복확인"}
+              {confirmed && <Check className="w-4 h-4" />}
+              {checking ? "확인 중" : confirmed ? "확인됨" : "중복확인"}
             </button>
           </div>
           {check.message && (
@@ -449,17 +475,29 @@ function CredentialSetupModal({ account, onCancel, onDone }) {
 }
 
 function CredentialPasswordField({ label, value, onChange, autoComplete }) {
+  const [show, setShow] = useState(false);
+
   return (
     <label className="mt-4 block">
       <span className="text-xs font-bold text-brand-mute pl-1">{label}</span>
-      <input
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full rounded-2xl bg-brand-input border border-brand-line px-4 py-3 text-sm font-semibold text-brand-brown outline-none"
-        placeholder={label}
-        autoComplete={autoComplete}
-      />
+      <div className="mt-1.5 flex items-center rounded-2xl bg-brand-input border border-brand-line px-4 py-3">
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-brand-brown outline-none"
+          placeholder={label}
+          autoComplete={autoComplete}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-xl text-brand-mute touch-active"
+          aria-label={show ? "비밀번호 숨기기" : "비밀번호 보기"}
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
     </label>
   );
 }
@@ -570,6 +608,18 @@ function ActionRow({ icon, title, danger, onClick }) {
       </p>
       <ChevronRight className="w-4 h-4 text-brand-mute" />
     </button>
+  );
+}
+
+function InfoRow({ icon, title }) {
+  return (
+    <div className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
+      <span className="w-10 h-10 rounded-2xl bg-brand-cream flex items-center justify-center shrink-0">
+        {icon}
+      </span>
+      <p className="flex-1 text-sm font-bold text-brand-brown">{title}</p>
+      <Badge tone="success">완료</Badge>
+    </div>
   );
 }
 
