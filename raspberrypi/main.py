@@ -68,6 +68,11 @@ class RaspberryPiAgent:
 
         if self.mqtt_disabled:
             print("[raspberrypi] MQTT disabled by MQTT_DISABLED=true")
+            try:
+                while not self._stopping.is_set():
+                    time.sleep(1)
+            finally:
+                self.serial.close()
             return
 
         import paho.mqtt.client as mqtt
@@ -126,20 +131,32 @@ class RaspberryPiAgent:
 
     def on_message(self, _client, _userdata, message) -> None:
         topic = message.topic
-        payload = message.payload.decode("utf-8").strip()
+        payload_text = message.payload.decode("utf-8").strip()
 
-        # Backend discovery announcement.
         if topic == "system/backend/announce":
             try:
-                data = json.loads(payload)
-                url = data.get("url")
+                data = json.loads(payload_text)
+                url = str(data.get("url") or "").strip().rstrip("/")
                 if url:
                     print(f"[mqtt] backend discovered: {url}")
-
                     MQTT_BACKEND_CACHE["url"] = url
                     os.environ["DESKTOP_BACKEND_URL"] = url
-            except Exception as e:
-                print(f"[mqtt] backend announce parse error: {e}")
+                    set_env_value(PI_ENV, "DESKTOP_BACKEND_URL", url)
+            except Exception as exc:
+                print(f"[mqtt] backend announce parse error: {exc}")
+            return
+
+        command = self._extract_command(message.payload)
+        if not command:
+            print(f"[raspberrypi] ignored empty command on {topic}")
+            return
+
+        if command not in ROBOT_COMMANDS:
+            print(f"[raspberrypi] ignored unsupported command on {topic}: {command}")
+            return
+
+        print(f"[raspberrypi] MQTT {topic} -> Arduino {command}")
+        self.serial.send(command)
 
     def _extract_command(self, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()
@@ -175,18 +192,18 @@ class RaspberryPiAgent:
             return str(reason_code).lower() in {"0", "success", "normal disconnection"}
 
 
-def start_wifi_http_server() -> None:
+def start_wifi_http_server(agent: RaspberryPiAgent) -> None:
     if os.getenv("PI_AGENT_HTTP_DISABLED", "false").lower() == "true":
         return
 
     host = os.getenv("PI_AGENT_HTTP_HOST", "0.0.0.0")
     port = int(os.getenv("PI_AGENT_HTTP_PORT", "8765"))
-    thread = threading.Thread(target=_run_wifi_http_server, args=(host, port), daemon=True)
+    thread = threading.Thread(target=_run_wifi_http_server, args=(host, port, agent), daemon=True)
     thread.start()
     start_backend_registration_loop()
 
 
-def _run_wifi_http_server(host: str, port: int) -> None:
+def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None:
     import uvicorn
     from fastapi import FastAPI, HTTPException
 
@@ -263,6 +280,26 @@ def _run_wifi_http_server(host: str, port: int) -> None:
             "message": "Wi-Fi change started. Raspberry Pi network may disconnect briefly.",
             "ssid": ssid,
         }
+
+    @app.post("/api/robot/command")
+    def robot_command(body: dict | None = None):
+        body = body or {}
+        command = str(
+            body.get("cmd")
+            or body.get("command")
+            or body.get("direction")
+            or body.get("action")
+            or ""
+        ).strip()
+
+        if not command:
+            raise HTTPException(status_code=400, detail="command is required.")
+        if command not in ROBOT_COMMANDS:
+            raise HTTPException(status_code=400, detail=f"unsupported command: {command}")
+
+        print(f"[raspberrypi] HTTP -> Arduino {command}")
+        agent.serial.send(command)
+        return {"ok": True, "command": command}
 
     print(f"[raspberrypi] Wi-Fi HTTP API listening on {host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="warning")
@@ -938,5 +975,5 @@ def primary_ip() -> str:
 if __name__ == "__main__":
     agent = RaspberryPiAgent()
     signal.signal(signal.SIGTERM, agent.stop)
-    start_wifi_http_server()
+    start_wifi_http_server(agent)
     agent.start()
