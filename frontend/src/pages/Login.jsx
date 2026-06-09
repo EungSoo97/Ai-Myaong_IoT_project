@@ -5,8 +5,6 @@ import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
 import { fromApiPet } from "../lib/petMap";
 
-const DEMO_ID = "admin";
-const DEMO_PW = "meow1234";
 
 /* Warm-tone 팔레트 */
 const C = {
@@ -271,9 +269,6 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           </button>
         </div>
 
-        <p className="mt-3 text-center text-[11px]" style={{ color: C.mute }}>
-          테스트 계정 · {DEMO_ID} / {DEMO_PW}
-        </p>
       </form>
     </div>
   );

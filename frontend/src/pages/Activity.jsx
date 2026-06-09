@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic,
+  ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic, Droplets,
   Activity as ActivityIcon, X, Play, MapPin, Clock, Cpu, PawPrint, Dog, Cat,
   CheckCheck, ShieldAlert,
 } from 'lucide-react'
@@ -62,15 +62,39 @@ export function Activity() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null) // 상세 시트 대상
+  const [feedLogs, setFeedLogs] = useState({ feed: [], water: [] })
+
+  // 급여(배식/급수)는 DB 연동 / 감지는 mock(DETECTIONS) 유지
+  useEffect(() => {
+    api.getDispenserLogs().then((d) => setFeedLogs({ feed: d.feed || [], water: d.water || [] })).catch(() => {})
+  }, [])
+
+  const feedItems = useMemo(() => {
+    const fmt = (iso) => {
+      const d = new Date(iso)
+      return Number.isNaN(d.getTime())
+        ? ''
+        : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    }
+    const food = (feedLogs.feed || []).map((x, i) => {
+      const amt = Math.round(Number(x.amount_g) || 0)
+      return { id: `f${i}-${x.created_at}`, cat: 'feed', kind: 'food', icon: UtensilsCrossed, type: '배식', amount: amt, unit: 'g', feedType: x.feed_type, desc: `사료 ${amt}g`, time: fmt(x.created_at) }
+    })
+    const water = (feedLogs.water || []).map((x, i) => {
+      const amt = Math.round(Number(x.amount_ml) || 0)
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at) }
+    })
+    return [...food, ...water]
+  }, [feedLogs])
 
   const all = useMemo(
-    () => [...DETECTIONS, ...FEEDINGS].sort((a, b) => b.time.localeCompare(a.time)),
-    [],
+    () => [...DETECTIONS, ...feedItems].sort((a, b) => b.time.localeCompare(a.time)),
+    [feedItems],
   )
   const list = filter === 'all' ? all : all.filter((x) => x.cat === filter)
 
   const detectCount = DETECTIONS.length
-  const feedTotal = FEEDINGS.reduce((s, f) => s + (getFeedLog(f.feed_log_id)?.feed_amount || 0), 0)
+  const feedTotal = feedItems.filter((x) => x.kind === 'food').reduce((s, x) => s + x.amount, 0)
 
   return (
     <div className="px-5 pb-6">
@@ -130,11 +154,10 @@ export function Activity() {
       {/* 통합 타임라인 (항목 탭 → 상세) */}
       <section className="mt-4">
         <div key={filter} className="page-enter">
-          <CreamCard className="divide-y divide-brand-line">
+          <CreamCard className={`divide-y divide-brand-line ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
             {list.map((e) => {
               const Icon = e.icon
               const isFeed = e.cat === 'feed'
-              const log = isFeed ? getFeedLog(e.feed_log_id) : null
               return (
                 <button
                   key={e.id}
@@ -147,7 +170,7 @@ export function Activity() {
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-brand-brown truncate">{e.type}</p>
-                    <p className="text-xs text-brand-mute truncate">{isFeed ? `사료 ${log?.feed_amount}g` : e.desc}</p>
+                    <p className="text-xs text-brand-mute truncate">{e.desc}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge tone={isFeed ? 'primary' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
@@ -220,19 +243,22 @@ function DetailSheet({ item, onClose }) {
   )
 }
 
-/* 급여 상세: FEED_LOGS → PETS 릴레이션 */
+/* 급여 상세: DB(FEED_LOGS / WATER_LOGS) 기록 기반 */
 function FeedingBody({ item }) {
-  const log = getFeedLog(item.feed_log_id)
-  const pet = log ? getPet(log.pet_id) : null
-  const PetIcon = pet ? speciesIcon(pet.pet_type) : PawPrint
-
+  const FEED_TYPE_KO = { manual: '수동', quick: '빠른', auto: '자동' }
+  const isWater = item.kind === 'water'
   return (
     <div>
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard icon={<Clock className="w-4 h-4" />} label="배식 시각" value={item.time} />
-        <StatCard icon={<UtensilsCrossed className="w-4 h-4" />} label="배식량" value={log ? `${log.feed_amount}g` : '-'} accent />
-        <StatCard icon={<Cpu className="w-4 h-4" />} label="기기 ID" value={log?.device_id || '-'} />
-        <StatCard icon={<PetIcon className="w-4 h-4" />} label="대상 반려동물" value={pet?.pet_name || '-'} />
+        <StatCard icon={<Clock className="w-4 h-4" />} label="시각" value={item.time} />
+        <StatCard
+          icon={isWater ? <Droplets className="w-4 h-4" /> : <UtensilsCrossed className="w-4 h-4" />}
+          label={isWater ? '급수량' : '배식량'}
+          value={`${item.amount}${item.unit}`}
+          accent
+        />
+        <StatCard icon={<PawPrint className="w-4 h-4" />} label="종류" value={isWater ? '급수' : '배식'} />
+        <StatCard icon={<Cpu className="w-4 h-4" />} label="방식" value={FEED_TYPE_KO[item.feedType] || item.feedType || '-'} />
       </div>
 
       <div className="mt-3 rounded-2xl bg-brand-cream p-3.5 flex items-center gap-2">
@@ -240,14 +266,9 @@ function FeedingBody({ item }) {
           <CheckCheck className="w-4 h-4" />
         </span>
         <p className="text-sm text-brand-brown/90">
-          <b>{pet?.pet_name}</b>에게 <b>{log?.feed_amount}g</b> 배식 완료
-          <span className="text-brand-mute"> · {log?.status}</span>
+          {isWater ? '급수' : '배식'} <b>{item.amount}{item.unit}</b> 완료
         </p>
       </div>
-
-      <p className="mt-2 text-[11px] text-brand-mute">
-        활동 → feed_log#{item.feed_log_id} → pet#{log?.pet_id} ({pet?.pet_name})
-      </p>
     </div>
   )
 }

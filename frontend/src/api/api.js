@@ -109,6 +109,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+  // 배식/급수 기록 저장 (기존 FEED_LOGS / WATER_LOGS 테이블)
+  createFeedLog: ({ amount_g, feed_type = "manual", pet_id } = {}) =>
+    request("/api/dispenser/feed-log", {
+      method: "POST",
+      body: JSON.stringify({ amount_g, feed_type, pet_id }),
+    }),
+  createWaterLog: ({ amount_ml, water_type = "manual", pet_id } = {}) =>
+    request("/api/dispenser/water-log", {
+      method: "POST",
+      body: JSON.stringify({ amount_ml, water_type, pet_id }),
+    }),
+  // 배식/급수 기록 조회 (통계용) — { feed:[...], water:[...] }
+  getDispenserLogs: (days = 400) => request(`/api/dispenser/logs?days=${days}`),
+
+  // 알림 (ALERTS 테이블) — message 에 {title,desc,link} JSON 저장
+  getAlerts: () => request("/api/alerts"),
+  createAlert: ({ alert_type, message }) =>
+    request("/api/alerts", { method: "POST", body: JSON.stringify({ alert_type, message }) }),
+  confirmAlert: (alertId) =>
+    request(`/api/alerts/${alertId}/confirm`, { method: "PATCH" }),
+  confirmAllAlerts: () => request("/api/alerts/confirm-all", { method: "PATCH" }),
+  deleteAlert: (alertId) => request(`/api/alerts/${alertId}`, { method: "DELETE" }),
+  deleteAllAlerts: () => request("/api/alerts", { method: "DELETE" }),
   /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
    * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
    * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */
@@ -197,6 +220,11 @@ export const api = {
 
   // 회원 탈퇴 (계정 + 펫 DB 삭제)
   deleteMe: () => request("/api/auth/me", { method: "DELETE" }),
+
+  // 유저별 설정 (settings 테이블)
+  getSettings: () => request("/api/settings"),
+  updateSettings: (body) =>
+    request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
 
   // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
   getPets: () => request("/api/pets"),
