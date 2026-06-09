@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -10,9 +10,8 @@ import {
   PhoneCall,
   Camera,
   PawPrint,
-  AlertTriangle,
   UtensilsCrossed,
-  UserX,
+  Droplets,
   Plane,
   ChevronRight,
   Footprints,
@@ -23,44 +22,11 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, addNotification } from "../lib/notificationRepository";
+import { useNotifications, timeAgo } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
 
-const RECENT = [
-  {
-    id: 1,
-    icon: UtensilsCrossed,
-    tone: "primary",
-    title: "자동 배식 완료",
-    desc: "15g · 정기 스케줄",
-    time: "방금 전",
-  },
-  {
-    id: 2,
-    icon: AlertTriangle,
-    tone: "warn",
-    title: "이상 행동 감지",
-    desc: "거실 카메라",
-    time: "12분 전",
-  },
-  {
-    id: 3,
-    icon: UserX,
-    tone: "danger",
-    title: "외부인 감지",
-    desc: "현관 카메라",
-    time: "1시간 전",
-  },
-  {
-    id: 4,
-    icon: PawPrint,
-    tone: "brown",
-    title: "발자국 활동 기록",
-    desc: "12회",
-    time: "오늘",
-  },
-];
+// 최근 활동 = DB(feed_logs/water_logs)의 배식·급수 기록을 최근순으로 표시 (mock 제거)
 
 const TONE = {
   primary: "bg-brand-primary/15 text-brand-primary",
@@ -176,8 +142,40 @@ export function Dashboard() {
   const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
   const notifications = useNotifications();
-  const unread = notifications.filter((n) => !n.read).length;
+  const unread = notifications.length; // 읽음 개념 제거 → 알림 개수 배지
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
+
+  // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
+  const [recentLogs, setRecentLogs] = useState({ feed: [], water: [] });
+  useEffect(() => {
+    api
+      .getDispenserLogs()
+      .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
+      .catch(() => {});
+  }, []);
+
+  const recentActivity = useMemo(() => {
+    const feed = (recentLogs.feed || []).map((x) => ({
+      key: `f-${x.created_at}-${x.amount_g}`,
+      icon: UtensilsCrossed,
+      tone: "primary",
+      title: "배식 완료",
+      desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
+      t: new Date(x.created_at).getTime(),
+    }));
+    const water = (recentLogs.water || []).map((x) => ({
+      key: `w-${x.created_at}-${x.amount_ml}`,
+      icon: Droplets,
+      tone: "brown",
+      title: "급수 완료",
+      desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
+      t: new Date(x.created_at).getTime(),
+    }));
+    return [...feed, ...water]
+      .sort((a, b) => b.t - a.t)
+      .slice(0, 30)
+      .map((x) => ({ ...x, time: timeAgo(new Date(x.t).toISOString()) }));
+  }, [recentLogs]);
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
   const [streamUrl, setStreamUrl] = useState("");
@@ -349,12 +347,7 @@ export function Dashboard() {
         await api.dispenserFeed(feed.food);
         api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
-        addNotification({
-          type: "feed",
-          title: "빠른 배식",
-          desc: `사료 ${feed.food}g을 배식했어요`,
-          link: "/feeding",
-        });
+        // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       } else if (id === "call") {
         await api.voiceCall();
         showToast("📞 음성 호출을 시작했어요");
@@ -548,25 +541,25 @@ export function Dashboard() {
             전체보기 <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
-        <CreamCard className="divide-y divide-brand-line">
-          {RECENT.map(({ id, icon: Icon, tone, title, desc, time }) => (
-            <div key={id} className="flex items-center gap-3 px-4 py-3.5">
-              <span
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
-              >
-                <Icon className="w-5 h-5" />
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-brand-brown truncate">
-                  {title}
-                </p>
-                <p className="text-xs text-brand-mute truncate">{desc}</p>
+        <CreamCard className={`divide-y divide-brand-line ${recentActivity.length > 6 ? "max-h-[348px] overflow-y-auto no-scrollbar" : ""}`}>
+          {recentActivity.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
+          ) : (
+            recentActivity.map(({ key, icon: Icon, tone, title, desc, time }) => (
+              <div key={key} className="flex items-center gap-3 px-4 py-3.5">
+                <span
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+                >
+                  <Icon className="w-5 h-5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
+                  <p className="text-xs text-brand-mute truncate">{desc}</p>
+                </div>
+                <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
               </div>
-              <span className="text-[11px] text-brand-mute shrink-0">
-                {time}
-              </span>
-            </div>
-          ))}
+            ))
+          )}
         </CreamCard>
       </section>
 

@@ -130,8 +130,13 @@ export function Dispenser() {
     try {
       await api.dispenserFeed(foodAmount)
       api.createFeedLog({ amount_g: foodAmount, feed_type: 'manual' }).catch(() => {}) // DB 기록
+      // 오늘의 통계 즉시 반영 (새로고침 없이)
+      setLogs((prev) => ({
+        ...prev,
+        feed: [...prev.feed, { amount_g: foodAmount, feed_type: 'manual', created_at: new Date().toISOString() }],
+      }))
       showToast(`🍚 사료 ${foodAmount}g 배식 완료`)
-      addNotification({ type: 'feed', title: '수동 배식', desc: `사료 ${foodAmount}g을 배식했어요`, link: '/feeding' })
+      // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
     } catch {
       showToast('배식 실패 — 기기 연결을 확인해 주세요')
     } finally {
@@ -145,8 +150,13 @@ export function Dispenser() {
     try {
       await api.dispenserWater(waterAmount)
       api.createWaterLog({ amount_ml: waterAmount, water_type: 'manual' }).catch(() => {}) // DB 기록
+      // 오늘의 통계 즉시 반영 (새로고침 없이)
+      setLogs((prev) => ({
+        ...prev,
+        water: [...prev.water, { amount_ml: waterAmount, water_type: 'manual', created_at: new Date().toISOString() }],
+      }))
       showToast(`💧 물 ${waterAmount}ml 급수 완료`)
-      addNotification({ type: 'water_low', title: '수동 급수', desc: `물 ${waterAmount}ml을 급수했어요`, link: '/feeding' })
+      // 급수도 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
     } catch {
       showToast('급수 실패 — 기기 연결을 확인해 주세요')
     } finally {

@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   Maximize2,
   Minimize2,
-  Zap,
-  ZapOff,
   Video,
   Camera,
   PawPrint,
@@ -53,7 +51,9 @@ export function RobotVision() {
   const navigate = useNavigate()
   const { isConnected } = useWebSocket(getWebSocketUrl())
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [irOn, setIrOn] = useState(false)
+  // IR(야간 적외선)은 사용자가 제어하지 않고 기기/저조도 감지에 따라 자동으로 켜진다.
+  // 나중에 백엔드/기기 연동 시: [irActive, setIrActive] 로 바꾸고 야간 감지 신호로 setIrActive 호출 → 아래 패시브 배지가 자동 표시됨.
+  const [irActive] = useState(false)
   const [recording, setRecording] = useState(false)
   const [selectedClip, setSelectedClip] = useState(null)
   const [controlBusy, setControlBusy] = useState(false)
@@ -223,8 +223,7 @@ export function RobotVision() {
                 onMoveStop={onMoveStop}
                 onPan={onPan}
                 recording={recording}
-                irOn={irOn}
-                setIrOn={setIrOn}
+                irActive={irActive}
                 streamUrl={streamInfo.url}
                 streamError={streamError}
               />
@@ -242,6 +241,12 @@ export function RobotVision() {
                 <span className={`w-2 h-2 rounded-full ${streamLive ? 'bg-red-400 animate-pulse' : 'bg-white/40'}`} />
                 {streamLive ? 'LIVE' : '오프라인'}
               </span>
+              {/* 자동 IR(야간) 표시 — 기기 야간 감지 연동 시 자동 노출 */}
+              {irActive && (
+                <span className="absolute top-3 left-24 flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-brown/80 text-white text-[11px] font-bold">
+                  <Moon className="w-3 h-3" /> IR
+                </span>
+              )}
               {recording && (
                 <span className="absolute top-3 left-20 px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
                   ● REC
@@ -277,20 +282,11 @@ export function RobotVision() {
         </Card>
       </section>
 
-      {/* 컨트롤 (IR / 녹화 / 캡처) */}
+      {/* 컨트롤 (녹화 / 캡처) — IR 은 자동이라 사용자 버튼 없음 */}
       <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">제어</h3>
         <Card className="px-5 py-5">
           <div className="flex items-center justify-around gap-3">
-            <button
-              onClick={() => setIrOn((v) => !v)}
-              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
-                irOn ? 'bg-brand-brown text-white active:bg-brand-brown/80' : 'bg-brand-card text-brand-brown active:bg-brand-cream'
-              }`}
-            >
-              {irOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
-              <span className="text-xs font-bold">IR {irOn ? 'ON' : 'OFF'}</span>
-            </button>
             <button
               onClick={() => setRecording((v) => !v)}
               className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
@@ -386,11 +382,11 @@ export function RobotVision() {
  *  - 배경: 전체 화면 비디오 스트림
  *  - 좌측 하단: 기계 이동 D-Pad (십자, 발바닥 아이콘)
  *  - 우측 하단: 카메라 Pan/Tilt D-Pad (십자, 반투명 배경)
- *  - 상단: IR 토글 + 마이크 + 종료
+ *  - 상단: 마이크 + 종료 (IR 은 자동이라 사용자 토글 없음)
  *
  * 양손 엄지 동선을 고려해 컨트롤은 하단 좌우, 토글은 상단에 배치.
  */
-function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
+function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irActive, streamUrl, streamError }) {
   const [micOn, setMicOn] = useState(false)
   const [streamLive, setStreamLive] = useState(false) // 카메라 스트림 연결 상태
   const toggleMic = () => {
@@ -422,11 +418,16 @@ function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, se
             ● REC
           </span>
         )}
+        {/* 자동 IR(야간) 표시 — 기기 야간 감지 연동 시 자동 노출 */}
+        {irActive && (
+          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-brown/80 text-white text-[11px] font-bold">
+            <Moon className="w-3 h-3" /> IR
+          </span>
+        )}
       </div>
 
-      {/* 상단 우측: IR 토글 + 마이크 + 전체화면 종료 */}
+      {/* 상단 우측: 마이크 + 전체화면 종료 (IR 은 자동) */}
       <div className="absolute top-3 right-3 z-50 flex items-center gap-2">
-        <IRToggle on={irOn} onChange={setIrOn} />
         <MicButton on={micOn} onClick={toggleMic} />
         <button
           onClick={onExit}
@@ -723,29 +724,6 @@ function CenterBtn({ onClick, tone = 'dark' }) {
       `}
     >
       <span className="text-[9px] font-bold tracking-wider">CENTER</span>
-    </button>
-  )
-}
-
-/**
- * IR ON/OFF 토글 - pill 모양, 상태 즉시 인지 가능.
- */
-function IRToggle({ on, onChange }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      aria-pressed={on}
-      className={`
-        h-11 px-4 inline-flex items-center gap-1.5 rounded-full
-        font-bold text-sm shadow-md transition-colors
-        ${on
-          ? 'bg-brand-primary text-white active:bg-brand-brown'
-          : 'bg-white/15 backdrop-blur-sm text-white/85 active:bg-brand-brown'}
-      `}
-    >
-      {on ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-      IR {on ? 'ON' : 'OFF'}
     </button>
   )
 }
