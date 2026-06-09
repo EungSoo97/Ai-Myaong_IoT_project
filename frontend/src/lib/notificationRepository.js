@@ -15,6 +15,31 @@ import { useEffect, useState } from 'react'
  * ─────────────────────────────────────────────────────────── */
 
 const KEY = 'aimyaong:notifications'
+const SETTINGS_KEY = 'aimyaong:alertSettings' // 설정탭의 알림 제어 미러 (Settings.jsx가 저장)
+
+// 알림 type → 설정 컬럼 매핑 (해당 설정이 꺼져 있으면 알림 차단)
+const TYPE_TO_SETTING = {
+  feed: 'feed_alert',
+  manual: 'feed_alert',
+  food: 'feed_alert',
+  abnormal: 'motion_alert',
+  intruder: 'stranger_alert',
+}
+
+/* 현재 알림 제어 설정상 이 type 의 알림을 보낼 수 있는지 */
+function alertAllowed(type) {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return true // 설정 미러 없으면 허용(기본 동작)
+    const s = JSON.parse(raw)
+    if (s.push_enabled === false) return false // 푸시 전체 OFF → 모두 차단
+    const key = TYPE_TO_SETTING[type]
+    if (key && s[key] === false) return false // 타입별 알림 OFF → 차단
+    return true
+  } catch {
+    return true
+  }
+}
 
 function minutesAgo(min) {
   return new Date(Date.now() - min * 60000).toISOString()
@@ -55,6 +80,8 @@ function save(list) {
 
 /* 알림 추가 — 내일: 소켓 수신 시 호출하거나 서버 동기화로 교체 */
 export function addNotification(n) {
+  // 설정탭 알림 제어에서 꺼진 종류면 보내지 않음
+  if (!alertAllowed(n?.type)) return null
   const item = { id: `n${Date.now()}`, time: new Date().toISOString(), read: false, ...n }
   save([item, ...getNotifications()])
   return item

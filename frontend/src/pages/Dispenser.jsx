@@ -196,7 +196,7 @@ export function Dispenser() {
       addNotification({ type, title, desc, link: '/dispenser' })
     }
     if (foodLow) {
-      notifyLow('food', 'feed', '사료 부족',
+      notifyLow('food', 'food_low', '사료 부족',
         foodRemain <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `사료 잔여량 ${foodRemain}% · 보충해주세요!`)
     }
     if (waterLow) {

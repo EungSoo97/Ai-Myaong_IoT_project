@@ -89,6 +89,23 @@ export function Settings() {
     api.updateSettings(patch).catch(() => {});
   };
 
+  // 알림 제어 상태를 localStorage 에 미러 → notificationRepository 가 발송 전 확인 (꺼진 알림 차단)
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "aimyaong:alertSettings",
+        JSON.stringify({
+          push_enabled: pushOn,
+          motion_alert: motionAlert,
+          stranger_alert: strangerAlert,
+          feed_alert: feedAlert,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [pushOn, motionAlert, strangerAlert, feedAlert]);
+
   // 마운트 시 DB 설정 불러오기 (있으면 화면 상태에 반영)
   useEffect(() => {
     api
