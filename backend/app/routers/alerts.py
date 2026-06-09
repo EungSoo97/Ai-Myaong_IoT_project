@@ -102,6 +102,15 @@ def create_alert(body: AlertCreate, authorization: str = Header(None), db: Sessi
     return _to_response(alert)
 
 
+@router.delete("")
+def delete_all(authorization: str = Header(None), db: Session = Depends(get_db)):
+    """내 알림 전체 삭제."""
+    user = _current_user(authorization, db)
+    db.query(Alert).filter(Alert.user_id == user.user_id).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True}
+
+
 @router.patch("/confirm-all")
 def confirm_all(authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
