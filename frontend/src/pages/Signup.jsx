@@ -23,6 +23,7 @@ import { DateWheel } from "../components/DateWheel";
 import { PasswordField, isStrongPassword } from "../components/PasswordField";
 import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
+import { fromApiPet } from "../lib/petMap";
 
 /* Warm-tone 팔레트 (Login.jsx 와 동일) */
 const C = {
@@ -92,12 +93,21 @@ export default function Signup({ onComplete, onBackToLogin }) {
   const [loading, setLoading] = useState(false); // 추가
 
   const [fieldErrors, setFieldErrors] = useState({}); // 빈/잘못된 칸 강조용
+  const [usernameCheck, setUsernameCheck] = useState({
+    value: "",
+    available: false,
+    message: "",
+  });
+  const [checkingUsername, setCheckingUsername] = useState(false);
 
   const clearFieldError = (k) =>
     setFieldErrors((p) => (p[k] ? { ...p, [k]: false } : p));
 
   const setUser = (k, v) => {
     setUserInfo((p) => ({ ...p, [k]: v }));
+    if (k === "userId") {
+      setUsernameCheck({ value: "", available: false, message: "" });
+    }
     clearFieldError(k);
   };
   const setPetField = (k, v) => {
@@ -110,18 +120,78 @@ export default function Signup({ onComplete, onBackToLogin }) {
     if (v) clearFieldError("email");
   };
 
-  /* 구글 빠른 가입 (mock): 이메일/닉네임/아이디 프리필 + 이메일 인증 완료 처리 */
-  const handleGoogleSignup = (profile) => {
+  const handleGoogleSignup = async (profile) => {
     setErr("");
     setFieldErrors({});
-    setUserInfo((p) => ({
-      ...p,
-      email: profile.email,
-      nickname: p.nickname || profile.name,
-      userId: p.userId || profile.email.split("@")[0],
-    }));
-    setEmailVerified(true); // 구글이 인증한 이메일 → 별도 인증번호 불필요
-    setProvider("google");
+    setLoading(true);
+    try {
+      const result = await api.googleAuth({
+        email: profile.email,
+        name: profile.name,
+        oauth_id: profile.sub,
+        picture: profile.picture,
+        allow_create: true,
+      });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+
+      const savedPets = (result.user?.pets || []).map((p) => fromApiPet(p));
+      const savedUser = {
+        userId: result.user?.username || "",
+        email: result.user?.email || profile.email,
+        nickname: result.user?.nickname || profile.name || "",
+      };
+
+      saveAccount({
+        provider: "google",
+        user: savedUser,
+        pets: savedPets,
+        createdAt: new Date().toISOString(),
+      });
+      setProvider("google");
+      setFinalPayload({ provider: "google", user: savedUser, pets: savedPets });
+      setScreen("done");
+    } catch (e) {
+      setErr(e.message || "구글 회원가입에 실패했어요.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUsernameCheck = async () => {
+    const username = userInfo.userId.trim();
+    if (!username) {
+      setUsernameCheck({
+        value: "",
+        available: false,
+        message: "아이디를 입력해 주세요.",
+      });
+      setFieldErrors((p) => ({ ...p, userId: true }));
+      return;
+    }
+
+    setCheckingUsername(true);
+    setErr("");
+    try {
+      const result = await api.checkUsername(username);
+      setUsernameCheck({
+        value: username,
+        available: result.available,
+        message: result.available
+          ? "사용 가능한 아이디입니다."
+          : "이미 사용 중인 아이디입니다.",
+      });
+      setFieldErrors((p) => ({ ...p, userId: !result.available }));
+    } catch (error) {
+      setUsernameCheck({
+        value: username,
+        available: false,
+        message: error?.message || "아이디 중복 확인에 실패했습니다.",
+      });
+      setFieldErrors((p) => ({ ...p, userId: true }));
+    } finally {
+      setCheckingUsername(false);
+    }
   };
 
   /* ── 현재 단계에서 비었거나 잘못된 항목 수집 ── */
@@ -132,6 +202,14 @@ export default function Signup({ onComplete, onBackToLogin }) {
           key: "userId",
           bad: !userInfo.userId.trim(),
           msg: "아이디를 입력해 주세요.",
+        },
+        {
+          key: "userId",
+          bad:
+            !!userInfo.userId.trim() &&
+            (!usernameCheck.available ||
+              usernameCheck.value !== userInfo.userId.trim()),
+          msg: "아이디 중복 확인을 해주세요.",
         },
         {
           key: "password",
@@ -216,7 +294,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
     setErr("");
     try {
       const result = await api.signup({
-        username: userInfo.userId,
+        username: userInfo.userId.trim(),
         email: userInfo.email,
         password: userInfo.password,
         nickname: userInfo.nickname,
@@ -236,13 +314,21 @@ export default function Signup({ onComplete, onBackToLogin }) {
       });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      const savedPets = (result.user?.pets || []).map((p, index) =>
+        fromApiPet(p, index === 0 ? pet.photo : ""),
+      );
+      const savedUser = {
+        userId: result.user?.username || userInfo.userId,
+        email: result.user?.email || userInfo.email,
+        nickname: result.user?.nickname || userInfo.nickname,
+      };
       saveAccount({
         provider,
-        user: { ...userInfo },
-        pets: [pet],
+        user: savedUser,
+        pets: savedPets.length ? savedPets : [pet],
         createdAt: new Date().toISOString(),
       });
-      setFinalPayload({ provider, user: userInfo, pets: [pet] });
+      setFinalPayload({ provider, user: savedUser, pets: savedPets.length ? savedPets : [pet] });
       setScreen("done");
     } catch (e) {
       setErr(e.message || "가입 중 오류가 발생했어요.");
@@ -281,7 +367,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
   /* ───────── 회원가입 단계 화면 ───────── */
   return (
     <div
-      className="font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
+      className="page-enter font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
       style={{ background: C.bg }}
     >
       {/* 상단 고정: 브랜드 + 단계 인디케이터 */}
@@ -316,17 +402,22 @@ export default function Signup({ onComplete, onBackToLogin }) {
           className="rounded-3xl p-6 shadow-lg"
           style={{ background: C.card, border: `1px solid ${C.border}` }}
         >
-          {step === STEP_USER && (
-            <UserStep
-              userInfo={userInfo}
-              setUser={setUser}
-              emailVerified={emailVerified}
-              setEmailVerified={handleEmailVerified}
-              onGoogle={handleGoogleSignup}
-              errors={fieldErrors}
-            />
-          )}
-          {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
+          <div key={step} className="page-enter">
+            {step === STEP_USER && (
+              <UserStep
+                userInfo={userInfo}
+                setUser={setUser}
+                emailVerified={emailVerified}
+                setEmailVerified={handleEmailVerified}
+                onGoogle={handleGoogleSignup}
+                errors={fieldErrors}
+                usernameCheck={usernameCheck}
+                checkingUsername={checkingUsername}
+                onCheckUsername={handleUsernameCheck}
+              />
+            )}
+            {step === STEP_PET && <PetStep pet={pet} setPetField={setPetField} count={0} errors={fieldErrors} />}
+          </div>
         </div>
       </div>
 
@@ -431,6 +522,9 @@ function UserStep({
   setEmailVerified,
   onGoogle,
   errors = {},
+  usernameCheck,
+  checkingUsername,
+  onCheckUsername,
 }) {
   return (
     <div>
@@ -439,15 +533,20 @@ function UserStep({
         title="회원 정보를 입력해 주세요"
       />
 
-      {/* 구글 빠른 가입 */}
       <div className="mt-5">
         <GoogleButton label="Google로 빠른 가입" onSuccess={onGoogle} />
       </div>
       <Divider />
 
       <div data-field="userId">
-        <Field icon={<User className="w-5 h-5" />} label="아이디" value={userInfo.userId}
-          onChange={(v) => setUser('userId', v)} placeholder="로그인에 사용할 아이디" invalid={errors.userId} />
+        <UsernameField
+          value={userInfo.userId}
+          onChange={(v) => setUser('userId', v)}
+          onCheck={onCheckUsername}
+          checking={checkingUsername}
+          status={usernameCheck}
+          invalid={errors.userId}
+        />
       </div>
       <div data-field="password">
         <PasswordField label="비밀번호" value={userInfo.password}
@@ -844,6 +943,70 @@ function FieldLabel({ children }) {
     >
       {children}
     </span>
+  );
+}
+
+function UsernameField({
+  value,
+  onChange,
+  onCheck,
+  checking,
+  status = {},
+  invalid,
+}) {
+  const trimmed = value.trim();
+  const confirmed = status.available && status.value === trimmed;
+  const messageColor = confirmed ? C.ok : C.danger;
+
+  return (
+    <label className="mt-5 block">
+      <span
+        className="text-sm font-bold pl-1"
+        style={{ color: invalid ? C.danger : C.mute }}
+      >
+        아이디
+      </span>
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <div
+          className="flex items-center gap-2.5 rounded-2xl px-4 py-4"
+          style={{
+            background: invalid ? "#FDECE9" : C.input,
+            border: `1.5px solid ${invalid ? C.danger : C.border}`,
+          }}
+        >
+          <span style={{ color: invalid ? C.danger : C.mute }}>
+            <User className="w-5 h-5" />
+          </span>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="로그인에 사용할 아이디"
+            className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
+            style={{ color: C.brown }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onCheck}
+          disabled={checking || !trimmed}
+          className="inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-2xl px-4 py-4 text-sm font-bold transition-colors disabled:opacity-50 active:brightness-95"
+          style={{
+            background: confirmed ? C.ok : C.primary,
+            color: "#fff",
+            border: `1.5px solid ${confirmed ? C.ok : C.primary}`,
+          }}
+        >
+          {confirmed && <Check className="w-4 h-4" />}
+          {checking ? "확인 중" : confirmed ? "확인됨" : "중복확인"}
+        </button>
+      </div>
+      {status.message && (
+        <p className="mt-1.5 text-xs font-bold pl-1" style={{ color: messageColor }}>
+          {status.message}
+        </p>
+      )}
+    </label>
   );
 }
 

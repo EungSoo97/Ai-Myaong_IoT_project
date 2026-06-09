@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Lock, LogIn, User } from "lucide-react";
 import { GoogleButton } from "../components/GoogleButton";
-import {
-  getAccount,
-  getCurrentUser,
-  saveAccount,
-} from "../lib/accountRepository";
+import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
+import { fromApiPet } from "../lib/petMap";
 
 const DEMO_ID = "admin";
 const DEMO_PW = "meow1234";
@@ -27,6 +24,25 @@ const C = {
   catOrangeDark: '#E58A4F',
   catCream: '#FAF1E2',
   catPink: '#F5B5A4',
+}
+
+/* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
+ * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
+async function applyLoggedInUser(result, provider) {
+  const u = result?.user || {};
+  let pets = [];
+  try {
+    const me = await api.getMe(); // user + pets (DB)
+    pets = (me.pets || []).map((p) => fromApiPet(p));
+  } catch {
+    /* DB 조회 실패 → 펫 없이 진행 */
+  }
+  saveAccount({
+    provider,
+    user: { userId: u.username, email: u.email, nickname: u.nickname },
+    pets,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -98,11 +114,13 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
       const result = await api.login({ username: id, password: pw });
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      await applyLoggedInUser(result, "email");
       onLogin?.();
     } catch (e) {
       setErr(e.message || "아이디 또는 비밀번호를 확인해 주세요");
     }
   };
+
   const handleGoogleLogin = async (profile) => {
     try {
       const result = await api.googleAuth({
@@ -110,19 +128,21 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
         name: profile.name,
         oauth_id: profile.sub,
         picture: profile.picture,
-      })
-      sessionStorage.setItem('aimyaong:token', result.access_token)
-      sessionStorage.setItem('aimyaong:user', JSON.stringify(result.user))
-      onLogin?.()
+        allow_create: false,
+      });
+      sessionStorage.setItem("aimyaong:token", result.access_token);
+      sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
+      await applyLoggedInUser(result, "google");
+      onLogin?.();
     } catch (e) {
-      setErr(e.message || '구글 로그인 실패')
+      setErr(e.message || "구글 로그인 실패");
     }
   };
 
   return (
     <div
       ref={stageRef}
-      className="flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
+      className="page-enter flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
       style={{ background: C.bg }}
     >
       {/* 브랜드 */}
@@ -194,7 +214,6 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           들어가기
         </button>
 
-        {/* 또는 구글 로그인 */}
         <div className="mt-5 flex items-center gap-3">
           <div className="flex-1 h-px" style={{ background: C.border }} />
           <span className="text-xs font-bold" style={{ color: C.mute }}>
@@ -206,6 +225,14 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
           <GoogleButton
             label="Google 계정으로 로그인"
             onSuccess={handleGoogleLogin}
+            onError={(e) =>
+              setErr(
+                e?.message ||
+                  e?.error_description ||
+                  e?.error ||
+                  "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
+              )
+            }
           />
         </div>
 

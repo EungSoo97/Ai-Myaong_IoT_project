@@ -45,7 +45,7 @@ raspberrypi/.env
 ```env
 MQTT_BROKER_HOST=10.1.82.103
 MQTT_BROKER_PORT=1883
-SERIAL_PORT=/dev/ttyUSB0
+SERIAL_PORT=auto
 SERIAL_BAUD=115200
 SIMULATION_MODE=false
 MQTT_DISABLED=false
@@ -169,7 +169,15 @@ Arduino가 연결된 포트를 확인합니다.
 ls /dev/ttyUSB* /dev/ttyACM*
 ```
 
-예를 들어 `/dev/ttyACM0`가 나오면 `.env`를 이렇게 바꿉니다.
+Arduino Uno는 보통 `/dev/ttyACM0`, CH340 계열 호환 보드는 보통 `/dev/ttyUSB0`로 잡힙니다.
+기본 설정은 자동 탐색입니다.
+
+```env
+SERIAL_PORT=auto
+SERIAL_BAUD=115200
+```
+
+직접 고정하려면, 예를 들어 `/dev/ttyACM0`가 나왔을 때 `.env`를 이렇게 바꿉니다.
 
 ```env
 SERIAL_PORT=/dev/ttyACM0

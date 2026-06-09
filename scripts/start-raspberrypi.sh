@@ -32,9 +32,32 @@ port_is_open() {
   (echo >/dev/tcp/127.0.0.1/"$PORT") >/dev/null 2>&1
 }
 
+warn_if_broker_is_local_only() {
+  if ! command -v ss >/dev/null 2>&1; then
+    return
+  fi
+
+  local listeners
+  listeners="$(ss -ltn 2>/dev/null | awk -v port=":$PORT" '$4 ~ port "$" { print $4 }')"
+  if [[ -z "$listeners" ]]; then
+    return
+  fi
+
+  if echo "$listeners" | grep -Eq '(^|:)0\.0\.0\.0:|(^|:)\*:|\[::\]:'; then
+    return
+  fi
+
+  if echo "$listeners" | grep -Eq '127\.0\.0\.1:|\[::1\]:'; then
+    echo "[mqtt-broker] warning: an existing broker is listening only on localhost."
+    echo "[mqtt-broker] desktop/backend publishes to the Raspberry Pi IP, so D-pad commands may not arrive."
+    echo "[mqtt-broker] fix mosquitto to listen on 0.0.0.0 or stop it and rerun this script."
+  fi
+}
+
 start_broker_if_needed() {
   if port_is_open; then
     echo "[mqtt-broker] broker is already listening on port $PORT."
+    warn_if_broker_is_local_only
     return
   fi
 

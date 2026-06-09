@@ -40,7 +40,7 @@ export default function ResetPassword({ onBackToLogin, onDone }) {
 
   if (done) {
     return (
-      <div className="font-cute flex-1 flex flex-col px-5 pt-10 pb-8 sm:px-8" style={{ background: C.bg }}>
+      <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-10 pb-8 sm:px-8" style={{ background: C.bg }}>
         <Brand subtitle="비밀번호 재설정" />
         <div className="mt-6 rounded-3xl p-6 shadow-lg text-center" style={{ background: C.card, border: `1px solid ${C.border}` }}>
           <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center" style={{ background: C.ok }}>
@@ -62,7 +62,7 @@ export default function ResetPassword({ onBackToLogin, onDone }) {
   }
 
   return (
-    <div className="font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
+    <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
       <Brand subtitle="비밀번호 재설정" />
 
       <form

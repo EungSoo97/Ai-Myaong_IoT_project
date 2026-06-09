@@ -1,14 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
-const API_BASE = API_BASE_URL.replace(/\/$/, "");
-const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
+import { getApiBaseUrl } from "../lib/backendUrls";
 
-function defaultApiBaseUrl() {
-  const host = window.location.hostname;
-  if (!host || host === "localhost" || host === "127.0.0.1") {
-    return "http://127.0.0.1:8000/";
-  }
-  return `${window.location.protocol}//${host}:8000/`;
-}
+const API_BASE = getApiBaseUrl();
+const STREAM_URL = import.meta.env.VITE_STREAM_URL?.trim();
 
 function resolveStreamUrl(url) {
   if (!url) return "";
@@ -172,6 +165,9 @@ export const api = {
       }),
     }),
 
+  checkUsername: (username) =>
+    request(`/api/auth/check-username?username=${encodeURIComponent(username)}`),
+
   signup: ({ username, email, password, nickname, pets }) =>
     request("/api/auth/signup", {
       method: "POST",
@@ -184,14 +180,36 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  getMe: (token) =>
+  getMe: () => request("/api/auth/me"),
+
+  // 회원정보 수정 (백엔드에 PATCH /api/auth/me 추가되면 그대로 DB 반영)
+  updateMe: (body) =>
     request("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 
-  googleAuth: ({ email, name, oauth_id, picture }) =>
+  setCredentials: ({ username, password }) =>
+    request("/api/auth/me/credentials", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  // 회원 탈퇴 (계정 + 펫 DB 삭제)
+  deleteMe: () => request("/api/auth/me", { method: "DELETE" }),
+
+  // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
+  getPets: () => request("/api/pets"),
+  createPet: (body) =>
+    request("/api/pets", { method: "POST", body: JSON.stringify(body) }),
+  updatePetApi: (petId, body) =>
+    request(`/api/pets/${petId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deletePetApi: (petId) =>
+    request(`/api/pets/${petId}`, { method: "DELETE" }),
+
+  googleAuth: ({ email, name, oauth_id, picture, allow_create = true }) =>
     request("/api/auth/google", {
       method: "POST",
-      body: JSON.stringify({ email, name, oauth_id, picture }),
+      body: JSON.stringify({ email, name, oauth_id, picture, allow_create }),
     }),
 };
