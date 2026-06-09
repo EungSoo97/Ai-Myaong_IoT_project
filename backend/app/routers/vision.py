@@ -1,7 +1,9 @@
+from collections import deque
+from datetime import datetime, timezone
 from time import time
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 
@@ -29,6 +31,15 @@ class VisionRecordingRequest(BaseModel):
     on: bool
 
 
+class VisionEventCreate(BaseModel):
+    type: Literal["away_person", "capture_saved", "clip_saved"]
+    title: str
+    message: str
+    source: str | None = None
+    storage_path: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 _latest_detection: dict = {
     "frame_width": 0,
     "frame_height": 0,
@@ -44,6 +55,9 @@ _control_state: dict = {
     "recording": False,
     "recording_updated_at": 0.0,
 }
+
+_event_seq = 0
+_events = deque(maxlen=100)
 
 
 @router.post("/detections")
@@ -79,5 +93,28 @@ def set_recording(payload: VisionRecordingRequest):
 
 
 @router.get("/control")
-def get_control_state():
-    return _control_state
+def get_control_state(request: Request):
+    status = request.app.state.simulator.status()
+    return {
+        **_control_state,
+        "away_mode": bool(status.get("away_mode")),
+    }
+
+
+@router.post("/events")
+def create_event(payload: VisionEventCreate):
+    global _event_seq
+    _event_seq += 1
+    event = {
+        "id": _event_seq,
+        **payload.model_dump(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _events.appendleft(event)
+    return event
+
+
+@router.get("/events/recent")
+def recent_events(limit: int = 20):
+    limit = max(1, min(limit, 100))
+    return {"events": list(_events)[:limit]}

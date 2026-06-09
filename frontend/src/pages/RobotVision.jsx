@@ -22,6 +22,7 @@ import { Card, Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { getWebSocketUrl } from '../lib/backendUrls'
+import { mapVisionEventForList } from '../lib/visionEventMapper'
 
 /* 이벤트 로그 — clip_id 로 백엔드 클립(CLIPS) 참조 (활동 기록과 동일 구조) */
 const EVENT_LOG = [
@@ -64,6 +65,7 @@ export function RobotVision() {
   const [streamInfo, setStreamInfo] = useState({ url: '', mode: 'loading' })
   const [streamError, setStreamError] = useState('')
   const [detections, setDetections] = useState(null)
+  const [eventLog, setEventLog] = useState([])
   const [captureNotice, setCaptureNotice] = useState(false)
   const controlBusyRef = useRef(false)
   const commandQueueRef = useRef(Promise.resolve())
@@ -105,6 +107,25 @@ export function RobotVision() {
     }
     load()
     const timer = window.setInterval(load, 500)
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    const load = () => {
+      api.getVisionEvents(20)
+        .then((data) => {
+          if (mounted) setEventLog((data.events || []).map(mapVisionEventForList))
+        })
+        .catch(() => {
+          if (mounted) setEventLog([])
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 3000)
     return () => {
       mounted = false
       window.clearInterval(timer)
@@ -411,8 +432,13 @@ export function RobotVision() {
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">이벤트 로그</h3>
         <Card className="divide-y divide-brand-line">
-          {EVENT_LOG.map((e) => {
-            const Icon = e.icon || Video
+          {eventLog.length === 0 && (
+            <div className="px-4 py-5 text-center text-sm font-semibold text-brand-mute">
+              아직 기록된 비전 이벤트가 없어요.
+            </div>
+          )}
+          {eventLog.map((e) => {
+            const Icon = e.icon || EVENT_ICON[e.eventType] || Video
             return (
               <button
                 key={e.id}
@@ -715,6 +741,12 @@ function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
       )}
     </div>
   )
+}
+
+const EVENT_ICON = {
+  away_person: UserX,
+  capture_saved: Camera,
+  clip_saved: Video,
 }
 
 function DetectionOverlay({ detections, className = '' }) {

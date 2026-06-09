@@ -9,6 +9,7 @@ import {
   Bell,
   PhoneCall,
   Camera,
+  Video,
   PawPrint,
   AlertTriangle,
   UtensilsCrossed,
@@ -26,6 +27,7 @@ import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
+import { mapVisionEventForList, mapVisionEventToNotification } from "../lib/visionEventMapper";
 
 const RECENT = [
   {
@@ -67,6 +69,12 @@ const TONE = {
   warn: "bg-brand-warning/20 text-[#A06B1A]",
   danger: "bg-brand-danger/15 text-brand-danger",
   brown: "bg-brand-brown/10 text-brand-brown",
+};
+
+const EVENT_ICON = {
+  away_person: UserX,
+  capture_saved: Camera,
+  clip_saved: Video,
 };
 
 const SHORTCUTS = [
@@ -177,6 +185,8 @@ export function Dashboard() {
   const account = useAccount();
   const notifications = useNotifications();
   const unread = notifications.filter((n) => !n.read).length;
+  const [visionEvents, setVisionEvents] = useState([]);
+  const syncedNotificationIdsRef = useRef(new Set());
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
@@ -201,7 +211,46 @@ export function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    syncedNotificationIdsRef.current = new Set(
+      notifications.filter((n) => String(n.id).startsWith("vision-")).map((n) => n.id),
+    );
+  }, [notifications]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      api
+        .getVisionEvents(8)
+        .then((data) => {
+          if (!alive) return;
+          const events = data.events || [];
+          setVisionEvents(events);
+
+          events.forEach((event) => {
+            const notification = mapVisionEventToNotification(event);
+            if (syncedNotificationIdsRef.current.has(notification.id)) return;
+            syncedNotificationIdsRef.current.add(notification.id);
+            addNotification(notification);
+          });
+        })
+        .catch(() => {
+          if (alive) setVisionEvents([]);
+        });
+    };
+
+    load();
+    const timer = window.setInterval(load, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const showLive = streamUrl && !streamFailed;
+  const recentItems = visionEvents.length
+    ? visionEvents.slice(0, 4).map(mapVisionEventForList)
+    : RECENT;
 
   // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
   const nickname = account?.user?.nickname || "집사";
@@ -530,7 +579,9 @@ export function Dashboard() {
           </button>
         </div>
         <CreamCard className="divide-y divide-brand-line">
-          {RECENT.map(({ id, icon: Icon, tone, title, desc, time }) => (
+          {recentItems.map(({ id, icon, eventType, tone, title, desc, time }) => {
+            const Icon = icon || EVENT_ICON[eventType] || AlertTriangle;
+            return (
             <div key={id} className="flex items-center gap-3 px-4 py-3.5">
               <span
                 className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
@@ -547,7 +598,7 @@ export function Dashboard() {
                 {time}
               </span>
             </div>
-          ))}
+          )})}
         </CreamCard>
       </section>
 

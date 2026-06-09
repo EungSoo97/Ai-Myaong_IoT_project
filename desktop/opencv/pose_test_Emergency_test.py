@@ -414,7 +414,8 @@ current_pose = ("Unknown", 0.0)
 print("Pet Pose & Safety Monitoring System Layer Active.")
 
 for frame in frame_source:
-    frame = cv2.flip(frame, 1)
+    # Mirror mode is currently disabled. Re-enable this line if the preview needs left/right flip.
+    # frame = cv2.flip(frame, 1)
     now = time.time()
 
     raw_frame = frame.copy()  # 그래픽이 그려지지 않은 순수 원본 프레임 백업

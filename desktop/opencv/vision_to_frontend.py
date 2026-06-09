@@ -167,6 +167,18 @@ def fetch_control_state(backend_url):
     return response.json()
 
 
+def post_event(backend_url, event_type, title, message, source=None, storage_path=None, confidence=None):
+    payload = {
+        "type": event_type,
+        "title": title,
+        "message": message,
+        "source": str(source) if source is not None else None,
+        "storage_path": str(storage_path) if storage_path is not None else None,
+        "confidence": confidence,
+    }
+    requests.post(f"{backend_url}/api/vision/events", json=payload, timeout=0.5)
+
+
 def save_capture(frame):
     path = CAPTURE_DIR / f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     ok = cv2.imwrite(str(path), frame)
@@ -181,6 +193,7 @@ class ClipRecorder:
     def __init__(self):
         self.writer = None
         self.path = None
+        self.started_at = None
 
     @property
     def recording(self):
@@ -188,19 +201,22 @@ class ClipRecorder:
 
     def start(self, frame):
         if self.recording:
-            return
+            return None
 
         h, w = frame.shape[:2]
         fps = float(os.getenv("VISION_RECORD_FPS", os.getenv("CAMERA_FPS", "10")))
-        self.path = CLIP_DIR / f"clip_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        self.started_at = datetime.now()
+        self.path = CLIP_DIR / f"clip_{self.started_at.strftime('%Y%m%d_%H%M%S')}.mp4"
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         self.writer = cv2.VideoWriter(str(self.path), fourcc, fps, (w, h))
         if not self.writer.isOpened():
             print(f"[Vision] Clip writer failed: {self.path}")
             self.writer = None
             self.path = None
-            return
+            self.started_at = None
+            return None
         print(f"[Vision] Clip recording started: {self.path}")
+        return self.path
 
     def write(self, frame):
         if self.writer is not None:
@@ -208,12 +224,23 @@ class ClipRecorder:
 
     def stop(self):
         if self.writer is None:
-            return
+            return None
 
+        path = self.path
+        started_at = self.started_at
+        ended_at = datetime.now()
+        duration_seconds = int((ended_at - started_at).total_seconds()) if started_at else 0
         self.writer.release()
-        print(f"[Vision] Clip saved: {self.path}")
+        print(f"[Vision] Clip saved: {path}")
         self.writer = None
         self.path = None
+        self.started_at = None
+        return {
+            "path": path,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "duration_seconds": duration_seconds,
+        }
 
 
 def main():
@@ -234,6 +261,9 @@ def main():
     last_capture_requested_at = 0.0
     control_baseline_loaded = False
     recording_requested = False
+    away_mode = False
+    last_away_person_event_at = 0.0
+    last_event_error_at = 0.0
     recorder = ClipRecorder()
 
     try:
@@ -250,9 +280,24 @@ def main():
                         last_capture_requested_at = capture_requested_at
                         control_baseline_loaded = True
                     elif capture_requested_at > last_capture_requested_at:
-                        save_capture(raw_frame)
+                        capture_path = save_capture(raw_frame)
+                        if capture_path:
+                            try:
+                                post_event(
+                                    backend_url,
+                                    "capture_saved",
+                                    "캡처 저장됨",
+                                    "현재 카메라 화면을 이미지로 저장했어요.",
+                                    source,
+                                    capture_path,
+                                )
+                            except requests.RequestException as error:
+                                if now - last_event_error_at > 5:
+                                    print(f"[Vision] Event post failed: {error}")
+                                    last_event_error_at = now
                         last_capture_requested_at = capture_requested_at
                     recording_requested = bool(control.get("recording"))
+                    away_mode = bool(control.get("away_mode"))
                 except requests.RequestException as error:
                     if now - last_control_error_at > 5:
                         print(f"[Vision] Control poll failed: {error}")
@@ -261,11 +306,48 @@ def main():
             if recording_requested and not recorder.recording:
                 recorder.start(raw_frame)
             elif not recording_requested and recorder.recording:
-                recorder.stop()
+                clip = recorder.stop()
+                if clip:
+                    start_text = clip["started_at"].strftime("%H:%M:%S") if clip["started_at"] else "--:--:--"
+                    end_text = clip["ended_at"].strftime("%H:%M:%S")
+                    duration = clip["duration_seconds"]
+                    minutes = duration // 60
+                    seconds = duration % 60
+                    duration_text = f"{minutes}분 {seconds}초" if minutes else f"{seconds}초"
+                    try:
+                        post_event(
+                            backend_url,
+                            "clip_saved",
+                            "클립 저장 완료",
+                            f"영상 촬영 {start_text} 시작, {end_text} 종료. 총 {duration_text} 녹화했어요.",
+                            source,
+                            clip["path"],
+                        )
+                    except requests.RequestException as error:
+                        if now - last_event_error_at > 5:
+                            print(f"[Vision] Event post failed: {error}")
+                            last_event_error_at = now
 
             recorder.write(raw_frame)
 
             detections = detect_boxes(model, frame, class_filter)
+            if away_mode:
+                person = next((item for item in detections if item["label"] == "Person"), None)
+                if person and now - last_away_person_event_at >= float(os.getenv("AWAY_PERSON_EVENT_COOLDOWN", "10")):
+                    try:
+                        post_event(
+                            backend_url,
+                            "away_person",
+                            "외출 모드 중 사람 감지",
+                            "외출 모드 상태에서 사람이 감지됐어요.",
+                            source,
+                            confidence=person.get("confidence"),
+                        )
+                        last_away_person_event_at = now
+                    except requests.RequestException as error:
+                        if now - last_event_error_at > 5:
+                            print(f"[Vision] Event post failed: {error}")
+                            last_event_error_at = now
             try:
                 post_detections(backend_url, source, frame, detections)
             except requests.RequestException as error:
