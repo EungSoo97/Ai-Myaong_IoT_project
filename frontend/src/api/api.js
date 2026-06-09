@@ -83,6 +83,14 @@ export const api = {
       throw error;
     }
   },
+  getLatestDetections: () => request("/api/vision/detections/latest"),
+  requestVisionCapture: () =>
+    request("/api/vision/capture", { method: "POST" }),
+  setVisionRecording: (on) =>
+    request("/api/vision/recording", {
+      method: "POST",
+      body: JSON.stringify({ on }),
+    }),
   /* 감지 클립 재생 URL — 백엔드가 영상 저장/서빙하면 동작.
    * 응답 예: { url } 또는 { storage_path }. 미구현 시 호출 측에서 폴백 처리. */
   getClipUrl: async (clipId) => {
@@ -112,9 +120,14 @@ export const api = {
   /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
    * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
    * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */
-  // 즉시 1회 스냅샷 캡처 — 응답 예: { imageUrl }
-  captureSnapshot: () =>
-    request("/api/robot/capture", { method: "POST" }),
+  // 즉시 1회 스냅샷 캡처. 비전 워커가 현재 프레임을 저장하고, 로봇 쪽 캡처 명령은 보조로 전송한다.
+  captureSnapshot: async () => {
+    const data = await request("/api/vision/capture", { method: "POST" });
+    request("/api/robot/capture", { method: "POST" }).catch((error) => {
+      console.error("[api] robot capture command failed:", error);
+    });
+    return data;
+  },
   // 양방향 음성 호출 시작
   voiceCall: () =>
     request("/api/robot/voice-call", { method: "POST" }),

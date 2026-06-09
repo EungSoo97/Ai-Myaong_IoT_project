@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   Maximize2,
   Minimize2,
-  Zap,
-  ZapOff,
   Video,
   Camera,
   PawPrint,
@@ -53,14 +51,23 @@ export function RobotVision() {
   const navigate = useNavigate()
   const { isConnected } = useWebSocket(getWebSocketUrl())
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [irOn, setIrOn] = useState(false)
+  const [awayMode, setAwayMode] = useState(() => {
+    try {
+      return localStorage.getItem('aimyaong:awayMode') === '1'
+    } catch {
+      return false
+    }
+  })
   const [recording, setRecording] = useState(false)
   const [selectedClip, setSelectedClip] = useState(null)
   const [controlBusy, setControlBusy] = useState(false)
   const [streamInfo, setStreamInfo] = useState({ url: '', mode: 'loading' })
   const [streamError, setStreamError] = useState('')
+  const [detections, setDetections] = useState(null)
+  const [captureNotice, setCaptureNotice] = useState(false)
   const controlBusyRef = useRef(false)
   const commandQueueRef = useRef(Promise.resolve())
+  const captureNoticeTimerRef = useRef(null)
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false)
@@ -82,6 +89,33 @@ export function RobotVision() {
 
     return () => {
       mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    const load = () => {
+      api.getLatestDetections()
+        .then((data) => {
+          if (mounted) setDetections(data)
+        })
+        .catch(() => {
+          if (mounted) setDetections(null)
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 500)
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (captureNoticeTimerRef.current) {
+        window.clearTimeout(captureNoticeTimerRef.current)
+      }
     }
   }, [])
 
@@ -194,6 +228,51 @@ export function RobotVision() {
     sendCommand('camera', CAMERA_COMMANDS[dir])
   }
 
+  const toggleAwayMode = async () => {
+    const next = !awayMode
+    const previous = awayMode
+    setAwayMode(next)
+    try {
+      localStorage.setItem('aimyaong:awayMode', next ? '1' : '0')
+      await api.setAwayMode(next)
+    } catch (error) {
+      console.error('[RobotVision] away mode command failed:', error)
+      setAwayMode(previous)
+      try {
+        localStorage.setItem('aimyaong:awayMode', previous ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const captureSnapshot = async () => {
+    try {
+      await api.captureSnapshot()
+      setCaptureNotice(true)
+      if (captureNoticeTimerRef.current) {
+        window.clearTimeout(captureNoticeTimerRef.current)
+      }
+      captureNoticeTimerRef.current = window.setTimeout(() => {
+        setCaptureNotice(false)
+      }, 2500)
+    } catch (error) {
+      console.error('[RobotVision] capture command failed:', error)
+    }
+  }
+
+  const toggleRecording = async () => {
+    const next = !recording
+    const previous = recording
+    setRecording(next)
+    try {
+      await api.setVisionRecording(next)
+    } catch (error) {
+      console.error('[RobotVision] recording command failed:', error)
+      setRecording(previous)
+    }
+  }
+
   return (
     <div className="px-5 pt-5 pb-6">
       <div className="flex items-center gap-2.5 mb-3">
@@ -222,10 +301,11 @@ export function RobotVision() {
                 onMoveStop={onMoveStop}
                 onPan={onPan}
                 recording={recording}
-                irOn={irOn}
-                setIrOn={setIrOn}
+                awayMode={awayMode}
+                captureNotice={captureNotice}
                 streamUrl={streamInfo.url}
                 streamError={streamError}
+                detections={detections}
               />
             </div>
           ) : (
@@ -236,14 +316,27 @@ export function RobotVision() {
                 error={streamError}
                 className="absolute inset-0"
               />
-              <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-[11px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
-              </span>
-              {recording && (
-                <span className="absolute top-3 left-20 px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
-                  ● REC
+              <DetectionOverlay detections={detections} className="absolute inset-0" />
+              <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-[11px] font-bold">
+                  <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
                 </span>
-              )}
+                {recording && (
+                  <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
+                    ● REC
+                  </span>
+                )}
+                {awayMode && (
+                  <span className="px-2.5 py-1 rounded-full bg-brand-primary text-white text-[11px] font-bold">
+                    외출 모드
+                  </span>
+                )}
+                {captureNotice && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white text-brand-brown text-[11px] font-bold shadow-soft">
+                    <Camera className="w-3.5 h-3.5" /> 캡처 완료
+                  </span>
+                )}
+              </div>
               <button
                 onClick={enterFullscreen}
                 className="absolute top-3 right-3 w-10 h-10 rounded-2xl bg-black/55 text-white flex items-center justify-center active:bg-black/80 transition-colors"
@@ -274,22 +367,24 @@ export function RobotVision() {
         </Card>
       </section>
 
-      {/* 컨트롤 (IR / 녹화 / 캡처) */}
+      {/* 컨트롤 (외출 / 녹화 / 캡처) */}
       <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">제어</h3>
         <Card className="px-5 py-5">
-          <div className="flex items-center justify-around gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <button
-              onClick={() => setIrOn((v) => !v)}
+              type="button"
+              onClick={toggleAwayMode}
               className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
-                irOn ? 'bg-brand-brown text-white active:bg-brand-brown/80' : 'bg-brand-card text-brand-brown active:bg-brand-cream'
+                awayMode ? 'bg-brand-primary text-white active:bg-brand-primary/80' : 'bg-brand-card text-brand-brown active:bg-brand-cream'
               }`}
             >
-              {irOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
-              <span className="text-xs font-bold">IR {irOn ? 'ON' : 'OFF'}</span>
+              <Moon className="w-5 h-5" />
+              <span className="text-xs font-bold">{awayMode ? '외출 ON' : '외출 모드'}</span>
             </button>
             <button
-              onClick={() => setRecording((v) => !v)}
+              type="button"
+              onClick={toggleRecording}
               className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
                 recording ? 'bg-brand-danger text-white active:bg-brand-danger/80' : 'bg-brand-card text-brand-brown active:bg-brand-cream'
               }`}
@@ -297,7 +392,11 @@ export function RobotVision() {
               <Video className="w-5 h-5" />
               <span className="text-xs font-bold">{recording ? '녹화 중' : '녹화'}</span>
             </button>
-            <button className="flex flex-col items-center gap-1 px-4 py-3 rounded-3xl bg-brand-card text-brand-brown shadow-soft active:bg-brand-cream transition-colors min-w-[88px]">
+            <button
+              type="button"
+              onClick={captureSnapshot}
+              className="flex flex-col items-center gap-1 px-4 py-3 rounded-3xl bg-brand-card text-brand-brown shadow-soft active:bg-brand-cream transition-colors min-w-[88px]"
+            >
               <Camera className="w-5 h-5" />
               <span className="text-xs font-bold">캡처</span>
             </button>
@@ -383,11 +482,11 @@ export function RobotVision() {
  *  - 배경: 전체 화면 비디오 스트림
  *  - 좌측 하단: 기계 이동 D-Pad (십자, 발바닥 아이콘)
  *  - 우측 하단: 카메라 Pan/Tilt D-Pad (십자, 반투명 배경)
- *  - 상단: IR 토글 + 마이크 + 종료
+ *  - 상단: 마이크 + 종료
  *
  * 양손 엄지 동선을 고려해 컨트롤은 하단 좌우, 토글은 상단에 배치.
  */
-function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, setIrOn, streamUrl, streamError }) {
+function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, awayMode, captureNotice, streamUrl, streamError, detections }) {
   const [micOn, setMicOn] = useState(false)
   const toggleMic = () => {
     setMicOn((v) => {
@@ -405,8 +504,9 @@ function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, se
         className="absolute inset-0"
         fullscreen
       />
+      <DetectionOverlay detections={detections} className="absolute inset-0 z-10" />
 
-      {/* 상단 좌측: LIVE / REC 인디케이터 */}
+      {/* 상단 좌측: LIVE / REC / 외출모드 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
         <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[11px] font-bold">
           <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
@@ -416,11 +516,20 @@ function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, irOn, se
             ● REC
           </span>
         )}
+        {awayMode && (
+          <span className="px-2.5 py-1 rounded-full bg-brand-primary text-white text-[11px] font-bold">
+            외출 모드
+          </span>
+        )}
+        {captureNotice && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white text-brand-brown text-[11px] font-bold shadow-md">
+            <Camera className="w-3.5 h-3.5" /> 캡처 완료
+          </span>
+        )}
       </div>
 
-      {/* 상단 우측: IR 토글 + 마이크 + 전체화면 종료 */}
+      {/* 상단 우측: 마이크 + 전체화면 종료 */}
       <div className="absolute top-3 right-3 z-50 flex items-center gap-2">
-        <IRToggle on={irOn} onChange={setIrOn} />
         <MicButton on={micOn} onClick={toggleMic} />
         <button
           onClick={onExit}
@@ -608,6 +717,47 @@ function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
   )
 }
 
+function DetectionOverlay({ detections, className = '' }) {
+  const boxes = detections?.boxes || []
+  const frameWidth = detections?.frame_width || 0
+  const frameHeight = detections?.frame_height || 0
+  const updatedAt = detections?.updated_at || 0
+  const isFresh = updatedAt && Date.now() / 1000 - updatedAt < 2
+
+  if (!isFresh || !frameWidth || !frameHeight || boxes.length === 0) {
+    return <div className={`${className} pointer-events-none`} />
+  }
+
+  return (
+    <div className={`${className} pointer-events-none overflow-hidden`}>
+      {boxes.map((box, index) => {
+        const left = (box.x / frameWidth) * 100
+        const top = (box.y / frameHeight) * 100
+        const width = (box.w / frameWidth) * 100
+        const height = (box.h / frameHeight) * 100
+        const label = `${box.label} ${Math.round((box.confidence || 0) * 100)}%`
+
+        return (
+          <div
+            key={`${box.label}-${index}-${box.x}-${box.y}`}
+            className="absolute border-2 border-emerald-400 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+            style={{
+              left: `${left}%`,
+              top: `${top}%`,
+              width: `${width}%`,
+              height: `${height}%`,
+            }}
+          >
+            <span className="absolute left-0 top-0 -translate-y-full rounded-t-md bg-black/70 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+              {label}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
  * 표준 십자(Cross) D-Pad.
  *  - 외형: 평범한 cross 레이아웃 (전체 패드는 발바닥 모양 아님).
@@ -710,29 +860,6 @@ function CenterBtn({ onClick, tone = 'dark' }) {
       `}
     >
       <span className="text-[9px] font-bold tracking-wider">CENTER</span>
-    </button>
-  )
-}
-
-/**
- * IR ON/OFF 토글 - pill 모양, 상태 즉시 인지 가능.
- */
-function IRToggle({ on, onChange }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      aria-pressed={on}
-      className={`
-        h-11 px-4 inline-flex items-center gap-1.5 rounded-full
-        font-bold text-sm shadow-md transition-colors
-        ${on
-          ? 'bg-brand-primary text-white active:bg-brand-brown'
-          : 'bg-white/15 backdrop-blur-sm text-white/85 active:bg-brand-brown'}
-      `}
-    >
-      {on ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-      IR {on ? 'ON' : 'OFF'}
     </button>
   )
 }
