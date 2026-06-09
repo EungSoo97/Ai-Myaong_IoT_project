@@ -80,9 +80,10 @@ function buildStats(logs) {
 
   const todayFood = DAILY.reduce((s, d) => s + d.food, 0)
   const todayWater = DAILY.reduce((s, d) => s + d.water, 0)
-  const lastFeed = F.length ? fmtTime(F[F.length - 1].t) : '-'
+  const lastFeed = F.length ? fmtTime(F[F.length - 1].t) : '-' // 마지막 사료
+  const lastWater = W.length ? fmtTime(W[W.length - 1].t) : '-' // 마지막 급수
 
-  return { DAILY, WEEKLY, MONTHLY, summary: { todayFood, todayWater, lastFeed } }
+  return { DAILY, WEEKLY, MONTHLY, summary: { todayFood, todayWater, lastFeed, lastWater } }
 }
 
 const PERIODS = [
@@ -107,6 +108,18 @@ export function Feeding() {
   // DB 기록으로 일/주/월 집계 + 요약 계산
   const { DAILY, WEEKLY, MONTHLY, summary } = useMemo(() => buildStats(logs), [logs])
 
+  // 선택한 기간의 사료/급수 총량 (일간=오늘 / 주간=최근7일 / 월간=이번 달)
+  const periodKo = { day: '일간', week: '주간', month: '월간' }[period]
+  const periodTotal = useMemo(() => {
+    const sum = (arr, key) => arr.reduce((s, d) => s + (d[key] || 0), 0)
+    if (period === 'week') return { food: sum(WEEKLY, 'food'), water: sum(WEEKLY, 'water') }
+    if (period === 'month') {
+      const cur = MONTHLY[MONTHLY.length - 1] || { food: 0, water: 0 }
+      return { food: cur.food, water: cur.water }
+    }
+    return { food: sum(DAILY, 'food'), water: sum(DAILY, 'water') }
+  }, [period, DAILY, WEEKLY, MONTHLY])
+
   return (
     <div className="px-5 pb-6">
       {/* 헤더 + 뒤로가기 */}
@@ -130,11 +143,12 @@ export function Feeding() {
         <PeriodTabs value={period} onChange={setPeriod} />
       </div>
 
-      {/* 요약 카드 */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <SummaryCard label="오늘 사료" value={`${summary.todayFood}g`} dot={COLORS.food} />
-        <SummaryCard label="오늘 급수" value={`${summary.todayWater}ml`} dot={COLORS.water} />
-        <SummaryCard label="마지막 급여" value={summary.lastFeed} small />
+      {/* 요약 카드 (2×2: 기간 총량 + 마지막 시각, 사료/물 대칭) */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <SummaryCard label={`${periodKo} 사료`} value={`${periodTotal.food}g`} dot={COLORS.food} />
+        <SummaryCard label={`${periodKo} 급수`} value={`${periodTotal.water}ml`} dot={COLORS.water} />
+        <SummaryCard label="마지막 사료" value={summary.lastFeed} small dot={COLORS.food} />
+        <SummaryCard label="마지막 급수" value={summary.lastWater} small dot={COLORS.water} />
       </div>
 
       {/* 차트 (사료 + 급수 한눈에) */}

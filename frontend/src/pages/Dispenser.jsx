@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Minus,
@@ -26,23 +26,17 @@ const COLORS = {
   mute: '#9C8A78',
 }
 
-/* 오늘(일간) 시간대별 급여량(g) */
-const DAILY_FOOD = [
-  { label: '아침', g: 15 },
-  { label: '점심', g: 10 },
-  { label: '오후', g: 8 },
-  { label: '저녁', g: 15 },
-  { label: '야식', g: 5 },
-]
+/* 오늘(일간) 시간대 버킷 라벨 */
+const DAY_LABELS = ['아침', '점심', '오후', '저녁', '야식']
 
-/* 오늘(일간) 시간대별 급수량(ml) */
-const DAILY_WATER = [
-  { label: '아침', ml: 60 },
-  { label: '점심', ml: 40 },
-  { label: '오후', ml: 50 },
-  { label: '저녁', ml: 70 },
-  { label: '야식', ml: 20 },
-]
+// 시각(시) → 시간대 버킷 인덱스
+function hourBucket(h) {
+  if (h >= 5 && h < 11) return 0 // 아침
+  if (h >= 11 && h < 14) return 1 // 점심
+  if (h >= 14 && h < 18) return 2 // 오후
+  if (h >= 18 && h < 22) return 3 // 저녁
+  return 4 // 야식 (22~04)
+}
 
 export function Dispenser() {
   const navigate = useNavigate()
@@ -51,13 +45,17 @@ export function Dispenser() {
   const foodAmount = feed.food
   const waterAmount = feed.water
 
-  const [schedule, setSchedule] = useState([
-    { id: 1, time: '08:00', type: 'food', amount: 15, on: true },
-    { id: 2, time: '12:00', type: 'water', amount: 100, on: true },
-    { id: 3, time: '13:00', type: 'food', amount: 10, on: true },
-    { id: 4, time: '19:00', type: 'food', amount: 15, on: false },
-  ])
+  const [schedule, setSchedule] = useState([]) // DB(feed_schedule/water_schedule)에서 불러옴, 없으면 빈 상태
   const [editing, setEditing] = useState(null) // { id?, time, type, amount } | null
+  const [logs, setLogs] = useState({ feed: [], water: [] }) // 오늘의 급여 통계용 DB 기록
+
+  // 배식/급수 기록 불러오기 (오늘의 통계 차트)
+  useEffect(() => {
+    api
+      .getDispenserLogs()
+      .then((d) => setLogs({ feed: d.feed || [], water: d.water || [] }))
+      .catch(() => {})
+  }, [])
 
   // ── 스케줄 DB 연동 (settings.feed_schedule / water_schedule 에 JSON 직렬화 저장) ──
   // 한 배열을 type 으로 나눠 각 컬럼에 저장하고, 불러올 때 다시 합친다. id 는 로컬 전용.
@@ -189,10 +187,54 @@ export function Dispenser() {
   const foodLow = foodRemain < 30
   const waterLow = waterRemain < 25
 
-  const todayTotal = DAILY_FOOD.reduce((s, d) => s + d.g, 0)
-  const todayWater = DAILY_WATER.reduce((s, d) => s + d.ml, 0)
-  const maxFood = Math.max(...DAILY_FOOD.map((d) => d.g))
-  const maxWater = Math.max(...DAILY_WATER.map((d) => d.ml))
+  // 잔여량 부족/없음 → 알림 (세션당 1회, 스팸 방지)
+  useEffect(() => {
+    const notifyLow = (key, type, title, desc) => {
+      const flag = `aimyaong:lowNotified:${key}`
+      if (sessionStorage.getItem(flag)) return
+      sessionStorage.setItem(flag, '1')
+      addNotification({ type, title, desc, link: '/dispenser' })
+    }
+    if (foodLow) {
+      notifyLow('food', 'feed', '사료 부족',
+        foodRemain <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `사료 잔여량 ${foodRemain}% · 보충해주세요!`)
+    }
+    if (waterLow) {
+      notifyLow('water', 'water_low', '물 부족',
+        waterRemain <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `수위 ${waterRemain}% · 보충해주세요!`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 오늘의 급여 통계 — DB 기록(feed_logs/water_logs)으로 시간대별 집계
+  const { DAILY_FOOD, DAILY_WATER, todayTotal, todayWater, maxFood, maxWater } = useMemo(() => {
+    const now = new Date()
+    const sameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+    const food = DAY_LABELS.map((label) => ({ label, g: 0 }))
+    const water = DAY_LABELS.map((label) => ({ label, ml: 0 }))
+    ;(logs.feed || []).forEach((x) => {
+      const t = new Date(x.created_at)
+      if (sameDay(t, now)) food[hourBucket(t.getHours())].g += Number(x.amount_g) || 0
+    })
+    ;(logs.water || []).forEach((x) => {
+      const t = new Date(x.created_at)
+      if (sameDay(t, now)) water[hourBucket(t.getHours())].ml += Number(x.amount_ml) || 0
+    })
+    food.forEach((d) => { d.g = Math.round(d.g) })
+    water.forEach((d) => { d.ml = Math.round(d.ml) })
+    // 사료·물을 같은 눈금(5단위 올림)으로 맞춰 실제 값 차이가 막대 높이에 보이도록
+    const peak = Math.max(0, ...food.map((d) => d.g), ...water.map((d) => d.ml))
+    const scaleMax = Math.max(5, Math.ceil(peak / 5) * 5)
+    return {
+      DAILY_FOOD: food,
+      DAILY_WATER: water,
+      todayTotal: food.reduce((s, d) => s + d.g, 0),
+      todayWater: water.reduce((s, d) => s + d.ml, 0),
+      maxFood: scaleMax,
+      maxWater: scaleMax,
+    }
+  }, [logs])
 
   return (
     <div className="px-5 pb-6">
@@ -266,19 +308,21 @@ export function Dispenser() {
 
       {/* 스케줄 (CRUD) */}
       <section className="mt-5" data-tour="disp-schedule">
-        <div className="flex items-center justify-between px-1 mb-3">
+        <div className="flex items-center px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">자동 스케줄</h3>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="flex items-center gap-1 text-xs font-bold text-brand-primary touch-active"
-          >
-            <PlusIcon className="w-3.5 h-3.5" /> 추가
-          </button>
         </div>
         <CreamCard className="divide-y divide-brand-line">
           {schedule.length === 0 && (
-            <p className="px-4 py-8 text-center text-sm text-brand-mute">등록된 스케줄이 없어요. <b>추가</b>를 눌러보세요.</p>
+            <button
+              type="button"
+              onClick={openAdd}
+              className="w-full px-4 py-8 flex flex-col items-center gap-2 text-brand-mute active:bg-brand-cream transition-colors"
+            >
+              <span className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-primary">
+                <PlusIcon className="w-5 h-5" />
+              </span>
+              <span className="text-sm font-semibold">눌러서 자동 급여 일정을 추가하세요</span>
+            </button>
           )}
           {schedule.map((s) => {
             const isFood = s.type === 'food'
@@ -293,29 +337,45 @@ export function Dispenser() {
                 onClick={() => openEdit(s)}
                 role="button"
                 tabIndex={0}
-                className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-brand-cream transition-transform duration-300"
-                style={{ transform: removing ? 'translateX(-12px)' : 'none' }}
+                className="flex items-center gap-3 px-4 py-3.5 cursor-pointer border-l-4 hover:bg-brand-cream/50 active:bg-brand-cream active:scale-[0.985] transition-all duration-200"
+                style={{
+                  transform: removing ? 'translateX(-12px)' : undefined,
+                  borderLeftColor: isFood ? COLORS.food : COLORS.water,
+                  opacity: s.on ? 1 : 0.5,
+                }}
               >
-                {/* 삭제 (작은 ×) */}
+                {/* 삭제 (작은 ×) — 왼쪽 */}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeSchedule(s.id) }}
                   aria-label="삭제"
-                  className="w-6 h-6 rounded-full bg-brand-line/60 text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger active:text-white transition-colors"
+                  className="w-6 h-6 rounded-full bg-brand-line/60 text-brand-mute flex items-center justify-center shrink-0 hover:bg-brand-danger hover:text-white active:bg-brand-danger active:text-white transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
 
+                {/* 종류 아이콘 (색상 톤) */}
                 <span
-                  className="w-10 h-10 rounded-2xl bg-brand-card flex items-center justify-center shadow-soft shrink-0"
-                  style={{ color: isFood ? COLORS.food : COLORS.water }}
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ background: `${isFood ? COLORS.food : COLORS.water}1A`, color: isFood ? COLORS.food : COLORS.water }}
                 >
                   {isFood ? <UtensilsCrossed className="w-5 h-5" /> : <Droplets className="w-5 h-5" />}
                 </span>
+
+                {/* 시간 + 종류 배지 + 양 */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-display text-lg font-bold text-brand-brown leading-none">{s.time}</p>
-                  <p className="text-xs text-brand-mute mt-1">
-                    {isFood ? `사료 ${s.amount}g` : `물 ${s.amount}ml`}
+                  <div className="flex items-center gap-2">
+                    <p className="font-display text-lg font-bold text-brand-brown leading-none">{s.time}</p>
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                      style={{ background: `${isFood ? COLORS.food : COLORS.water}1A`, color: isFood ? COLORS.food : COLORS.water }}
+                    >
+                      {isFood ? '사료' : '물'}
+                    </span>
+                    {!s.on && <span className="text-[10px] font-bold text-brand-mute">꺼짐</span>}
+                  </div>
+                  <p className="text-xs text-brand-mute mt-1 font-semibold">
+                    {isFood ? `${s.amount}g` : `${s.amount}ml`}
                   </p>
                 </div>
 
@@ -334,6 +394,15 @@ export function Dispenser() {
               </div>
             )
           })}
+          {schedule.length > 0 && (
+            <button
+              type="button"
+              onClick={openAdd}
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-3.5 text-sm font-bold text-brand-primary hover:bg-brand-cream/50 active:bg-brand-cream active:scale-[0.99] transition-all duration-200"
+            >
+              <PlusIcon className="w-4 h-4" /> 스케줄 추가
+            </button>
+          )}
         </CreamCard>
         <p className="mt-2 px-1 text-[11px] text-brand-mute">항목을 누르면 수정할 수 있어요.</p>
       </section>
@@ -381,7 +450,7 @@ export function Dispenser() {
               <Legend color={COLORS.water} label="물(ml)" />
             </div>
           </div>
-          <div className="flex items-end justify-between gap-2 h-32">
+          <div className="flex items-end justify-between gap-2 h-44 pt-2">
             {DAILY_FOOD.map((d, i) => {
               const w = DAILY_WATER[i]
               return (
@@ -423,28 +492,49 @@ export function Dispenser() {
 
 function ResourceCard({ icon, label, value, unit, color, low }) {
   const accent = color === 'water' ? COLORS.water : COLORS.food
+  const empty = value <= 0
+  const danger = '#E26D5C'
   return (
-    <Card className={`px-4 py-4 ${low ? 'border-brand-danger/40' : ''}`}>
-      <div className="flex items-center gap-1.5 text-brand-mute mb-1">
-        <span style={{ color: accent }}>{icon}</span>
-        <p className="text-[11px] font-semibold truncate">{label}</p>
+    <Card className={`px-4 py-4 transition-colors ${low ? 'border-2 border-brand-danger bg-brand-danger/5' : ''}`}>
+      {/* 라벨 + 상태 배지 */}
+      <div className="flex items-center justify-between gap-1.5 mb-1.5">
+        <div className="flex items-center gap-1.5 text-brand-mute min-w-0">
+          <span style={{ color: low ? danger : accent }}>{icon}</span>
+          <p className="text-[11px] font-semibold truncate">{label}</p>
+        </div>
+        {low ? (
+          <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-danger text-white animate-pulse">
+            보충 필요
+          </span>
+        ) : (
+          <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-success/15 text-brand-success">
+            충분
+          </span>
+        )}
       </div>
-      <p className="font-display text-2xl font-bold text-brand-brown leading-none">
+
+      {/* 잔여 수치 (부족 시 빨강) */}
+      <p className="font-display text-2xl font-bold leading-none" style={{ color: low ? danger : COLORS.brown }}>
         {value}
-        <span className="text-base ml-0.5 text-brand-mute font-bold">{unit}</span>
+        <span className="text-base ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
       </p>
+
+      {/* 게이지 */}
       <div className="mt-3 h-2.5 rounded-full bg-brand-line overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
-          style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: low ? '#E26D5C' : accent }}
+          style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: low ? danger : accent }}
         />
       </div>
-      {low ? (
-        <p className="mt-2 text-[11px] text-brand-danger font-bold flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3" /> 부족 경고
-        </p>
-      ) : (
-        <p className="mt-2 text-[11px] text-brand-success font-bold">충분</p>
+
+      {/* 부족/없음 경고 배너 */}
+      {low && (
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-xl bg-brand-danger/10 px-2.5 py-2 text-brand-danger animate-pulse">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="text-[11px] font-bold leading-tight">
+            {empty ? '비었어요! 지금 보충해주세요' : '부족해요! 보충해주세요'}
+          </span>
+        </div>
       )}
     </Card>
   )

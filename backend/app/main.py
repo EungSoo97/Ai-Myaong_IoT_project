@@ -67,6 +67,9 @@ def startup() -> None:
     database.init()
     mqtt_client.start()
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
+    # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
+    from app.services.feed_scheduler import start_feed_scheduler
+    start_feed_scheduler(app.state.feed_service)
 
 
 @app.on_event("shutdown")
