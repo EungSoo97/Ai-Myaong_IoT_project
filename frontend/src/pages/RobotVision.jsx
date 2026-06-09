@@ -67,6 +67,7 @@ export function RobotVision() {
   const [detections, setDetections] = useState(null)
   const [eventLog, setEventLog] = useState([])
   const [captureNotice, setCaptureNotice] = useState(false)
+  const [streamLive, setStreamLive] = useState(false)
   const controlBusyRef = useRef(false)
   const commandQueueRef = useRef(Promise.resolve())
   const captureNoticeTimerRef = useRef(null)
@@ -336,11 +337,13 @@ export function RobotVision() {
                 mode={streamInfo.mode}
                 error={streamError}
                 className="absolute inset-0"
+                onStatusChange={setStreamLive}
               />
               <DetectionOverlay detections={detections} className="absolute inset-0" />
               <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-[11px] font-bold">
-                  <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
+                <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${streamLive ? 'bg-black/55' : 'bg-black/40'}`}>
+                  <span className={`w-2 h-2 rounded-full ${streamLive ? 'bg-red-400 animate-pulse' : 'bg-white/40'}`} />
+                  {streamLive ? 'LIVE' : '오프라인'}
                 </span>
                 {recording && (
                   <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -514,6 +517,7 @@ export function RobotVision() {
  */
 function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, awayMode, captureNotice, streamUrl, streamError, detections }) {
   const [micOn, setMicOn] = useState(false)
+  const [streamLive, setStreamLive] = useState(false) // 카메라 스트림 연결 상태
   const toggleMic = () => {
     setMicOn((v) => {
       console.log('[RobotVision] mic:', !v ? 'ON' : 'OFF')
@@ -529,13 +533,15 @@ function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, awayMode
         error={streamError}
         className="absolute inset-0"
         fullscreen
+        onStatusChange={setStreamLive}
       />
       <DetectionOverlay detections={detections} className="absolute inset-0 z-10" />
 
       {/* 상단 좌측: LIVE / REC / 외출모드 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
         <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[11px] font-bold">
-          <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> LIVE
+          <span className={`w-2 h-2 rounded-full ${streamLive ? 'bg-red-400 animate-pulse' : 'bg-white/40'}`} />
+          {streamLive ? 'LIVE' : '오프라인'}
         </span>
         {recording && (
           <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -738,7 +744,7 @@ function ClipModal({ clip, onClose }) {
   )
 }
 
-function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
+function StreamFrame({ src, mode, error, className = '', fullscreen = false, onStatusChange }) {
   const [imageError, setImageError] = useState(false)
 
   useEffect(() => {
@@ -746,6 +752,12 @@ function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
   }, [src])
 
   const showFallback = !src || error || imageError
+  const live = !!src && !error && !imageError
+
+  // 실제 스트림 연결 상태를 부모에 알림 (LIVE/오프라인 배지용)
+  useEffect(() => {
+    onStatusChange?.(live)
+  }, [live, onStatusChange])
 
   return (
     <div className={`${className} bg-black flex items-center justify-center overflow-hidden`}>
@@ -754,6 +766,7 @@ function StreamFrame({ src, mode, error, className = '', fullscreen = false }) {
           src={src}
           alt="Robot camera live stream"
           onError={() => setImageError(true)}
+          onLoad={() => setImageError(false)}
           className="w-full h-full object-cover"
         />
       )}

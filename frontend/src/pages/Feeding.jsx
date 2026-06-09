@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Card } from '../components/ui'
+import { api } from '../api/api'
 
 const COLORS = {
   food: '#F08D86',
@@ -14,42 +15,76 @@ const COLORS = {
   line: '#EFE3D2',
 }
 
-/* ───── Mock 통계 데이터 (사료 food=g / 급수 water=ml) ───── */
-// 일간: 오늘 시간대별
-const DAILY = [
-  { label: '아침', food: 15, water: 90 },
-  { label: '점심', food: 10, water: 60 },
-  { label: '오후', food: 8, water: 70 },
-  { label: '저녁', food: 15, water: 100 },
-  { label: '야식', food: 5, water: 40 },
-]
-// 주간: 최근 7일 일별 합계
-const WEEKLY = [
-  { label: '월', food: 42, water: 320 },
-  { label: '화', food: 38, water: 300 },
-  { label: '수', food: 50, water: 360 },
-  { label: '목', food: 45, water: 330 },
-  { label: '금', food: 53, water: 380 },
-  { label: '토', food: 40, water: 310 },
-  { label: '일', food: 48, water: 350 },
-]
-// 월간: 현재 달이 가장 오른쪽 · 과거로 길게 (드래그 스크롤)
-function buildMonthly(count = 24) {
-  const now = new Date()
-  const arr = []
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const y = d.getFullYear()
-    const m = d.getMonth() + 1
-    // 결정적(seed 기반) mock — 렌더마다 값이 바뀌지 않도록
-    const seed = y * 12 + m
-    const food = 1280 + Math.round(Math.sin(seed) * 130) + (m % 3) * 35
-    const water = 9400 + Math.round(Math.cos(seed) * 650) + (m % 4) * 110
-    arr.push({ label: `${String(y).slice(2)}.${m}`, food, water })
-  }
-  return arr
+/* ───── DB 기록(feed_logs / water_logs) → 일/주/월 집계 ───── */
+const DAY_LABELS = ['아침', '점심', '오후', '저녁', '야식']
+const WEEK_CHARS = ['일', '월', '화', '수', '목', '금', '토']
+
+// 시각(시) → 시간대 버킷 인덱스
+function hourBucket(h) {
+  if (h >= 5 && h < 11) return 0 // 아침
+  if (h >= 11 && h < 14) return 1 // 점심
+  if (h >= 14 && h < 18) return 2 // 오후
+  if (h >= 18 && h < 22) return 3 // 저녁
+  return 4 // 야식 (22~04)
 }
-const MONTHLY = buildMonthly(24)
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+function fmtTime(d) {
+  let h = d.getHours()
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const ap = h < 12 ? '오전' : '오후'
+  h %= 12
+  if (h === 0) h = 12
+  return `${ap} ${h}:${m}`
+}
+
+// logs: { feed:[{amount_g,created_at}], water:[{amount_ml,created_at}] }
+function buildStats(logs) {
+  const now = new Date()
+  const F = (logs.feed || []).map((x) => ({ t: new Date(x.created_at), v: Number(x.amount_g) || 0 }))
+  const W = (logs.water || []).map((x) => ({ t: new Date(x.created_at), v: Number(x.amount_ml) || 0 }))
+
+  // 일간: 오늘 시간대별
+  const daily = DAY_LABELS.map((label) => ({ label, food: 0, water: 0 }))
+  F.forEach(({ t, v }) => { if (sameDay(t, now)) daily[hourBucket(t.getHours())].food += v })
+  W.forEach(({ t, v }) => { if (sameDay(t, now)) daily[hourBucket(t.getHours())].water += v })
+
+  // 주간: 최근 7일 (오래된→오늘)
+  const weekly = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+    weekly.push({ key: d, label: WEEK_CHARS[d.getDay()], food: 0, water: 0 })
+  }
+  const findDay = (t) => weekly.find((w) => sameDay(w.key, t))
+  F.forEach(({ t, v }) => { const w = findDay(t); if (w) w.food += v })
+  W.forEach(({ t, v }) => { const w = findDay(t); if (w) w.water += v })
+
+  // 월간: 최근 24개월 (현재 달이 오른쪽 끝)
+  const monthly = []
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    monthly.push({ y: d.getFullYear(), mo: d.getMonth(), label: `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`, food: 0, water: 0 })
+  }
+  const findMonth = (t) => monthly.find((mm) => mm.y === t.getFullYear() && mm.mo === t.getMonth())
+  F.forEach(({ t, v }) => { const mm = findMonth(t); if (mm) mm.food += v })
+  W.forEach(({ t, v }) => { const mm = findMonth(t); if (mm) mm.water += v })
+
+  // 소수 누적 정리 + 임시 키 제거
+  const tidy = (arr) => arr.map(({ key, y, mo, ...rest }) => ({ ...rest, food: Math.round(rest.food), water: Math.round(rest.water) }))
+  const DAILY = tidy(daily)
+  const WEEKLY = tidy(weekly)
+  const MONTHLY = tidy(monthly)
+
+  const todayFood = DAILY.reduce((s, d) => s + d.food, 0)
+  const todayWater = DAILY.reduce((s, d) => s + d.water, 0)
+  const lastFeed = F.length ? fmtTime(F[F.length - 1].t) : '-' // 마지막 사료
+  const lastWater = W.length ? fmtTime(W[W.length - 1].t) : '-' // 마지막 급수
+
+  return { DAILY, WEEKLY, MONTHLY, summary: { todayFood, todayWater, lastFeed, lastWater } }
+}
 
 const PERIODS = [
   { id: 'day', label: '일간' },
@@ -60,13 +95,30 @@ const PERIODS = [
 export function Feeding() {
   const navigate = useNavigate()
   const [period, setPeriod] = useState('day')
+  const [logs, setLogs] = useState({ feed: [], water: [] })
 
-  /* 요약 통계 */
-  const summary = useMemo(() => {
-    const todayFood = DAILY.reduce((s, d) => s + d.food, 0)
-    const todayWater = DAILY.reduce((s, d) => s + d.water, 0)
-    return { todayFood, todayWater, lastFeed: '오후 6:10' }
+  // 실제 배식/급수 기록을 DB에서 불러옴
+  useEffect(() => {
+    api
+      .getDispenserLogs()
+      .then((d) => setLogs({ feed: d.feed || [], water: d.water || [] }))
+      .catch(() => {})
   }, [])
+
+  // DB 기록으로 일/주/월 집계 + 요약 계산
+  const { DAILY, WEEKLY, MONTHLY, summary } = useMemo(() => buildStats(logs), [logs])
+
+  // 선택한 기간의 사료/급수 총량 (일간=오늘 / 주간=최근7일 / 월간=이번 달)
+  const periodKo = { day: '일간', week: '주간', month: '월간' }[period]
+  const periodTotal = useMemo(() => {
+    const sum = (arr, key) => arr.reduce((s, d) => s + (d[key] || 0), 0)
+    if (period === 'week') return { food: sum(WEEKLY, 'food'), water: sum(WEEKLY, 'water') }
+    if (period === 'month') {
+      const cur = MONTHLY[MONTHLY.length - 1] || { food: 0, water: 0 }
+      return { food: cur.food, water: cur.water }
+    }
+    return { food: sum(DAILY, 'food'), water: sum(DAILY, 'water') }
+  }, [period, DAILY, WEEKLY, MONTHLY])
 
   return (
     <div className="px-5 pb-6">
@@ -91,11 +143,12 @@ export function Feeding() {
         <PeriodTabs value={period} onChange={setPeriod} />
       </div>
 
-      {/* 요약 카드 */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <SummaryCard label="오늘 사료" value={`${summary.todayFood}g`} dot={COLORS.food} />
-        <SummaryCard label="오늘 급수" value={`${summary.todayWater}ml`} dot={COLORS.water} />
-        <SummaryCard label="마지막 급여" value={summary.lastFeed} small />
+      {/* 요약 카드 (2×2: 기간 총량 + 마지막 시각, 사료/물 대칭) */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <SummaryCard label={`${periodKo} 사료`} value={`${periodTotal.food}g`} dot={COLORS.food} />
+        <SummaryCard label={`${periodKo} 급수`} value={`${periodTotal.water}ml`} dot={COLORS.water} />
+        <SummaryCard label="마지막 사료" value={summary.lastFeed} small dot={COLORS.food} />
+        <SummaryCard label="마지막 급수" value={summary.lastWater} small dot={COLORS.water} />
       </div>
 
       {/* 차트 (사료 + 급수 한눈에) */}

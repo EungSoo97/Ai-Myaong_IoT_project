@@ -110,9 +110,13 @@ export function petAgeLabel(birthDate) {
   const b = new Date(birthDate)
   if (Number.isNaN(b.getTime())) return null
   const now = new Date()
+  // 생후 30일 미만 → "생후 N일" (오늘 태어나도 생후 1일부터 시작)
+  const days = Math.floor((now.getTime() - b.getTime()) / (24 * 3600 * 1000)) + 1
+  if (days < 30) return `생후 ${Math.max(1, days)}일`
+  // 30일 이상 → 개월/살
   let months = (now.getFullYear() - b.getFullYear()) * 12 + (now.getMonth() - b.getMonth())
   if (now.getDate() < b.getDate()) months -= 1 // 생일 안 지난 달 보정
-  if (months < 0) return null
+  if (months < 1) months = 1 // 30일~한 달 경계 보정
   return months < 12 ? `${months}개월` : `${Math.floor(months / 12)}살`
 }
 

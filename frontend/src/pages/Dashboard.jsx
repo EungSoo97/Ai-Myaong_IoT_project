@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -11,9 +11,8 @@ import {
   Camera,
   Video,
   PawPrint,
-  AlertTriangle,
   UtensilsCrossed,
-  UserX,
+  Droplets,
   Plane,
   ChevronRight,
   Footprints,
@@ -24,45 +23,12 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, addNotification } from "../lib/notificationRepository";
+import { useNotifications, timeAgo, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
 import { mapVisionEventForList, mapVisionEventToNotification } from "../lib/visionEventMapper";
 
-const RECENT = [
-  {
-    id: 1,
-    icon: UtensilsCrossed,
-    tone: "primary",
-    title: "자동 배식 완료",
-    desc: "15g · 정기 스케줄",
-    time: "방금 전",
-  },
-  {
-    id: 2,
-    icon: AlertTriangle,
-    tone: "warn",
-    title: "이상 행동 감지",
-    desc: "거실 카메라",
-    time: "12분 전",
-  },
-  {
-    id: 3,
-    icon: UserX,
-    tone: "danger",
-    title: "외부인 감지",
-    desc: "현관 카메라",
-    time: "1시간 전",
-  },
-  {
-    id: 4,
-    icon: PawPrint,
-    tone: "brown",
-    title: "발자국 활동 기록",
-    desc: "12회",
-    time: "오늘",
-  },
-];
+// 최근 활동 = DB(feed_logs/water_logs)의 배식·급수 기록을 최근순으로 표시 (mock 제거)
 
 const TONE = {
   primary: "bg-brand-primary/15 text-brand-primary",
@@ -184,10 +150,42 @@ export function Dashboard() {
   const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
   const notifications = useNotifications();
-  const unread = notifications.filter((n) => !n.read).length;
+  const unread = notifications.length;
   const [visionEvents, setVisionEvents] = useState([]);
   const syncedNotificationIdsRef = useRef(new Set());
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
+
+  // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
+  const [recentLogs, setRecentLogs] = useState({ feed: [], water: [] });
+  useEffect(() => {
+    api
+      .getDispenserLogs()
+      .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
+      .catch(() => {});
+  }, []);
+
+  const recentActivity = useMemo(() => {
+    const feed = (recentLogs.feed || []).map((x) => ({
+      key: `f-${x.created_at}-${x.amount_g}`,
+      icon: UtensilsCrossed,
+      tone: "primary",
+      title: "배식 완료",
+      desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
+      t: new Date(x.created_at).getTime(),
+    }));
+    const water = (recentLogs.water || []).map((x) => ({
+      key: `w-${x.created_at}-${x.amount_ml}`,
+      icon: Droplets,
+      tone: "brown",
+      title: "급수 완료",
+      desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
+      t: new Date(x.created_at).getTime(),
+    }));
+    return [...feed, ...water]
+      .sort((a, b) => b.t - a.t)
+      .slice(0, 30)
+      .map((x) => ({ ...x, time: timeAgo(new Date(x.t).toISOString()) }));
+  }, [recentLogs]);
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
   const [streamUrl, setStreamUrl] = useState("");
@@ -248,9 +246,20 @@ export function Dashboard() {
   }, []);
 
   const showLive = streamUrl && !streamFailed;
-  const recentItems = visionEvents.length
-    ? visionEvents.slice(0, 4).map(mapVisionEventForList)
-    : RECENT;
+  const recentItems = useMemo(() => {
+    const vision = (visionEvents || []).map((event) => {
+      const item = mapVisionEventForList(event);
+      return {
+        ...item,
+        key: item.id,
+        t: new Date(item.rawTime).getTime(),
+      };
+    });
+
+    return [...vision, ...recentActivity]
+      .sort((a, b) => (b.t || 0) - (a.t || 0))
+      .slice(0, 30);
+  }, [visionEvents, recentActivity]);
 
   // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
   const nickname = account?.user?.nickname || "집사";
@@ -341,6 +350,23 @@ export function Dashboard() {
   });
   const [busyId, setBusyId] = useState(null);
 
+  // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((s) => {
+        const on = s.away_mode === "Y";
+        setAwayMode(on);
+        try {
+          localStorage.setItem(AWAY_KEY, on ? "1" : "0");
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 토스트
   const [toast, setToast] = useState(null);
   const [toastOn, setToastOn] = useState(false);
@@ -365,8 +391,9 @@ export function Dashboard() {
       /* ignore */
     }
     showToast(next ? "✈️ 외출 모드를 켰어요" : "🏠 외출 모드를 껐어요");
+    api.updateSettings({ away_mode: next ? "Y" : "N" }).catch(() => {}); // settings DB 저장
     api.setAwayMode(next).catch(() => {
-      /* 백엔드 미구현 — 프론트 상태만 유지 */
+      /* 로봇 기기 명령 — 미구현/미연결이어도 프론트 상태는 유지 */
     });
   };
 
@@ -378,13 +405,9 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
+        api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
-        addNotification({
-          type: "feed",
-          title: "빠른 배식",
-          desc: `사료 ${feed.food}g을 배식했어요`,
-          link: "/feeding",
-        });
+        // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       } else if (id === "call") {
         await api.voiceCall();
         showToast("📞 음성 호출을 시작했어요");
@@ -578,27 +601,27 @@ export function Dashboard() {
             전체보기 <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
-        <CreamCard className="divide-y divide-brand-line">
-          {recentItems.map(({ id, icon, eventType, tone, title, desc, time }) => {
-            const Icon = icon || EVENT_ICON[eventType] || AlertTriangle;
-            return (
-            <div key={id} className="flex items-center gap-3 px-4 py-3.5">
-              <span
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
-              >
-                <Icon className="w-5 h-5" />
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-brand-brown truncate">
-                  {title}
-                </p>
-                <p className="text-xs text-brand-mute truncate">{desc}</p>
+        <CreamCard className={`divide-y divide-brand-line ${recentItems.length > 6 ? "max-h-[348px] overflow-y-auto no-scrollbar" : ""}`}>
+          {recentItems.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
+          ) : (
+            recentItems.map(({ id, key, icon, eventType, tone, title, desc, time }) => {
+              const Icon = icon || EVENT_ICON[eventType] || PawPrint;
+              return (
+              <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
+                <span
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+                >
+                  <Icon className="w-5 h-5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
+                  <p className="text-xs text-brand-mute truncate">{desc}</p>
+                </div>
+                <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
               </div>
-              <span className="text-[11px] text-brand-mute shrink-0">
-                {time}
-              </span>
-            </div>
-          )})}
+            )})
+          )}
         </CreamCard>
       </section>
 
