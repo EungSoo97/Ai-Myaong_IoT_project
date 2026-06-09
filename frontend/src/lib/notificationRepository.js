@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { api } from '../api/api'
 
 /* ───────────────────────────────────────────────────────────
  * 알림(Notification) 데이터 접근 계층 (Repository)
@@ -78,25 +79,64 @@ function save(list) {
   }
 }
 
-/* 알림 추가 — 내일: 소켓 수신 시 호출하거나 서버 동기화로 교체 */
+/* DB(alerts) → 알림 객체 변환. message 는 {title,desc,link} JSON 으로 저장돼 있다. */
+function fromAlert(a) {
+  let extra = {}
+  try {
+    extra = JSON.parse(a.message || '{}')
+  } catch {
+    extra = { desc: a.message || '' }
+  }
+  return {
+    id: `a${a.alert_id}`,
+    serverId: a.alert_id,
+    type: a.alert_type,
+    title: extra.title || '',
+    desc: extra.desc || (typeof a.message === 'string' && a.message[0] !== '{' ? a.message : ''),
+    link: extra.link || '',
+    read: a.is_confirmed === 'Y',
+    time: a.created_at || new Date().toISOString(),
+  }
+}
+
+/* DB 에서 알림을 불러와 로컬에 동기화 (로그인 상태에서만 성공) */
+export async function hydrateNotifications() {
+  try {
+    const rows = await api.getAlerts()
+    save((rows || []).map(fromAlert))
+  } catch {
+    /* 백엔드 미연결 → 로컬 유지 */
+  }
+}
+
+/* 알림 추가 — 로컬 즉시 반영 + DB 저장 */
 export function addNotification(n) {
   // 설정탭 알림 제어에서 꺼진 종류면 보내지 않음
   if (!alertAllowed(n?.type)) return null
   const item = { id: `n${Date.now()}`, time: new Date().toISOString(), read: false, ...n }
   save([item, ...getNotifications()])
+  // DB 저장 (title/desc/link 를 JSON 으로). 실패해도 로컬은 유지
+  api
+    .createAlert({ alert_type: n.type, message: JSON.stringify({ title: n.title, desc: n.desc, link: n.link }) })
+    .catch(() => {})
   return item
 }
 
 export function markRead(id) {
+  const target = getNotifications().find((n) => n.id === id)
   save(getNotifications().map((n) => (n.id === id ? { ...n, read: true } : n)))
+  if (target?.serverId) api.confirmAlert(target.serverId).catch(() => {})
 }
 
 export function markAllRead() {
   save(getNotifications().map((n) => ({ ...n, read: true })))
+  api.confirmAllAlerts().catch(() => {})
 }
 
 export function removeNotification(id) {
+  const target = getNotifications().find((n) => n.id === id)
   save(getNotifications().filter((n) => n.id !== id))
+  if (target?.serverId) api.deleteAlert(target.serverId).catch(() => {})
 }
 
 export function clearNotifications() {
@@ -116,6 +156,8 @@ export function useNotifications() {
     const onStorage = (e) => { if (e.key === KEY) refresh() }
     window.addEventListener('storage', onStorage)
     window.addEventListener('notifications-changed', refresh)
+    hydrateNotifications() // 마운트 시 DB 알림으로 동기화
+
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('notifications-changed', refresh)

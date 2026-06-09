@@ -122,6 +122,15 @@ export const api = {
     }),
   // 배식/급수 기록 조회 (통계용) — { feed:[...], water:[...] }
   getDispenserLogs: (days = 400) => request(`/api/dispenser/logs?days=${days}`),
+
+  // 알림 (ALERTS 테이블) — message 에 {title,desc,link} JSON 저장
+  getAlerts: () => request("/api/alerts"),
+  createAlert: ({ alert_type, message }) =>
+    request("/api/alerts", { method: "POST", body: JSON.stringify({ alert_type, message }) }),
+  confirmAlert: (alertId) =>
+    request(`/api/alerts/${alertId}/confirm`, { method: "PATCH" }),
+  confirmAllAlerts: () => request("/api/alerts/confirm-all", { method: "PATCH" }),
+  deleteAlert: (alertId) => request(`/api/alerts/${alertId}`, { method: "DELETE" }),
   /* ── 아래 3개는 백엔드 준비 전 "연동 지점" 정의 ──
    * 백엔드가 해당 엔드포인트를 구현하면 그대로 동작한다.
    * (미구현 동안에는 호출 측에서 실패를 잡아 안내 토스트로 처리) */
