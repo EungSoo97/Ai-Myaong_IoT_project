@@ -591,9 +591,12 @@ function FullscreenView({ onExit, onMove, onMoveStop, onPan, recording, awayMode
  * 백엔드가 클립을 저장/서빙하면 자동 재생, 미구현 시 placeholder 폴백. */
 function ClipModal({ clip, onClose }) {
   const [show, setShow] = useState(false)
-  const [videoUrl, setVideoUrl] = useState(null)
-  const [videoFailed, setVideoFailed] = useState(false)
+  const [mediaUrl, setMediaUrl] = useState(null)
+  const [mediaFailed, setMediaFailed] = useState(false)
   const Icon = clip.icon || Video
+  const isCapture = clip.eventType === 'capture_saved'
+  const isClip = clip.eventType === 'clip_saved' || !!clip.clip_id
+  const hasMedia = !!(clip.storage_path || clip.clip_id)
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setShow(true))
@@ -601,12 +604,18 @@ function ClipModal({ clip, onClose }) {
   }, [])
 
   useEffect(() => {
+    setMediaUrl(null)
+    setMediaFailed(false)
+    if (clip?.storage_path) {
+      setMediaUrl(api.getVisionMediaUrl(clip.storage_path))
+      return undefined
+    }
     if (!clip?.clip_id) return undefined
     let alive = true
     api
       .getClipUrl(clip.clip_id)
-      .then((u) => { if (alive && u) setVideoUrl(u) })
-      .catch(() => { if (alive && clip.storage_path) setVideoUrl(resolveMediaUrl(clip.storage_path)) })
+      .then((u) => { if (alive && u) setMediaUrl(u) })
+      .catch(() => { if (alive && clip.storage_path) setMediaUrl(resolveMediaUrl(clip.storage_path)) })
     return () => { alive = false }
   }, [clip])
 
@@ -614,8 +623,14 @@ function ClipModal({ clip, onClose }) {
     setShow(false)
     setTimeout(onClose, 280)
   }
-  const hasClip = !!clip?.clip_id
-  const showVideo = hasClip && videoUrl && !videoFailed
+  const showImage = isCapture && mediaUrl && !mediaFailed
+  const showVideo = isClip && mediaUrl && !mediaFailed
+  const openLocalPath = () => {
+    if (!clip.storage_path) return
+    api.revealVisionMedia(clip.storage_path).catch((error) => {
+      console.error('[RobotVision] reveal media failed:', error)
+    })
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={dismiss}>
@@ -646,27 +661,37 @@ function ClipModal({ clip, onClose }) {
 
         {/* 영상 */}
         <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
-          {hasClip ? (
+          {hasMedia ? (
             <>
-              {showVideo ? (
+              {showImage ? (
+                <img
+                  src={mediaUrl}
+                  alt={clip.type}
+                  onError={() => setMediaFailed(true)}
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                />
+              ) : showVideo ? (
                 <video
-                  src={videoUrl}
+                  src={mediaUrl}
                   controls
                   playsInline
                   preload="metadata"
-                  onError={() => setVideoFailed(true)}
+                  onError={() => setMediaFailed(true)}
                   className="absolute inset-0 w-full h-full object-contain bg-black"
                 />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white/80 gap-2">
                   <span className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-                    <Play className="w-6 h-6 ml-0.5" />
+                    {isCapture ? <Camera className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
                   </span>
-                  <span className="text-[11px] font-semibold">영상 준비 중 · 처리되면 자동 재생</span>
+                  <span className="text-[11px] font-semibold">
+                    {mediaFailed ? '미리보기를 불러오지 못했어요' : '미리보기 준비 중'}
+                  </span>
                 </div>
               )}
               <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
-                <Video className="w-3.5 h-3.5" /> REC
+                {isCapture ? <Camera className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                {isCapture ? 'CAPTURE' : 'REC'}
               </span>
               <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
                 <MapPin className="w-3.5 h-3.5" /> {clip.location}
@@ -679,7 +704,7 @@ function ClipModal({ clip, onClose }) {
             </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-white/75 text-sm font-semibold">
-              저장된 영상이 없는 이벤트예요
+              저장된 미디어가 없는 이벤트예요
             </div>
           )}
         </div>
@@ -690,10 +715,16 @@ function ClipModal({ clip, onClose }) {
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute"><Clock className="w-4 h-4" /> 탐지 시각</p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none">{clip.time}</p>
           </div>
-          <div className="rounded-2xl bg-brand-cream p-3.5">
+          <button
+            type="button"
+            onClick={openLocalPath}
+            disabled={!clip.storage_path}
+            className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+            title={clip.storage_path || clip.location}
+          >
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute"><MapPin className="w-4 h-4" /> 위치</p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">{clip.location}</p>
-          </div>
+          </button>
         </div>
 
         {clip.danger && (

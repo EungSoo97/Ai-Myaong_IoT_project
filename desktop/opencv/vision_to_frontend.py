@@ -206,17 +206,30 @@ class ClipRecorder:
         h, w = frame.shape[:2]
         fps = float(os.getenv("VISION_RECORD_FPS", os.getenv("CAMERA_FPS", "10")))
         self.started_at = datetime.now()
-        self.path = CLIP_DIR / f"clip_{self.started_at.strftime('%Y%m%d_%H%M%S')}.mp4"
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        self.writer = cv2.VideoWriter(str(self.path), fourcc, fps, (w, h))
-        if not self.writer.isOpened():
-            print(f"[Vision] Clip writer failed: {self.path}")
-            self.writer = None
-            self.path = None
-            self.started_at = None
-            return None
-        print(f"[Vision] Clip recording started: {self.path}")
-        return self.path
+
+        timestamp = self.started_at.strftime("%Y%m%d_%H%M%S")
+        candidates = [
+            ("webm", "VP80"),
+            ("webm", "VP90"),
+            ("mp4", "avc1"),
+            ("mp4", "mp4v"),
+        ]
+
+        for ext, codec in candidates:
+            path = CLIP_DIR / f"clip_{timestamp}.{ext}"
+            writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*codec), fps, (w, h))
+            if writer.isOpened():
+                self.path = path
+                self.writer = writer
+                print(f"[Vision] Clip recording started: {self.path} ({codec})")
+                return self.path
+            writer.release()
+
+        print("[Vision] Clip writer failed: no compatible codec")
+        self.writer = None
+        self.path = None
+        self.started_at = None
+        return None
 
     def write(self, frame):
         if self.writer is not None:

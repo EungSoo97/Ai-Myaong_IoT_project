@@ -1,9 +1,15 @@
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
+import mimetypes
+import os
+import subprocess
+import sys
 from time import time
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 
@@ -40,6 +46,16 @@ class VisionEventCreate(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
 
 
+class VisionRevealRequest(BaseModel):
+    path: str
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ALLOWED_MEDIA_DIRS = [
+    PROJECT_ROOT / "desktop" / "opencv" / "captures",
+    PROJECT_ROOT / "desktop" / "opencv" / "clips",
+]
+
 _latest_detection: dict = {
     "frame_width": 0,
     "frame_height": 0,
@@ -58,6 +74,32 @@ _control_state: dict = {
 
 _event_seq = 0
 _events = deque(maxlen=100)
+
+
+def _resolve_media_path(raw_path: str) -> Path:
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="media path is required")
+
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+
+    resolved = path.resolve()
+    allowed = False
+    for directory in ALLOWED_MEDIA_DIRS:
+        try:
+            resolved.relative_to(directory.resolve())
+            allowed = True
+            break
+        except ValueError:
+            continue
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="media path is not allowed")
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="media file not found")
+
+    return resolved
 
 
 @router.post("/detections")
@@ -118,3 +160,23 @@ def create_event(payload: VisionEventCreate):
 def recent_events(limit: int = 20):
     limit = max(1, min(limit, 100))
     return {"events": list(_events)[:limit]}
+
+
+@router.get("/media")
+def get_media(path: str = Query(...)):
+    resolved = _resolve_media_path(path)
+    media_type = mimetypes.guess_type(resolved.name)[0]
+    return FileResponse(resolved, media_type=media_type)
+
+
+@router.post("/reveal")
+def reveal_media(payload: VisionRevealRequest):
+    resolved = _resolve_media_path(payload.path)
+
+    if os.name == "nt":
+        subprocess.Popen(["explorer", f"/select,{resolved}"])
+    else:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([opener, str(resolved.parent)])
+
+    return {"ok": True, "path": str(resolved)}

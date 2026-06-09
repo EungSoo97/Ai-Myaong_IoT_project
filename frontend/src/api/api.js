@@ -86,6 +86,13 @@ export const api = {
   getLatestDetections: () => request("/api/vision/detections/latest"),
   getVisionEvents: (limit = 20) =>
     request(`/api/vision/events/recent?limit=${encodeURIComponent(limit)}`),
+  getVisionMediaUrl: (path) =>
+    `${API_BASE}/api/vision/media?path=${encodeURIComponent(path)}`,
+  revealVisionMedia: (path) =>
+    request("/api/vision/reveal", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
   requestVisionCapture: () =>
     request("/api/vision/capture", { method: "POST" }),
   setVisionRecording: (on) =>
