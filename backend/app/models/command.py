@@ -14,6 +14,10 @@ class CameraRequest(BaseModel):
     direction: CameraCommand
 
 
+class AwayModeRequest(BaseModel):
+    on: bool
+
+
 class FeedRequest(BaseModel):
     amount: int = Field(default=1, ge=1, le=20)
 

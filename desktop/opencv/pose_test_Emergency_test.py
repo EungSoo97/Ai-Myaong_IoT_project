@@ -6,9 +6,14 @@ import cv2
 import numpy as np
 import time
 import os
+import requests
+from pathlib import Path
 from collections import deque
 from datetime import datetime
+from dotenv import load_dotenv
 from ultralytics import YOLO
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # ── 모델 로드 ──────────────────────────────────────────────────────────
 det_model  = YOLO("yolov8n.pt")        # 고양이/강아지/사람 감지용
@@ -334,14 +339,70 @@ class ManualRecorder:
 
 recorder = ManualRecorder()
 
-# ── 메인 파이프라인 ────────────────────────────────────────────────────
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-ret, init_frame = cap.read()
-if not ret or init_frame is None:
+def resolve_capture_source():
+    source = os.getenv("MJPEG_STREAM_URL") or os.getenv("CAMERA_SOURCE") or "0"
+    source = source.strip()
+    return int(source) if source.isdigit() else source
+
+
+def mjpeg_frame_generator(url):
+    buffer = b""
+    response = requests.get(url, stream=True, timeout=10)
+    response.raise_for_status()
+
+    try:
+        for chunk in response.iter_content(chunk_size=4096):
+            if not chunk:
+                continue
+
+            buffer += chunk
+            start = buffer.find(b"\xff\xd8")
+            end = buffer.find(b"\xff\xd9")
+
+            if start == -1 or end == -1 or end <= start:
+                continue
+
+            jpg = buffer[start:end + 2]
+            buffer = buffer[end + 2:]
+            frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                yield frame
+    finally:
+        response.close()
+
+
+def opencv_frame_generator(source):
+    cap = cv2.VideoCapture(source)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
+            yield frame
+    finally:
+        cap.release()
+
+
+def open_frame_source(source):
+    if isinstance(source, str) and source.startswith(("http://", "https://")):
+        return mjpeg_frame_generator(source)
+    return opencv_frame_generator(source)
+
+
+# ── 메인 파이프라인 ────────────────────────────────────────────────────
+capture_source = resolve_capture_source()
+print(f"[Camera] Opening source: {capture_source}")
+frame_source = open_frame_source(capture_source)
+
+try:
+    init_frame = next(frame_source)
+except (StopIteration, requests.RequestException) as exc:
     print("[오류] 카메라에서 프레임을 읽어올 수 없습니다. 장치 연결을 확인하세요.")
+    print(f"[Camera] {exc}")
     exit()
 h, w = init_frame.shape[:2]
 
@@ -352,11 +413,9 @@ current_pose = ("Unknown", 0.0)
 
 print("Pet Pose & Safety Monitoring System Layer Active.")
 
-while True:
-    ret, frame = cap.read()
-    if not ret: break
-
-    frame = cv2.flip(frame, 1)
+for frame in frame_source:
+    # Mirror mode is currently disabled. Re-enable this line if the preview needs left/right flip.
+    # frame = cv2.flip(frame, 1)
     now = time.time()
 
     raw_frame = frame.copy()  # 그래픽이 그려지지 않은 순수 원본 프레임 백업
@@ -440,6 +499,5 @@ while True:
         cv2.imwrite(capture_file, raw_frame)  # 깔끔한 원본 이미지 저장
         print(f"[Capture] Image Saved -> {capture_file}")
 
-cap.release()
 cv2.destroyAllWindows()
 if recorder.recording: recorder._stop()

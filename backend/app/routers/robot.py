@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from app.models.command import CameraRequest, CommandResponse, MoveRequest, RobotStatus
+from app.models.command import AwayModeRequest, CameraRequest, CommandResponse, MoveRequest, RobotStatus
 from app.services.local_serial import LocalSerialError
 
 router = APIRouter(prefix="/api/robot", tags=["robot"])
@@ -18,6 +18,22 @@ def move_robot(payload: MoveRequest, request: Request):
 def move_camera(payload: CameraRequest, request: Request):
     try:
         return request.app.state.robot_service.camera(payload.direction)
+    except LocalSerialError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/away-mode", response_model=CommandResponse)
+def set_away_mode(payload: AwayModeRequest, request: Request):
+    try:
+        return request.app.state.robot_service.away_mode(payload.on)
+    except LocalSerialError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/capture", response_model=CommandResponse)
+def capture_snapshot(request: Request):
+    try:
+        return request.app.state.robot_service.capture()
     except LocalSerialError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 

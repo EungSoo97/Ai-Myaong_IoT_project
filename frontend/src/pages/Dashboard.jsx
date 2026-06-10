@@ -9,6 +9,8 @@ import {
   Bell,
   PhoneCall,
   Camera,
+  Video,
+  UserX,
   PawPrint,
   UtensilsCrossed,
   Droplets,
@@ -22,9 +24,10 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, timeAgo } from "../lib/notificationRepository";
+import { useNotifications, timeAgo, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
+import { mapVisionEventForList, mapVisionEventToNotification } from "../lib/visionEventMapper";
 
 // 최근 활동 = DB(feed_logs/water_logs)의 배식·급수 기록을 최근순으로 표시 (mock 제거)
 
@@ -33,6 +36,12 @@ const TONE = {
   warn: "bg-brand-warning/20 text-[#A06B1A]",
   danger: "bg-brand-danger/15 text-brand-danger",
   brown: "bg-brand-brown/10 text-brand-brown",
+};
+
+const EVENT_ICON = {
+  away_person: UserX,
+  capture_saved: Camera,
+  clip_saved: Video,
 };
 
 const SHORTCUTS = [
@@ -142,7 +151,9 @@ export function Dashboard() {
   const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
   const notifications = useNotifications();
-  const unread = notifications.length; // 읽음 개념 제거 → 알림 개수 배지
+  const unread = notifications.length;
+  const [visionEvents, setVisionEvents] = useState([]);
+  const syncedNotificationIdsRef = useRef(new Set());
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
@@ -199,7 +210,57 @@ export function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    syncedNotificationIdsRef.current = new Set(
+      notifications.filter((n) => String(n.id).startsWith("vision-")).map((n) => n.id),
+    );
+  }, [notifications]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      api
+        .getVisionEvents(8)
+        .then((data) => {
+          if (!alive) return;
+          const events = data.events || [];
+          setVisionEvents(events);
+
+          events.forEach((event) => {
+            const notification = mapVisionEventToNotification(event);
+            if (syncedNotificationIdsRef.current.has(notification.id)) return;
+            syncedNotificationIdsRef.current.add(notification.id);
+            addNotification(notification);
+          });
+        })
+        .catch(() => {
+          if (alive) setVisionEvents([]);
+        });
+    };
+
+    load();
+    const timer = window.setInterval(load, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const showLive = streamUrl && !streamFailed;
+  const recentItems = useMemo(() => {
+    const vision = (visionEvents || []).map((event) => {
+      const item = mapVisionEventForList(event);
+      return {
+        ...item,
+        key: item.id,
+        t: new Date(item.rawTime).getTime(),
+      };
+    });
+
+    return [...vision, ...recentActivity]
+      .sort((a, b) => (b.t || 0) - (a.t || 0))
+      .slice(0, 30);
+  }, [visionEvents, recentActivity]);
 
   // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
   const nickname = account?.user?.nickname || "집사";
@@ -541,12 +602,14 @@ export function Dashboard() {
             전체보기 <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
-        <CreamCard className={`divide-y divide-brand-line ${recentActivity.length > 6 ? "max-h-[348px] overflow-y-auto no-scrollbar" : ""}`}>
-          {recentActivity.length === 0 ? (
+        <CreamCard className={`divide-y divide-brand-line ${recentItems.length > 6 ? "max-h-[348px] overflow-y-auto no-scrollbar" : ""}`}>
+          {recentItems.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
           ) : (
-            recentActivity.map(({ key, icon: Icon, tone, title, desc, time }) => (
-              <div key={key} className="flex items-center gap-3 px-4 py-3.5">
+            recentItems.map(({ id, key, icon, eventType, tone, title, desc, time }) => {
+              const Icon = icon || EVENT_ICON[eventType] || PawPrint;
+              return (
+              <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
                 <span
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
                 >
@@ -558,7 +621,7 @@ export function Dashboard() {
                 </div>
                 <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
               </div>
-            ))
+            )})
           )}
         </CreamCard>
       </section>
