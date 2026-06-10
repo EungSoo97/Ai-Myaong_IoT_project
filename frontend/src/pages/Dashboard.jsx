@@ -10,6 +10,7 @@ import {
   PhoneCall,
   Camera,
   Video,
+  UserX,
   PawPrint,
   UtensilsCrossed,
   Droplets,
