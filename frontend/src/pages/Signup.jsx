@@ -51,6 +51,19 @@ const STEP_PET = 1;
 /* 오늘 날짜 (생년월일 미래 선택 방지용) */
 const TODAY = new Date().toISOString().slice(0, 10);
 
+function ageFromBirthDate(birthDate) {
+  if (!birthDate) return null;
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const beforeBirthday =
+    today.getMonth() < birth.getMonth() ||
+    (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 ? age : null;
+}
+
 /* 빈 펫 객체 — 초기값 & Reset 용 */
 const emptyPet = () => ({
   name: "",
@@ -305,6 +318,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
             breed: pet.breed,
             gender: pet.gender,
             birth_date: pet.birthDate || null,
+            age: ageFromBirthDate(pet.birthDate),
             weight_kg: pet.weightKg ? Number(pet.weightKg) : null,
             height_cm: pet.heightCm ? Number(pet.heightCm) : null,
             circumference: pet.circumference ? Number(pet.circumference) : null,

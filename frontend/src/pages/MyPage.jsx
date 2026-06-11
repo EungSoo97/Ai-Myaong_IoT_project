@@ -70,6 +70,7 @@ export function MyPage() {
   const rawPet = account?.pets?.[0] || null;
   const hasPet = Boolean(rawPet);
   const pet = rawPet || {};
+  const petAgeText = pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate);
 
   const nickname = user.nickname || "집사";
   const email = user.email || "";
@@ -172,8 +173,8 @@ export function MyPage() {
                     {pet.breed || speciesLabel(pet.species)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {petAgeLabel(pet.birthDate) && (
-                      <Badge tone="brown">{petAgeLabel(pet.birthDate)}</Badge>
+                    {petAgeText && (
+                      <Badge tone="brown">{petAgeText}</Badge>
                     )}
                     {pet.weightKg && (
                       <Badge tone="primary">{pet.weightKg}kg</Badge>

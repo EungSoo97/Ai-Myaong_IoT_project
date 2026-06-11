@@ -224,7 +224,7 @@ export function PetDetail() {
 }
 
 function PetBody({ pet }) {
-  const ageLabel = petAgeLabel(pet.birthDate)
+  const ageLabel = pet.age !== '' && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate)
   const bmi = petBmi(pet.weightKg, pet.heightCm)
   const grade = bmiGrade(bmi)
 

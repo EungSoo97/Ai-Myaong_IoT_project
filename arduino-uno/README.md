@@ -24,6 +24,24 @@ Open this sketch in Arduino IDE:
 
 - `arduino-uno/AiMyaongRobot/AiMyaongRobot.ino`
 
+## Direct Desktop Serial Test
+
+Use this path when the Raspberry Pi is not connected.
+
+1. Upload `AiMyaongRobot` to the Arduino Uno.
+2. Connect the Arduino Uno to the desktop by USB.
+3. Open `frontend/public/serial-test.html` in Chrome or Edge.
+4. Click `Connect`, select the Arduino serial port, then run `PINOUT` or `MOTOR_DIAG`.
+
+For backend/API testing with the desktop USB cable, set these values in `backend/.env`:
+
+```env
+ROBOT_COMMAND_TRANSPORT=local_serial
+SERIAL_PORT=auto
+SERIAL_BAUD=115200
+SERIAL_DEBUG=true
+```
+
 ## Command Set
 
 Supported commands in the scaffold:

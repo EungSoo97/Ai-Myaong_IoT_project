@@ -21,6 +21,7 @@ import {
   Sparkles,
   X,
   Maximize2,
+  Trash2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -308,6 +309,16 @@ export function Dashboard() {
   }, [visionEvents, recentActivity]);
   const visibleRecentItems = useMemo(() => recentItems.slice(0, 5), [recentItems]);
 
+  const deleteRecentVisionEvent = async (item) => {
+    if (!item?.eventId) return;
+    try {
+      await api.deleteAlert(item.eventId);
+      setVisionEvents((events) => events.filter((event) => event.id !== item.eventId));
+    } catch (error) {
+      console.error("[Dashboard] delete recent event failed:", error);
+    }
+  };
+
   // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
   const nickname = account?.user?.nickname || "집사";
   const pets = account?.pets ?? [];
@@ -316,7 +327,7 @@ export function Dashboard() {
   const petName = pet?.name || "";
   const petBreed = pet?.breed || "";
   const petSpecies = pet ? speciesLabel(pet.species) : "";
-  const ageLabel = pet ? petAgeLabel(pet.birthDate) : "";
+  const ageLabel = pet ? (pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate)) : "";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
@@ -734,7 +745,8 @@ export function Dashboard() {
               {visibleRecentItems.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
               ) : (
-                visibleRecentItems.map(({ id, key, icon, eventType, tone, title, desc, time }) => {
+                visibleRecentItems.map((item) => {
+                  const { id, key, icon, eventType, tone, title, desc, time, eventId } = item;
                   const Icon = icon || EVENT_ICON[eventType] || PawPrint;
                   return (
                   <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
@@ -748,6 +760,17 @@ export function Dashboard() {
                       <p className="text-xs text-brand-mute truncate">{desc}</p>
                     </div>
                     <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
+                    {eventId && (
+                      <button
+                        type="button"
+                        onClick={() => deleteRecentVisionEvent(item)}
+                        className="w-8 h-8 rounded-2xl bg-brand-card text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                        aria-label="로그 삭제"
+                        title="로그 삭제"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 )})
               )}

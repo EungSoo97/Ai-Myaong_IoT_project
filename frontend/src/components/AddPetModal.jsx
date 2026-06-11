@@ -17,7 +17,7 @@ const TODAY = new Date().toISOString().slice(0, 10) // 미래 생일 선택 방�
 
 const emptyPet = () => ({
   name: '', species: 'DOG', breed: '', gender: 'M',
-  birthDate: '', weightKg: '', heightCm: '',
+  birthDate: '', age: '', weightKg: '', heightCm: '',
   circumference: '', legLength: '', // (선택) 체지방률 계산용
   photo: '', notes: '',
 })
@@ -59,6 +59,7 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
     if (!pet.name.trim()) { setErr('이름을 입력해 주세요.'); return }
     if (!pet.breed.trim()) { setErr('품종을 입력해 주세요.'); return }
     if (pet.birthDate && pet.birthDate > TODAY) { setErr('생년월일은 오늘 이후로 선택할 수 없어요.'); return }
+    if (pet.age !== '' && Number(pet.age) < 0) { setErr('나이는 0 이상으로 입력해 주세요.'); return }
     dismiss(() => onSave(pet))
   }
 
@@ -124,6 +125,7 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
         <div className="mt-1.5">
           <DateWheel value={pet.birthDate} onChange={(v) => set('birthDate', v)} />
         </div>
+        <Field label="나이" value={pet.age} onChange={(v) => set('age', v)} placeholder="예: 3" type="number" min="0" />
         <Field label="몸무게 (kg)" value={pet.weightKg} onChange={(v) => set('weightKg', v)} placeholder="예: 4.2" type="number" />
         <Field label="키 (cm)" value={pet.heightCm} onChange={(v) => set('heightCm', v)} placeholder="예: 25" type="number" />
         <Field label={`${pet.species === 'CAT' ? '갈비뼈 둘레' : '골반 둘레'} (cm)`} value={pet.circumference}
@@ -161,7 +163,7 @@ function Label({ children }) {
   return <span className="mt-4 block text-sm font-bold pl-1" style={{ color: C.mute }}>{children}</span>
 }
 
-function Field({ icon, label, value, onChange, type = 'text', placeholder, max }) {
+function Field({ icon, label, value, onChange, type = 'text', placeholder, max, min }) {
   return (
     <label className="mt-4 block">
       <span className="text-sm font-bold pl-1" style={{ color: C.mute }}>{label}</span>
@@ -173,6 +175,7 @@ function Field({ icon, label, value, onChange, type = 'text', placeholder, max }
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           max={max}
+          min={min}
           className="flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
           style={{ color: C.brown }}
         />
