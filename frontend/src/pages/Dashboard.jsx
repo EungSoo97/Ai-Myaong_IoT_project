@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -16,6 +16,7 @@ import {
   Droplets,
   Plane,
   ChevronRight,
+  ChevronDown,
   Footprints,
 } from "lucide-react";
 import {
@@ -24,10 +25,10 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, timeAgo, addNotification } from "../lib/notificationRepository";
+import { useNotifications, timeAgo } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
-import { mapVisionEventForList, mapVisionEventToNotification } from "../lib/visionEventMapper";
+import { mapVisionEventForList } from "../lib/visionEventMapper";
 
 // 최근 활동 = DB(feed_logs/water_logs)의 배식·급수 기록을 최근순으로 표시 (mock 제거)
 
@@ -153,17 +154,22 @@ export function Dashboard() {
   const notifications = useNotifications();
   const unread = notifications.length;
   const [visionEvents, setVisionEvents] = useState([]);
-  const syncedNotificationIdsRef = useRef(new Set());
+  const [recentCollapsed, setRecentCollapsed] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
   const [recentLogs, setRecentLogs] = useState({ feed: [], water: [] });
+  const refreshLogs = useCallback(
+    () =>
+      api
+        .getDispenserLogs()
+        .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
+        .catch(() => {}),
+    [],
+  );
   useEffect(() => {
-    api
-      .getDispenserLogs()
-      .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
-      .catch(() => {});
-  }, []);
+    refreshLogs();
+  }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
     const feed = (recentLogs.feed || []).map((x) => ({
@@ -212,12 +218,6 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    syncedNotificationIdsRef.current = new Set(
-      notifications.filter((n) => String(n.id).startsWith("vision-")).map((n) => n.id),
-    );
-  }, [notifications]);
-
-  useEffect(() => {
     let alive = true;
     const load = () => {
       api
@@ -226,13 +226,6 @@ export function Dashboard() {
           if (!alive) return;
           const events = data.events || [];
           setVisionEvents(events);
-
-          events.forEach((event) => {
-            const notification = mapVisionEventToNotification(event);
-            if (syncedNotificationIdsRef.current.has(notification.id)) return;
-            syncedNotificationIdsRef.current.add(notification.id);
-            addNotification(notification);
-          });
         })
         .catch(() => {
           if (alive) setVisionEvents([]);
@@ -263,6 +256,7 @@ export function Dashboard() {
       .sort((a, b) => (b.t || 0) - (a.t || 0))
       .slice(0, 30);
   }, [visionEvents, recentActivity]);
+  const visibleRecentItems = useMemo(() => recentItems.slice(0, 5), [recentItems]);
 
   // 가입/로그인 데이터 기반 값 (가짜 하드코딩 없음)
   const nickname = account?.user?.nickname || "집사";
@@ -408,7 +402,19 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
-        api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
+        // 최근 활동에 즉시 반영(낙관적 추가) → 새로고침 없이 바로 보임
+        setRecentLogs((prev) => ({
+          ...prev,
+          feed: [
+            { created_at: new Date().toISOString(), amount_g: feed.food },
+            ...(prev.feed || []),
+          ],
+        }));
+        // DB 기록 후 서버 기준으로 재동기화(실제 created_at 등)
+        api
+          .createFeedLog({ amount_g: feed.food, feed_type: "quick" })
+          .then(() => refreshLogs())
+          .catch(() => {});
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       } else if (id === "call") {
@@ -607,39 +613,62 @@ export function Dashboard() {
       {/* 4) 최근 활동 */}
       <section className="mt-6">
         <div className="flex items-center justify-between px-1 mb-3">
-          <h3 className="font-display text-base font-bold text-brand-brown">
-            최근 활동
-          </h3>
           <button
             type="button"
-            onClick={() => navigate("/activity")}
-            className="text-xs text-brand-mute font-semibold flex items-center touch-active"
+            onClick={() => setRecentCollapsed((value) => !value)}
+            className="flex items-center gap-1.5 text-left touch-active"
+            aria-expanded={!recentCollapsed}
           >
-            전체보기 <ChevronRight className="w-3.5 h-3.5" />
+            <h3 className="font-display text-base font-bold text-brand-brown">
+              최근 활동
+            </h3>
+            <ChevronDown
+              className={`w-4 h-4 text-brand-mute transition-transform ${recentCollapsed ? "-rotate-90" : ""}`}
+            />
           </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-brand-mute font-semibold">
+              {Math.min(recentItems.length, 5)}/5
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate("/activity")}
+              className="text-xs text-brand-mute font-semibold flex items-center touch-active"
+            >
+              전체보기 <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-        <CreamCard className={`divide-y divide-brand-line ${recentItems.length > 6 ? "max-h-[348px] overflow-y-auto no-scrollbar" : ""}`}>
-          {recentItems.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
-          ) : (
-            recentItems.map(({ id, key, icon, eventType, tone, title, desc, time }) => {
-              const Icon = icon || EVENT_ICON[eventType] || PawPrint;
-              return (
-              <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
-                <span
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
-                >
-                  <Icon className="w-5 h-5" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
-                  <p className="text-xs text-brand-mute truncate">{desc}</p>
-                </div>
-                <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
-              </div>
-            )})
-          )}
-        </CreamCard>
+        <div
+          className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+            recentCollapsed ? "grid-rows-[0fr] opacity-0 -mt-1" : "grid-rows-[1fr] opacity-100"
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <CreamCard className="divide-y divide-brand-line">
+              {visibleRecentItems.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
+              ) : (
+                visibleRecentItems.map(({ id, key, icon, eventType, tone, title, desc, time }) => {
+                  const Icon = icon || EVENT_ICON[eventType] || PawPrint;
+                  return (
+                  <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
+                    <span
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
+                      <p className="text-xs text-brand-mute truncate">{desc}</p>
+                    </div>
+                    <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
+                  </div>
+                )})
+              )}
+            </CreamCard>
+          </div>
+        </div>
       </section>
 
       {/* 5) 펫 활동량 통계 (일/주/월) */}

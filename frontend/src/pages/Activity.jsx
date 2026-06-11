@@ -318,6 +318,7 @@ function DetectionBody({ item }) {
   const storagePath = item.storage_path || clip?.storage_path || ''
   const isCapture = item.eventType === 'capture_saved'
   const isClip = item.eventType === 'clip_saved' || !!clip
+  const isAwayPerson = item.eventType === 'away_person'
   const hasMedia = !!storagePath
 
   useEffect(() => {
@@ -347,6 +348,18 @@ function DetectionBody({ item }) {
 
   return (
     <div>
+      {isAwayPerson && (
+        <div className="rounded-2xl bg-brand-danger/10 p-4 flex items-start gap-3">
+          <span className="w-9 h-9 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-5 h-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-brand-danger">{item.type}</p>
+            <p className="mt-1 text-sm text-brand-brown/80">{item.desc}</p>
+          </div>
+        </div>
+      )}
+      {!isAwayPerson && (
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
         {hasMedia || clip ? (
           <>
@@ -394,6 +407,7 @@ function DetectionBody({ item }) {
           </div>
         )}
       </div>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <StatCard icon={<Clock className="w-4 h-4" />} label="탐지 시각" value={item.time} />
