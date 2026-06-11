@@ -2,6 +2,7 @@ import json
 import os
 import re
 import signal
+import ssl
 import subprocess
 import sys
 import threading
@@ -46,12 +47,14 @@ class RaspberryPiAgent:
     def __init__(self) -> None:
         self.serial = SerialComm()
         self.mqtt_disabled = os.getenv("MQTT_DISABLED", "false").lower() == "true"
-        self.mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
-        self.mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+        self.mqtt_host = os.getenv("MQTT_BROKER_HOST", "e44ad0126d10454591f26ef086205935.s1.eu.hivemq.cloud")
+        self.mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "8883"))
         self.mqtt_username = os.getenv("MQTT_USERNAME")
         self.mqtt_password = os.getenv("MQTT_PASSWORD")
         self.client_id = os.getenv("MQTT_CLIENT_ID", "ai-myaong-raspberrypi")
         self.reconnect_delay = float(os.getenv("MQTT_RECONNECT_DELAY", "5"))
+        self.mqtt_tls = os.getenv("MQTT_TLS", "auto").lower()
+        self.mqtt_tls_insecure = os.getenv("MQTT_TLS_INSECURE", "false").lower() == "true"
         self.topics = tuple(
             topic.strip()
             for topic in os.getenv("MQTT_TOPICS", "robot/move,robot/camera").split(",")
@@ -81,23 +84,22 @@ class RaspberryPiAgent:
         self._client = client
         if self.mqtt_username:
             client.username_pw_set(self.mqtt_username, self.mqtt_password)
+        if self._should_use_tls():
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            client.tls_insecure_set(self.mqtt_tls_insecure)
 
         client.on_connect = self.on_connect
         client.on_disconnect = self.on_disconnect
         client.on_message = self.on_message
-        client.reconnect_delay_set(min_delay=1, max_delay=max(2, int(self.reconnect_delay)))
+        # client.reconnect_delay_set(min_delay=1, max_delay=max(2, int(self.reconnect_delay)))
         print(f"[raspberrypi] connecting to MQTT broker {self.mqtt_host}:{self.mqtt_port}")
 
         try:
-            while not self._stopping.is_set():
-                try:
-                    client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
-                    client.loop_forever(retry_first_connection=True)
-                except KeyboardInterrupt:
-                    raise
-                except Exception as exc:
-                    print(f"[raspberrypi] MQTT reconnect failed: {exc}")
-                    time.sleep(self.reconnect_delay)
+            # while not self._stopping.is_set():
+                # try:
+            client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
+            # client.loop_forever(retry_first_connection=True)
+            client.loop_forever()
         except KeyboardInterrupt:
             print("[raspberrypi] stopped by user")
         finally:
@@ -114,6 +116,13 @@ class RaspberryPiAgent:
             return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.client_id)
         except AttributeError:
             return mqtt.Client(client_id=self.client_id)
+
+    def _should_use_tls(self) -> bool:
+        if self.mqtt_tls in {"true", "1", "yes", "on"}:
+            return True
+        if self.mqtt_tls in {"false", "0", "no", "off"}:
+            return False
+        return self.mqtt_port == 8883
 
     def on_connect(self, client, _userdata, _flags, reason_code, _properties=None) -> None:
         if not self._is_success(reason_code):
@@ -206,7 +215,7 @@ def start_wifi_http_server(agent: RaspberryPiAgent) -> None:
 def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None:
     import uvicorn
     from fastapi import FastAPI, HTTPException
-
+    from fastapi.responses import StreamingResponse
     app = FastAPI(title="Ai-Myaong Raspberry Pi Agent", version="0.1.0")
 
     @app.get("/api/wifi/scan")
@@ -224,7 +233,14 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
             "source": "raspberrypi",
             "wifiJob": WIFI_JOB_STATUS,
         }
-
+    @app.get("/api/camera/stream")
+    def camera_stream():
+        stream_port = os.getenv("STREAM_PORT", "8081").strip() or "8081"
+        stream_url = f"http://127.0.0.1:{stream_port}/stream.mjpg"
+        return StreamingResponse(
+            proxy_http_stream(stream_url),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
     @app.post("/api/wifi/desktop-backend")
     def save_desktop_backend(body: dict | None = None):
         body = body or {}
