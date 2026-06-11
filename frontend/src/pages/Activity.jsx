@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Card, CreamCard, Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
+import { mapVisionEventForList } from '../lib/visionEventMapper'
 
 /* ═══════════════════════════════════════════════════════════
  * Mock 데이터 — 백엔드 DB 스키마(관계형) 기반
@@ -63,10 +64,31 @@ export function Activity() {
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null) // 상세 시트 대상
   const [feedLogs, setFeedLogs] = useState({ feed: [], water: [] })
+  const [visionEvents, setVisionEvents] = useState([])
 
   // 급여(배식/급수)는 DB 연동 / 감지는 mock(DETECTIONS) 유지
   useEffect(() => {
     api.getDispenserLogs().then((d) => setFeedLogs({ feed: d.feed || [], water: d.water || [] })).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const load = () => {
+      api
+        .getVisionEvents(50)
+        .then((data) => {
+          if (alive) setVisionEvents(data.events || [])
+        })
+        .catch(() => {
+          if (alive) setVisionEvents([])
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   const feedItems = useMemo(() => {
@@ -87,13 +109,28 @@ export function Activity() {
     return [...food, ...water]
   }, [feedLogs])
 
+  const visionItems = useMemo(
+    () => (visionEvents || []).map((event) => ({
+      ...mapVisionEventForList(event),
+      cat: 'vision',
+      icon: event.type === 'away_person' ? UserX : Video,
+      desc: event.message,
+    })),
+    [visionEvents],
+  )
+
   const all = useMemo(
-    () => [...DETECTIONS, ...feedItems].sort((a, b) => b.time.localeCompare(a.time)),
-    [feedItems],
+    () => [...visionItems, ...feedItems].sort((a, b) => {
+      const at = a.rawTime ? new Date(a.rawTime).getTime() : 0
+      const bt = b.rawTime ? new Date(b.rawTime).getTime() : 0
+      if (at || bt) return bt - at
+      return String(b.time).localeCompare(String(a.time))
+    }),
+    [feedItems, visionItems],
   )
   const list = filter === 'all' ? all : all.filter((x) => x.cat === filter)
 
-  const detectCount = DETECTIONS.length
+  const detectCount = visionItems.length
   const feedTotal = feedItems.filter((x) => x.kind === 'food').reduce((s, x) => s + x.amount, 0)
 
   return (
@@ -276,71 +313,104 @@ function FeedingBody({ item }) {
 /* 감지 상세: CLIPS 릴레이션 + 실제 영상 재생 */
 function DetectionBody({ item }) {
   const clip = item.clip_id ? getClip(item.clip_id) : null
-  const [videoUrl, setVideoUrl] = useState(null)
-  const [videoFailed, setVideoFailed] = useState(false)
+  const [mediaUrl, setMediaUrl] = useState(null)
+  const [mediaFailed, setMediaFailed] = useState(false)
+  const storagePath = item.storage_path || clip?.storage_path || ''
+  const isCapture = item.eventType === 'capture_saved'
+  const isClip = item.eventType === 'clip_saved' || !!clip
+  const hasMedia = !!storagePath
 
-  // 백엔드가 클립을 저장/서빙하면 재생 URL 을 받아 자동 재생.
-  // 미구현 시 storage_path 를 API_BASE 기준으로 직접 시도 → 그래도 없으면 placeholder.
   useEffect(() => {
-    setVideoUrl(null)
-    setVideoFailed(false)
+    setMediaUrl(null)
+    setMediaFailed(false)
+    if (storagePath) {
+      setMediaUrl(api.getVisionMediaUrl(storagePath))
+      return undefined
+    }
     if (!clip) return undefined
     let alive = true
     api
       .getClipUrl(clip.clip_id)
-      .then((u) => { if (alive && u) setVideoUrl(u) })
-      .catch(() => { if (alive) setVideoUrl(resolveMediaUrl(clip.storage_path)) })
+      .then((u) => { if (alive && u) setMediaUrl(u) })
+      .catch(() => { if (alive) setMediaUrl(resolveMediaUrl(clip.storage_path)) })
     return () => { alive = false }
-  }, [clip])
+  }, [clip, storagePath])
 
-  const showVideo = !!(clip && videoUrl && !videoFailed)
+  const showImage = isCapture && mediaUrl && !mediaFailed
+  const showVideo = isClip && mediaUrl && !mediaFailed
+  const openLocalPath = () => {
+    if (!storagePath) return
+    api.revealVisionMedia(storagePath).catch((error) => {
+      console.error('[Activity] reveal media failed:', error)
+    })
+  }
 
   return (
     <div>
-      {/* 클립 영역 */}
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
-        {clip ? (
+        {hasMedia || clip ? (
           <>
-            {showVideo ? (
+            {showImage ? (
+              <img
+                src={mediaUrl}
+                alt={item.type}
+                onError={() => setMediaFailed(true)}
+                className="absolute inset-0 w-full h-full object-contain bg-black"
+              />
+            ) : showVideo ? (
               <video
-                src={videoUrl}
+                src={mediaUrl}
                 controls
                 playsInline
                 preload="metadata"
-                onError={() => setVideoFailed(true)}
+                onError={() => setMediaFailed(true)}
                 className="absolute inset-0 w-full h-full object-contain bg-black"
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white/80 gap-2">
                 <span className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-                  <Play className="w-6 h-6 ml-0.5" />
+                  {isCapture ? <Video className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
                 </span>
-                <span className="text-[11px] font-semibold">영상 준비 중 · 처리되면 자동 재생</span>
+                <span className="text-[11px] font-semibold">
+                  {mediaFailed ? '미리보기를 불러오지 못했어요' : '미리보기 준비 중'}
+                </span>
               </div>
             )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
-              <Video className="w-3.5 h-3.5" /> REC
+              <Video className="w-3.5 h-3.5" /> {isCapture ? 'CAPTURE' : 'REC'}
             </span>
             <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
-              <MapPin className="w-3.5 h-3.5" /> {clip.camera_location}
+              <MapPin className="w-3.5 h-3.5" /> {clip?.camera_location || '로봇 비전'}
             </span>
             {!showVideo && (
               <span className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/55 text-white text-[11px] font-bold tabular-nums pointer-events-none">
-                00:{String(clip.duration).padStart(2, '0')}
+                {clip?.duration ? `00:${String(clip.duration).padStart(2, '0')}` : item.eventType || 'EVENT'}
               </span>
             )}
           </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-white/75 text-sm font-semibold">
-            저장된 영상이 없는 이벤트예요
+            저장된 미디어가 없는 이벤트예요
           </div>
         )}
       </div>
 
-      {/* 메타 */}
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <StatCard icon={<Clock className="w-4 h-4" />} label="탐지 시각" value={item.time} />
-        <StatCard icon={<MapPin className="w-4 h-4" />} label="위치" value={clip?.camera_location || item.desc} />
+        <button
+          type="button"
+          onClick={openLocalPath}
+          disabled={!storagePath}
+          className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+          title={storagePath || clip?.camera_location || item.desc}
+        >
+          <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
+            <MapPin className="w-4 h-4" /> 위치
+          </p>
+          <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">
+            {storagePath || clip?.camera_location || item.desc}
+          </p>
+        </button>
       </div>
 
       {item.danger && (
@@ -350,13 +420,15 @@ function DetectionBody({ item }) {
         </div>
       )}
 
-      {clip && (
+      {storagePath && (
         <p className="mt-2 text-[11px] text-brand-mute truncate">
-          활동 → clip#{clip.clip_id} · {clip.storage_path} · {clip.duration}초
+          {storagePath}
         </p>
       )}
     </div>
   )
+
+
 }
 
 function StatCard({ icon, label, value, accent }) {

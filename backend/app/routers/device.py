@@ -21,7 +21,7 @@ class DeviceRegister(BaseModel):
     role: str = "raspberrypi"
     ssid: str = ""
     agent_port: int = 8765
-    stream_port: int = 8080
+    stream_port: int = 8081
 
 
 @router.post("/register")
@@ -88,7 +88,7 @@ def get_device(device_id: str):
                     "role": "raspberrypi",
                     "ssid": "",
                     "agent_port": "8765",
-                    "stream_port": "8080",
+                    "stream_port": "8081",
                     "last_seen": "",
                     "source": "backendEnv",
                 },

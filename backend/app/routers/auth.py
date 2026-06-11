@@ -120,6 +120,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
             breed=pet_data.breed,
             gender=pet_data.gender,
             birth_date=pet_data.birth_date,
+            age=pet_data.age,
             weight_kg=pet_data.weight_kg,
             height_cm=pet_data.height_cm,
             circumference=pet_data.circumference,
