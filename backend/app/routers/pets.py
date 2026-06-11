@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/pets", tags=["pets"])
 
 _PET_FIELDS = [
     "name", "species", "breed", "gender", "birth_date",
-    "weight_kg", "height_cm", "circumference", "leg_length",
+    "age", "weight_kg", "height_cm", "circumference", "leg_length",
 ]
 
 

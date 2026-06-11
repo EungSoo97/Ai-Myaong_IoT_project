@@ -168,6 +168,23 @@ def fetch_control_state(backend_url):
 
 
 def post_event(backend_url, event_type, title, message, source=None, storage_path=None, confidence=None):
+    event_text = {
+        "capture_saved": (
+            "캡처 저장됨",
+            "현재 카메라 화면을 이미지로 저장했어요.",
+        ),
+        "away_person": (
+            "외출 모드 중 사람 감지",
+            "외출 모드 상태에서 사람이 감지되었어요.",
+        ),
+        "clip_saved": (
+            "클립 저장 완료",
+            "영상 클립 저장을 완료했어요.",
+        ),
+    }
+    if event_type in event_text:
+        title, message = event_text[event_type]
+
     payload = {
         "type": event_type,
         "title": title,

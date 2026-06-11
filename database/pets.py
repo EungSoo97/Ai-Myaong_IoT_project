@@ -13,6 +13,7 @@ class Pet(Base):
     species        = Column(String(50),  nullable=True)
     breed          = Column(String(50),  nullable=True)
     birth_date     = Column(Date,        nullable=True)
+    age            = Column(Integer,     nullable=True)
     weight_kg      = Column(Float,       nullable=True)
     height_cm      = Column(Float,       nullable=True)
     gender         = Column(String(1),   nullable=True)   # M / F

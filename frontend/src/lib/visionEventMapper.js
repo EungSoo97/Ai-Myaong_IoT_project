@@ -17,9 +17,10 @@ export function visionEventTone(type) {
 }
 
 export function visionEventLocation(event) {
+  if (event.storage_path) return event.storage_path;
   if (event.type === "away_person") return "외출 모드";
-  if (event.type === "capture_saved") return event.storage_path || "캡처 이미지";
-  if (event.type === "clip_saved") return event.storage_path || "클립 저장 완료";
+  if (event.type === "capture_saved") return "캡처 이미지";
+  if (event.type === "clip_saved") return "클립 저장 완료";
   return event.source || "로봇 비전";
 }
 

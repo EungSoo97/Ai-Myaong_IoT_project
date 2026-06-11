@@ -264,13 +264,13 @@ if [[ -f "$BACKEND_ENV" ]]; then
   set_env_value "$BACKEND_ENV" MQTT_BROKER_HOST "$MQTT_HOST"
   set_env_value "$BACKEND_ENV" MQTT_BROKER_PORT "$MQTT_PORT"
   set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$MQTT_HOST:${PI_AGENT_HTTP_PORT:-8765}"
-  set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8080}/stream.mjpg"
+  set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8081}/stream.mjpg"
   set_env_value "$BACKEND_ENV" CAMERA_PROXY false
 fi
 
 if [[ -f "$FRONTEND_ENV" ]]; then
   set_env_value "$FRONTEND_ENV" VITE_ESP32_MQTT_HOST "$MQTT_HOST"
-  set_env_value "$FRONTEND_ENV" VITE_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8080}/stream.mjpg"
+  set_env_value "$FRONTEND_ENV" VITE_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8081}/stream.mjpg"
 fi
 
 update_esp32_default_mqtt_host() {
