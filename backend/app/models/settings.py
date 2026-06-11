@@ -4,7 +4,6 @@ from pydantic import BaseModel
 
 class SettingsResponse(BaseModel):
     away_mode: str = "N"
-    wifi_ssid: Optional[str] = None
     push_enabled: str = "Y"
     motion_alert: str = "Y"
     stranger_alert: str = "Y"
@@ -24,8 +23,6 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdate(BaseModel):
     away_mode: Optional[str] = None
-    wifi_ssid: Optional[str] = None
-    wifi_password: Optional[str] = None
     push_enabled: Optional[str] = None
     motion_alert: Optional[str] = None
     stranger_alert: Optional[str] = None

@@ -21,7 +21,7 @@ class DeviceRegister(BaseModel):
     role: str = "raspberrypi"
     ssid: str = ""
     agent_port: int = 8765
-    stream_port: int = 8080
+    stream_port: int = 8081
 
 
 @router.post("/register")
@@ -78,7 +78,7 @@ def get_device(device_id: str):
             BACKEND_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
         )
-        pi_ip = backend_env.get("MQTT_BROKER_HOST", "")
+        pi_ip = _host_from_url(backend_env.get("PI_AGENT_BASE_URL", ""))
         if pi_ip and device_id == "myaong-pi-01":
             return {
                 "ok": True,
@@ -88,7 +88,7 @@ def get_device(device_id: str):
                     "role": "raspberrypi",
                     "ssid": "",
                     "agent_port": "8765",
-                    "stream_port": "8080",
+                    "stream_port": "8081",
                     "last_seen": "",
                     "source": "backendEnv",
                 },
@@ -98,14 +98,18 @@ def get_device(device_id: str):
 
 
 def _sync_backend_env_from_device(data: DeviceRegister) -> None:
-    mqtt_port = runtime_env("MQTT_BROKER_PORT", "1883").strip() or "1883"
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", data.ip)
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{data.ip}:{data.agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{data.ip}:{data.stream_port}/stream.mjpg")
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", data.ip)
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{data.ip}:{data.stream_port}/stream.mjpg")
+
+
+def _host_from_url(url: str) -> str:
+    value = url.strip()
+    if not value:
+        return ""
+    if "://" in value:
+        value = value.split("://", 1)[1]
+    return value.split("/", 1)[0].split(":", 1)[0]
 
 
 def _set_env_value(path: Path, key: str, value: str) -> None:

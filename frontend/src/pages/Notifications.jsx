@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, UserX, AlertTriangle, UtensilsCrossed, Droplets,
-  Moon, PhoneCall, CheckCheck, Bell, Trash2,
+  Moon, PhoneCall, Bell, Trash2,
 } from 'lucide-react'
 import { Card } from '../components/ui'
 import {
-  useNotifications, markRead, markAllRead, removeNotification, clearNotifications, timeAgo,
+  useNotifications, removeNotification, clearNotifications, timeAgo,
 } from '../lib/notificationRepository'
 
 /* type → 아이콘 + 색상 */
@@ -24,17 +24,13 @@ const DEFAULT_META = { icon: Bell, cls: 'bg-brand-brown/10 text-brand-brown' }
 export function Notifications() {
   const navigate = useNavigate()
   const list = useNotifications()
-  const unread = list.filter((n) => !n.read).length
 
   const [clearing, setClearing] = useState(false) // 전체 삭제 도미노 진행 중
   const STAGGER = 70 // 항목 간 시차(ms)
   const EXIT_MS = 360 // 항목 1개 사라지는 시간(ms)
 
-  const open = (n) => {
-    if (clearing) return
-    if (!n.read) markRead(n.id)
-    if (n.link) navigate(n.link)
-  }
+  // 알림 클릭 시 이동하지 않음 (통계 등으로 이동 막기)
+  const open = () => {}
 
   // 위에서부터 차례로(드르륵) 사라진 뒤 실제 삭제
   const handleClearAll = () => {
@@ -62,18 +58,9 @@ export function Notifications() {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">알림</h1>
           <p className="text-sm text-brand-mute truncate">
-            {unread > 0 ? `읽지 않은 알림 ${unread}개` : '모두 확인했어요'}
+            {list.length > 0 ? `알림 ${list.length}개` : '모두 확인했어요'}
           </p>
         </div>
-        {unread > 0 && (
-          <button
-            type="button"
-            onClick={markAllRead}
-            className="flex items-center gap-1 px-3 py-2 rounded-2xl bg-brand-cream text-brand-brown text-xs font-bold touch-active shrink-0"
-          >
-            <CheckCheck className="w-4 h-4" /> 모두 읽음
-          </button>
-        )}
       </header>
 
       {list.length === 0 ? (
@@ -103,25 +90,13 @@ export function Notifications() {
                   exitDelay={i * STAGGER}
                   exitMs={EXIT_MS}
                 >
-                  <div
-                    className={`relative flex items-center gap-3 px-4 py-3.5 ${
-                      n.read ? 'bg-brand-card' : 'bg-brand-primary/[0.06]'
-                    }`}
-                  >
-                    {/* 안읽음 좌측 강조 바 */}
-                    {!n.read && <span className="absolute left-0 top-0 bottom-0 w-1 bg-brand-primary" />}
-
+                  <div className="relative flex items-center gap-3 px-4 py-3.5 bg-brand-card">
                     <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${meta.cls}`}>
                       <Icon className="w-5 h-5" />
                     </span>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-brand-primary shrink-0" />}
-                        <p className={`truncate ${n.read ? 'text-sm font-semibold text-brand-brown/80' : 'text-sm font-bold text-brand-brown'}`}>
-                          {n.title}
-                        </p>
-                      </div>
+                      <p className="truncate text-sm font-bold text-brand-brown">{n.title}</p>
                       <p className="text-xs text-brand-mute truncate mt-0.5">{n.desc}</p>
                       <p className="text-[11px] text-brand-mute/80 mt-0.5">{timeAgo(n.time)}</p>
                     </div>

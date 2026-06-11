@@ -258,7 +258,10 @@ export function PetDetail() {
 }
 
 function PetBody({ pet }) {
-  const ageLabel = petAgeLabel(pet.birthDate);
+  const ageLabel =
+    pet.age !== "" && pet.age != null ?
+      `${pet.age}살`
+    : petAgeLabel(pet.birthDate);
   const bmi = petBmi(pet.weightKg, pet.heightCm);
   const grade = bmiGrade(bmi);
 
@@ -682,12 +685,18 @@ function ReferenceComparison({ items }) {
               )}
             </div>
             {item.reference && (
-              <p className="mt-1 text-xs leading-relaxed" style={{ color: C.mute }}>
+              <p
+                className="mt-1 text-xs leading-relaxed"
+                style={{ color: C.mute }}
+              >
                 기준: {item.reference}
               </p>
             )}
             {item.actual && (
-              <p className="mt-1 text-xs font-semibold leading-relaxed" style={{ color: C.brown }}>
+              <p
+                className="mt-1 text-xs font-semibold leading-relaxed"
+                style={{ color: C.brown }}
+              >
                 실제: {item.actual}
               </p>
             )}
@@ -754,7 +763,10 @@ function WatchPointList({ items }) {
   if (!items?.length) return null;
   return (
     <div>
-      <p className="flex items-center gap-1 text-xs font-bold" style={{ color: C.primary }}>
+      <p
+        className="flex items-center gap-1 text-xs font-bold"
+        style={{ color: C.primary }}
+      >
         <ShieldAlert className="w-3.5 h-3.5" />
         주의 신호
       </p>

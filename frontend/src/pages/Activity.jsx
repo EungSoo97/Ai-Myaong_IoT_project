@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic,
+  ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic, Droplets,
   Activity as ActivityIcon, X, Play, MapPin, Clock, Cpu, PawPrint, Dog, Cat,
   CheckCheck, ShieldAlert,
 } from 'lucide-react'
 import { Card, CreamCard, Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
+import { mapVisionEventForList } from '../lib/visionEventMapper'
 
 /* ═══════════════════════════════════════════════════════════
  * Mock 데이터 — 백엔드 DB 스키마(관계형) 기반
@@ -62,15 +63,75 @@ export function Activity() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null) // 상세 시트 대상
+  const [feedLogs, setFeedLogs] = useState({ feed: [], water: [] })
+  const [visionEvents, setVisionEvents] = useState([])
+
+  // 급여(배식/급수)는 DB 연동 / 감지는 mock(DETECTIONS) 유지
+  useEffect(() => {
+    api.getDispenserLogs().then((d) => setFeedLogs({ feed: d.feed || [], water: d.water || [] })).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const load = () => {
+      api
+        .getVisionEvents(50)
+        .then((data) => {
+          if (alive) setVisionEvents(data.events || [])
+        })
+        .catch(() => {
+          if (alive) setVisionEvents([])
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const feedItems = useMemo(() => {
+    const fmt = (iso) => {
+      const d = new Date(iso)
+      return Number.isNaN(d.getTime())
+        ? ''
+        : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    }
+    const food = (feedLogs.feed || []).map((x, i) => {
+      const amt = Math.round(Number(x.amount_g) || 0)
+      return { id: `f${i}-${x.created_at}`, cat: 'feed', kind: 'food', icon: UtensilsCrossed, type: '배식', amount: amt, unit: 'g', feedType: x.feed_type, desc: `사료 ${amt}g`, time: fmt(x.created_at) }
+    })
+    const water = (feedLogs.water || []).map((x, i) => {
+      const amt = Math.round(Number(x.amount_ml) || 0)
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at) }
+    })
+    return [...food, ...water]
+  }, [feedLogs])
+
+  const visionItems = useMemo(
+    () => (visionEvents || []).map((event) => ({
+      ...mapVisionEventForList(event),
+      cat: 'vision',
+      icon: event.type === 'away_person' ? UserX : Video,
+      desc: event.message,
+    })),
+    [visionEvents],
+  )
 
   const all = useMemo(
-    () => [...DETECTIONS, ...FEEDINGS].sort((a, b) => b.time.localeCompare(a.time)),
-    [],
+    () => [...visionItems, ...feedItems].sort((a, b) => {
+      const at = a.rawTime ? new Date(a.rawTime).getTime() : 0
+      const bt = b.rawTime ? new Date(b.rawTime).getTime() : 0
+      if (at || bt) return bt - at
+      return String(b.time).localeCompare(String(a.time))
+    }),
+    [feedItems, visionItems],
   )
   const list = filter === 'all' ? all : all.filter((x) => x.cat === filter)
 
-  const detectCount = DETECTIONS.length
-  const feedTotal = FEEDINGS.reduce((s, f) => s + (getFeedLog(f.feed_log_id)?.feed_amount || 0), 0)
+  const detectCount = visionItems.length
+  const feedTotal = feedItems.filter((x) => x.kind === 'food').reduce((s, x) => s + x.amount, 0)
 
   return (
     <div className="px-5 pb-6">
@@ -130,11 +191,10 @@ export function Activity() {
       {/* 통합 타임라인 (항목 탭 → 상세) */}
       <section className="mt-4">
         <div key={filter} className="page-enter">
-          <CreamCard className="divide-y divide-brand-line">
+          <CreamCard className={`divide-y divide-brand-line ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
             {list.map((e) => {
               const Icon = e.icon
               const isFeed = e.cat === 'feed'
-              const log = isFeed ? getFeedLog(e.feed_log_id) : null
               return (
                 <button
                   key={e.id}
@@ -147,7 +207,7 @@ export function Activity() {
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-brand-brown truncate">{e.type}</p>
-                    <p className="text-xs text-brand-mute truncate">{isFeed ? `사료 ${log?.feed_amount}g` : e.desc}</p>
+                    <p className="text-xs text-brand-mute truncate">{e.desc}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge tone={isFeed ? 'primary' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
@@ -220,19 +280,22 @@ function DetailSheet({ item, onClose }) {
   )
 }
 
-/* 급여 상세: FEED_LOGS → PETS 릴레이션 */
+/* 급여 상세: DB(FEED_LOGS / WATER_LOGS) 기록 기반 */
 function FeedingBody({ item }) {
-  const log = getFeedLog(item.feed_log_id)
-  const pet = log ? getPet(log.pet_id) : null
-  const PetIcon = pet ? speciesIcon(pet.pet_type) : PawPrint
-
+  const FEED_TYPE_KO = { manual: '수동', quick: '빠른', auto: '자동' }
+  const isWater = item.kind === 'water'
   return (
     <div>
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard icon={<Clock className="w-4 h-4" />} label="배식 시각" value={item.time} />
-        <StatCard icon={<UtensilsCrossed className="w-4 h-4" />} label="배식량" value={log ? `${log.feed_amount}g` : '-'} accent />
-        <StatCard icon={<Cpu className="w-4 h-4" />} label="기기 ID" value={log?.device_id || '-'} />
-        <StatCard icon={<PetIcon className="w-4 h-4" />} label="대상 반려동물" value={pet?.pet_name || '-'} />
+        <StatCard icon={<Clock className="w-4 h-4" />} label="시각" value={item.time} />
+        <StatCard
+          icon={isWater ? <Droplets className="w-4 h-4" /> : <UtensilsCrossed className="w-4 h-4" />}
+          label={isWater ? '급수량' : '배식량'}
+          value={`${item.amount}${item.unit}`}
+          accent
+        />
+        <StatCard icon={<PawPrint className="w-4 h-4" />} label="종류" value={isWater ? '급수' : '배식'} />
+        <StatCard icon={<Cpu className="w-4 h-4" />} label="방식" value={FEED_TYPE_KO[item.feedType] || item.feedType || '-'} />
       </div>
 
       <div className="mt-3 rounded-2xl bg-brand-cream p-3.5 flex items-center gap-2">
@@ -240,14 +303,9 @@ function FeedingBody({ item }) {
           <CheckCheck className="w-4 h-4" />
         </span>
         <p className="text-sm text-brand-brown/90">
-          <b>{pet?.pet_name}</b>에게 <b>{log?.feed_amount}g</b> 배식 완료
-          <span className="text-brand-mute"> · {log?.status}</span>
+          {isWater ? '급수' : '배식'} <b>{item.amount}{item.unit}</b> 완료
         </p>
       </div>
-
-      <p className="mt-2 text-[11px] text-brand-mute">
-        활동 → feed_log#{item.feed_log_id} → pet#{log?.pet_id} ({pet?.pet_name})
-      </p>
     </div>
   )
 }
@@ -255,71 +313,118 @@ function FeedingBody({ item }) {
 /* 감지 상세: CLIPS 릴레이션 + 실제 영상 재생 */
 function DetectionBody({ item }) {
   const clip = item.clip_id ? getClip(item.clip_id) : null
-  const [videoUrl, setVideoUrl] = useState(null)
-  const [videoFailed, setVideoFailed] = useState(false)
+  const [mediaUrl, setMediaUrl] = useState(null)
+  const [mediaFailed, setMediaFailed] = useState(false)
+  const storagePath = item.storage_path || clip?.storage_path || ''
+  const isCapture = item.eventType === 'capture_saved'
+  const isClip = item.eventType === 'clip_saved' || !!clip
+  const isAwayPerson = item.eventType === 'away_person'
+  const hasMedia = !!storagePath
 
-  // 백엔드가 클립을 저장/서빙하면 재생 URL 을 받아 자동 재생.
-  // 미구현 시 storage_path 를 API_BASE 기준으로 직접 시도 → 그래도 없으면 placeholder.
   useEffect(() => {
-    setVideoUrl(null)
-    setVideoFailed(false)
+    setMediaUrl(null)
+    setMediaFailed(false)
+    if (storagePath) {
+      setMediaUrl(api.getVisionMediaUrl(storagePath))
+      return undefined
+    }
     if (!clip) return undefined
     let alive = true
     api
       .getClipUrl(clip.clip_id)
-      .then((u) => { if (alive && u) setVideoUrl(u) })
-      .catch(() => { if (alive) setVideoUrl(resolveMediaUrl(clip.storage_path)) })
+      .then((u) => { if (alive && u) setMediaUrl(u) })
+      .catch(() => { if (alive) setMediaUrl(resolveMediaUrl(clip.storage_path)) })
     return () => { alive = false }
-  }, [clip])
+  }, [clip, storagePath])
 
-  const showVideo = !!(clip && videoUrl && !videoFailed)
+  const showImage = isCapture && mediaUrl && !mediaFailed
+  const showVideo = isClip && mediaUrl && !mediaFailed
+  const openLocalPath = () => {
+    if (!storagePath) return
+    api.revealVisionMedia(storagePath).catch((error) => {
+      console.error('[Activity] reveal media failed:', error)
+    })
+  }
 
   return (
     <div>
-      {/* 클립 영역 */}
+      {isAwayPerson && (
+        <div className="rounded-2xl bg-brand-danger/10 p-4 flex items-start gap-3">
+          <span className="w-9 h-9 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-5 h-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-brand-danger">{item.type}</p>
+            <p className="mt-1 text-sm text-brand-brown/80">{item.desc}</p>
+          </div>
+        </div>
+      )}
+      {!isAwayPerson && (
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
-        {clip ? (
+        {hasMedia || clip ? (
           <>
-            {showVideo ? (
+            {showImage ? (
+              <img
+                src={mediaUrl}
+                alt={item.type}
+                onError={() => setMediaFailed(true)}
+                className="absolute inset-0 w-full h-full object-contain bg-black"
+              />
+            ) : showVideo ? (
               <video
-                src={videoUrl}
+                src={mediaUrl}
                 controls
                 playsInline
                 preload="metadata"
-                onError={() => setVideoFailed(true)}
+                onError={() => setMediaFailed(true)}
                 className="absolute inset-0 w-full h-full object-contain bg-black"
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white/80 gap-2">
                 <span className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-                  <Play className="w-6 h-6 ml-0.5" />
+                  {isCapture ? <Video className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
                 </span>
-                <span className="text-[11px] font-semibold">영상 준비 중 · 처리되면 자동 재생</span>
+                <span className="text-[11px] font-semibold">
+                  {mediaFailed ? '미리보기를 불러오지 못했어요' : '미리보기 준비 중'}
+                </span>
               </div>
             )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
-              <Video className="w-3.5 h-3.5" /> REC
+              <Video className="w-3.5 h-3.5" /> {isCapture ? 'CAPTURE' : 'REC'}
             </span>
             <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-black/50 text-white text-[11px] font-bold pointer-events-none">
-              <MapPin className="w-3.5 h-3.5" /> {clip.camera_location}
+              <MapPin className="w-3.5 h-3.5" /> {clip?.camera_location || '로봇 비전'}
             </span>
             {!showVideo && (
               <span className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/55 text-white text-[11px] font-bold tabular-nums pointer-events-none">
-                00:{String(clip.duration).padStart(2, '0')}
+                {clip?.duration ? `00:${String(clip.duration).padStart(2, '0')}` : item.eventType || 'EVENT'}
               </span>
             )}
           </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-white/75 text-sm font-semibold">
-            저장된 영상이 없는 이벤트예요
+            저장된 미디어가 없는 이벤트예요
           </div>
         )}
       </div>
+      )}
 
-      {/* 메타 */}
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <StatCard icon={<Clock className="w-4 h-4" />} label="탐지 시각" value={item.time} />
-        <StatCard icon={<MapPin className="w-4 h-4" />} label="위치" value={clip?.camera_location || item.desc} />
+        <button
+          type="button"
+          onClick={openLocalPath}
+          disabled={!storagePath}
+          className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+          title={storagePath || clip?.camera_location || item.desc}
+        >
+          <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
+            <MapPin className="w-4 h-4" /> 위치
+          </p>
+          <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">
+            {storagePath || clip?.camera_location || item.desc}
+          </p>
+        </button>
       </div>
 
       {item.danger && (
@@ -329,13 +434,15 @@ function DetectionBody({ item }) {
         </div>
       )}
 
-      {clip && (
+      {storagePath && (
         <p className="mt-2 text-[11px] text-brand-mute truncate">
-          활동 → clip#{clip.clip_id} · {clip.storage_path} · {clip.duration}초
+          {storagePath}
         </p>
       )}
     </div>
   )
+
+
 }
 
 function StatCard({ icon, label, value, accent }) {

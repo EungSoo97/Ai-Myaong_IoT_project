@@ -10,7 +10,7 @@ class Alert(Base):
     user_id      = Column(Integer, ForeignKey("USERS.user_id"), nullable=False)
     pet_id       = Column(Integer, ForeignKey("PETS.pet_id"),   nullable=False)
     alert_type   = Column(String(50),  nullable=False)
-    message      = Column(String(500), nullable=True)
+    message      = Column(String(2000), nullable=True)
     is_confirmed = Column(String(1),   default="N")
     created_at   = Column(DateTime,    default=datetime.utcnow)
 

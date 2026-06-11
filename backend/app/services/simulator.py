@@ -7,6 +7,7 @@ class DeviceSimulator:
         self.connected = True
         self.battery = 85
         self.mode = "simulation"
+        self.away_mode = False
         self.last_command: str | None = None
         self.position = {"x": 0, "y": 0, "heading": 0}
         self.camera = {"pan": 90, "tilt": 90}
@@ -42,6 +43,17 @@ class DeviceSimulator:
         self._drain_battery()
         return self.status()
 
+    def set_away_mode(self, on: bool) -> dict[str, Any]:
+        self.away_mode = on
+        self.last_command = "AWAY_ON" if on else "AWAY_OFF"
+        self._drain_battery()
+        return self.status()
+
+    def capture(self) -> dict[str, Any]:
+        self.last_command = "CAPTURE"
+        self._drain_battery()
+        return self.status()
+
     def feed(self, amount: int) -> dict[str, Any]:
         self.last_command = "DISPENSER_FEED"
         self.dispenser["last_feed_amount"] = amount
@@ -62,6 +74,7 @@ class DeviceSimulator:
             "connected": self.connected,
             "battery": self.battery,
             "mode": self.mode,
+            "away_mode": self.away_mode,
             "last_command": self.last_command,
             "position": self.position,
             "camera": self.camera,

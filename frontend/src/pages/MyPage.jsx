@@ -70,10 +70,10 @@ export function MyPage() {
   const rawPet = account?.pets?.[0] || null;
   const hasPet = Boolean(rawPet);
   const pet = rawPet || {};
+  const petAgeText = pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate);
 
   const nickname = user.nickname || "집사";
   const email = user.email || "";
-  const initial = (nickname.trim().charAt(0) || "집");
   const registeredAt = fmtDate(account?.createdAt);
 
   let sessionUser = {};
@@ -113,9 +113,18 @@ export function MyPage() {
 
       {/* 유저 카드 */}
       <Card className="px-5 py-5 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center shadow-soft-inset">
-          <span className="font-display text-2xl font-bold">{initial}</span>
-        </div>
+        {user.photo ? (
+          <img
+            src={user.photo}
+            alt={nickname}
+            className="w-16 h-16 rounded-full object-cover shadow-soft ring-2 ring-brand-card"
+          />
+        ) : (
+          // 기본 아바타 (사진 미등록) — 그라데이션 + 발바닥 아이콘
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-primary/25 to-brand-water/25 flex items-center justify-center shadow-soft-inset overflow-hidden">
+            <PawPrint className="w-8 h-8 text-brand-primary" />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <p className="font-display text-lg font-bold text-brand-brown">
             {nickname}
@@ -164,8 +173,8 @@ export function MyPage() {
                     {pet.breed || speciesLabel(pet.species)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {petAgeLabel(pet.birthDate) && (
-                      <Badge tone="brown">{petAgeLabel(pet.birthDate)}</Badge>
+                    {petAgeText && (
+                      <Badge tone="brown">{petAgeText}</Badge>
                     )}
                     {pet.weightKg && (
                       <Badge tone="primary">{pet.weightKg}kg</Badge>

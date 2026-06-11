@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import device, feed, health_reports, network, robot, stream, ws, auth, settings , pets
+from app.routers import device, feed, network, robot, stream, ws, auth, settings, pets, vision, alerts,health_reports
 from app.mqtt.mqtt_client import MqttClient
 from app.services.database import Database
 from app.services.feed_service import FeedService
@@ -60,7 +60,9 @@ app.include_router(auth.router)
 app.include_router(pets.router)
 app.include_router(health_reports.router)
 app.include_router(settings.router)
+app.include_router(alerts.router)
 app.include_router(device.router)
+app.include_router(vision.router)
 
 
 @app.on_event("startup")
@@ -68,6 +70,9 @@ def startup() -> None:
     database.init()
     mqtt_client.start()
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
+    # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
+    from app.services.feed_scheduler import start_feed_scheduler
+    start_feed_scheduler(app.state.feed_service)
 
 
 @app.on_event("shutdown")

@@ -20,7 +20,7 @@ class RobotService:
 
     def move(self, command: str) -> dict[str, Any]:
         request_id = str(uuid4())
-        topic = "robot/move"
+        topic = "ai-myaong/robot/move"
         payload = {"request_id": request_id, "cmd": command}
         self._send_robot_command(topic, payload)
         status = self.simulator.move(command)
@@ -30,12 +30,33 @@ class RobotService:
 
     def camera(self, direction: str) -> dict[str, Any]:
         request_id = str(uuid4())
-        topic = "robot/camera"
+        topic = "ai-myaong/robot/pantilt"
         payload = {"request_id": request_id, "cmd": direction}
         self._send_robot_command(topic, payload)
         status = self.simulator.control_camera(direction)
         self.database.log_command(request_id, "camera", topic, payload, "accepted")
         self.database.log_event("robot/status", f"camera command handled: {direction}", status)
+        return self._response(request_id, topic, payload)
+
+    def away_mode(self, on: bool) -> dict[str, Any]:
+        request_id = str(uuid4())
+        topic = "robot/away-mode"
+        command = "AWAY_ON" if on else "AWAY_OFF"
+        payload = {"request_id": request_id, "cmd": command, "on": on}
+        self._send_robot_command(topic, payload)
+        status = self.simulator.set_away_mode(on)
+        self.database.log_command(request_id, "away_mode", topic, payload, "accepted")
+        self.database.log_event("robot/status", f"away mode command handled: {command}", status)
+        return self._response(request_id, topic, payload)
+
+    def capture(self) -> dict[str, Any]:
+        request_id = str(uuid4())
+        topic = "robot/capture"
+        payload = {"request_id": request_id, "cmd": "CAPTURE"}
+        self._send_robot_command(topic, payload)
+        status = self.simulator.capture()
+        self.database.log_command(request_id, "capture", topic, payload, "accepted")
+        self.database.log_event("robot/status", "capture command handled", status)
         return self._response(request_id, topic, payload)
 
     def status(self) -> dict[str, Any]:

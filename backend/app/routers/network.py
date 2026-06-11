@@ -35,12 +35,10 @@ def network_status(request: Request):
     )
     pi_ip = str(pi_status.get("ip") or "").strip()
     if pi_ip:
-        previous_host = backend_env.get("MQTT_BROKER_HOST", "")
+        previous_agent_url = backend_env.get("PI_AGENT_BASE_URL", "")
         _sync_backend_env_from_pi_ip(str(pi_status["ip"]))
-        if previous_host != pi_ip:
-            mqtt_client = getattr(request.app.state, "mqtt_client", None)
-            if mqtt_client:
-                threading.Thread(target=mqtt_client.reconnect_if_config_changed, daemon=True).start()
+        if previous_agent_url != runtime_env("PI_AGENT_BASE_URL", ""):
+            print(f"[network] Raspberry Pi agent updated: {pi_ip}")
         backend_env = read_env_values(
             BACKEND_ENV,
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "PI_AGENT_BASE_URL", "CAMERA_STREAM_URL"),
@@ -52,7 +50,7 @@ def network_status(request: Request):
             ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
         "backendEnv": backend_env,
-        "wifiIp": pi_status.get("ip") or backend_env.get("MQTT_BROKER_HOST") or local_wifi_ip,
+        "wifiIp": pi_status.get("ip") or _host_from_url(backend_env.get("PI_AGENT_BASE_URL", "")) or local_wifi_ip,
         "wifiSsid": pi_status.get("ssid") or local_wifi_ssid,
         "wifiJob": pi_status.get("wifiJob") or {},
         "source": pi_status.get("source") or "local",
@@ -177,35 +175,27 @@ def _command_output(command: list[str]) -> str:
 
 def _sync_backend_env_from_pi_result(result: dict) -> None:
     raspberrypi_env = result.get("raspberrypiEnv") or {}
-    mqtt_host = str(raspberrypi_env.get("MQTT_BROKER_HOST") or "").strip()
-    if not mqtt_host:
+    pi_host = str(result.get("ip") or "").strip()
+    if not pi_host:
+        pi_host = _host_from_url(runtime_env("PI_AGENT_BASE_URL", ""))
+    if not pi_host:
         return
 
-    mqtt_port = str(raspberrypi_env.get("MQTT_BROKER_PORT") or "1883").strip() or "1883"
     pi_agent_port = str(raspberrypi_env.get("PI_AGENT_HTTP_PORT") or runtime_env("PI_AGENT_HTTP_PORT", "8765")).strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", mqtt_host)
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
-    _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{mqtt_host}:{pi_agent_port}")
-    _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", mqtt_host)
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
-    _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{mqtt_host}:{stream_port}/stream.mjpg")
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
+    _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_host}:{pi_agent_port}")
+    _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_host}:{stream_port}/stream.mjpg")
+    _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_host}:{stream_port}/stream.mjpg")
 
 
 def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
     if not pi_ip:
         return
 
-    mqtt_port = runtime_env("MQTT_BROKER_PORT", "1883").strip() or "1883"
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", pi_ip)
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_HOST", pi_ip)
-    _set_env_value(DESKTOP_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
 
 
@@ -283,8 +273,8 @@ def _pi_agent_candidate_urls() -> list[str]:
     if configured_url:
         urls.append(configured_url.rstrip("/"))
 
-    host = runtime_env("MQTT_BROKER_HOST", "").strip()
-    if host:
+    host = runtime_env("MQTT_BROKER_HOST", "").strip().strip('"').strip("'")
+    if host and _looks_like_private_ipv4(host):
         urls.append(f"http://{host}:{port}")
 
     urls.append(f"http://raspberrypi.local:{port}")
@@ -463,3 +453,12 @@ def _pi_agent_status() -> dict:
         return _pi_agent_json_request("/api/wifi/status")
     except HTTPException:
         return {}
+
+
+def _host_from_url(url: str) -> str:
+    value = url.strip()
+    if not value:
+        return ""
+    if "://" in value:
+        value = value.split("://", 1)[1]
+    return value.split("/", 1)[0].split(":", 1)[0]

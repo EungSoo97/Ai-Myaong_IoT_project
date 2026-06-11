@@ -123,7 +123,7 @@ else
 fi
 
 if [[ "${START_CAMERA_STREAM:-true}" != "false" ]]; then
-  STREAM_PORT="${STREAM_PORT:-8080}"
+  STREAM_PORT="${STREAM_PORT:-8081}"
   echo "[camera] starting MJPEG stream server on 0.0.0.0:$STREAM_PORT..."
   "$STREAM_PYTHON_BIN" ./camera/mjpeg_server.py &
   STREAM_PID="$!"

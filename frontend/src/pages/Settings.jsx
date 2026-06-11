@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Wifi,
@@ -25,6 +25,7 @@ import {
   GhostButton,
 } from "../components/ui";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useTheme } from "../theme/ThemeProvider";
 import { api } from "../api/api";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
@@ -37,6 +38,7 @@ const DEFAULT_ESP32_MQTT_HOST =
 
 export function Settings() {
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   const [pushOn, setPushOn] = useState(true);
   const [motionAlert, setMotionAlert] = useState(true);
   const [strangerAlert, setStrangerAlert] = useState(true);
@@ -63,19 +65,92 @@ export function Settings() {
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
   useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost]);
 
+  // ESP32 주소 / MQTT 호스트 변경 시 디바운스 후 DB 저장 (초기/로드값은 건너뜀)
+  const esp32Ready = useRef(false);
+  useEffect(() => {
+    if (!esp32Ready.current) {
+      esp32Ready.current = true;
+      return;
+    }
+    const t = setTimeout(() => {
+      saveSettings({ esp32_setup_url: setupUrl, mqtt_host: mqttHost });
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupUrl, mqttHost]);
+
   // 로봇 시리얼 번호 (기기 등록)
   const [serial, setSerial] = useState(() => readLocal(ROBOT_SERIAL_KEY, ""));
   const [serialInput, setSerialInput] = useState("");
   useEffect(() => writeLocal(ROBOT_SERIAL_KEY, serial), [serial]);
+
+  // settings 일부 필드 DB 저장 (실패해도 로컬은 유지)
+  const saveSettings = (patch) => {
+    api.updateSettings(patch).catch(() => {});
+  };
+
+  // 알림 제어 상태를 localStorage 에 미러 → notificationRepository 가 발송 전 확인 (꺼진 알림 차단)
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "aimyaong:alertSettings",
+        JSON.stringify({
+          push_enabled: pushOn,
+          motion_alert: motionAlert,
+          stranger_alert: strangerAlert,
+          feed_alert: feedAlert,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [pushOn, motionAlert, strangerAlert, feedAlert]);
+
+  // 마운트 시 DB 설정 불러오기 (있으면 화면 상태에 반영)
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((s) => {
+        setPushOn(s.push_enabled !== "N");
+        setMotionAlert(s.motion_alert !== "N");
+        setStrangerAlert(s.stranger_alert !== "N");
+        setFeedAlert(s.feed_alert === "Y");
+        if (s.dark_mode) setTheme(s.dark_mode); // DB 테마 → 화면 반영
+        if (s.robot_serial) setSerial(s.robot_serial);
+        // esp32/mqtt: DB에 있으면 반영, 없으면(null) 현재 기본값을 DB에 자동 저장
+        const patch = {};
+        if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
+        else patch.esp32_setup_url = setupUrl;
+        if (s.mqtt_host) setMqttHost(s.mqtt_host);
+        else patch.mqtt_host = mqttHost;
+        if (Object.keys(patch).length) saveSettings(patch);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 테마(라이트/다크/시스템) 변경 시 DB 저장 (마운트 첫 렌더는 건너뜀)
+  const themeFirst = useRef(false);
+  useEffect(() => {
+    if (!themeFirst.current) {
+      themeFirst.current = true;
+      return;
+    }
+    saveSettings({ dark_mode: theme });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme]);
 
   const registerSerial = () => {
     const v = serialInput.trim().toUpperCase();
     if (!v) return;
     setSerial(v);
     setSerialInput("");
-    // TODO(백엔드): await api.registerDevice(v)
+    saveSettings({ robot_serial: v }); // DB 저장
   };
-  const unregisterSerial = () => setSerial("");
+  const unregisterSerial = () => {
+    setSerial("");
+    saveSettings({ robot_serial: "" });
+  };
 
   const selectedIsCompatible =
     selectedNetwork?.compatible ?? selectedNetwork?.esp32Compatible ?? true;
@@ -470,7 +545,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={pushOn}
-                onChange={setPushOn}
+                onChange={(v) => { setPushOn(v); saveSettings({ push_enabled: v ? "Y" : "N" }); }}
                 label="푸시 알림"
               />
             }
@@ -481,7 +556,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={motionAlert}
-                onChange={setMotionAlert}
+                onChange={(v) => { setMotionAlert(v); saveSettings({ motion_alert: v ? "Y" : "N" }); }}
                 label="이상 행동"
               />
             }
@@ -493,7 +568,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={strangerAlert}
-                onChange={setStrangerAlert}
+                onChange={(v) => { setStrangerAlert(v); saveSettings({ stranger_alert: v ? "Y" : "N" }); }}
                 label="외부인 감지"
               />
             }
@@ -505,7 +580,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={feedAlert}
-                onChange={setFeedAlert}
+                onChange={(v) => { setFeedAlert(v); saveSettings({ feed_alert: v ? "Y" : "N" }); }}
                 label="배식 알림"
               />
             }
@@ -521,7 +596,7 @@ export function Settings() {
         <CreamCard className="px-4 py-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold text-brand-brown">테마</p>
-            <p className="text-xs text-brand-mute">라이트 · 다크 · 시스템 설정</p>
+            <p className="text-xs text-brand-mute">라이트 · 다크</p>
           </div>
           <ThemeToggle />
         </CreamCard>

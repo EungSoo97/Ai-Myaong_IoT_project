@@ -8,6 +8,9 @@ class MqttClient:
     def __init__(self) -> None:
         self.host = "localhost"
         self.port = 1883
+        self.username = ""
+        self.password = ""
+        self.use_tls = False
         self.simulation_mode = True
         self.connected = False
         self._client = None
@@ -25,6 +28,10 @@ class MqttClient:
 
             self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
             self._client.connect_timeout = 3
+            if self.username:
+                self._client.username_pw_set(self.username, self.password or None)
+            if self.use_tls:
+                self._client.tls_set()
             self._client.connect(self.host, self.port, keepalive=30)
             self._subscribe_topics()
             self._client.loop_start()
@@ -65,26 +72,37 @@ class MqttClient:
     def _refresh_config(self) -> tuple[str, int, bool]:
         self.host = runtime_env("MQTT_BROKER_HOST", "localhost")
         self.port = int(runtime_env("MQTT_BROKER_PORT", "1883"))
+        self.username = runtime_env("MQTT_USERNAME", "")
+        self.password = runtime_env("MQTT_PASSWORD", "")
+        self.use_tls = runtime_env("MQTT_USE_TLS", "false").lower() == "true"
         self.simulation_mode = runtime_env("SIMULATION_MODE", "true").lower() == "true"
         return self.host, self.port, self.simulation_mode
 
     def _restart_if_config_changed(self) -> None:
-        previous = (self.host, self.port, self.simulation_mode)
+        previous = (self.host, self.port, self.username, self.password, self.use_tls, self.simulation_mode)
         current = (
             runtime_env("MQTT_BROKER_HOST", "localhost"),
             int(runtime_env("MQTT_BROKER_PORT", "1883")),
+            runtime_env("MQTT_USERNAME", ""),
+            runtime_env("MQTT_PASSWORD", ""),
+            runtime_env("MQTT_USE_TLS", "false").lower() == "true",
             runtime_env("SIMULATION_MODE", "true").lower() == "true",
         )
         if current == previous:
-            if not self.connected and not current[2]:
+            if not self.connected and not current[5]:
                 print(f"[mqtt] disconnected from {self.host}:{self.port}; reconnecting")
                 self.start()
             return
 
-        print(f"[mqtt] config changed {previous} -> {current}; reconnecting")
+        print(f"[mqtt] config changed {self._display_config(previous)} -> {self._display_config(current)}; reconnecting")
         self.stop()
-        self.host, self.port, self.simulation_mode = current
+        self.host, self.port, self.username, self.password, self.use_tls, self.simulation_mode = current
         self.start()
+
+    def _display_config(self, config: tuple[str, int, str, str, bool, bool]) -> tuple[str, int, str, str, bool, bool]:
+        host, port, username, password, use_tls, simulation_mode = config
+        masked_password = "***" if password else ""
+        return host, port, username, masked_password, use_tls, simulation_mode
 
     def _subscribe_topics(self) -> None:
         if not self._client:
