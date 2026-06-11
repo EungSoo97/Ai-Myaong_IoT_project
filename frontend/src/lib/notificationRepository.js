@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/api'
+import { mapVisionEventToNotification } from './visionEventMapper'
 
 /* ───────────────────────────────────────────────────────────
  * 알림(Notification) 데이터 접근 계층 (Repository)
@@ -74,8 +75,19 @@ function fromAlert(a) {
 /* DB 에서 알림을 불러와 캐시에 반영 (로그인 + 백엔드 켜져 있을 때만 성공) */
 export async function hydrateNotifications() {
   try {
-    const rows = await api.getAlerts()
-    setCache((rows || []).map(fromAlert))
+    const [alertsResult, visionResult] = await Promise.allSettled([
+      api.getAlerts(),
+      api.getVisionEvents(20),
+    ])
+    const alerts = alertsResult.status === 'fulfilled' ? (alertsResult.value || []).map(fromAlert) : []
+    const vision = visionResult.status === 'fulfilled'
+      ? (visionResult.value.events || []).map(mapVisionEventToNotification)
+      : []
+    const byId = new Map()
+    ;[...vision, ...alerts].forEach((item) => {
+      if (!byId.has(item.id)) byId.set(item.id, item)
+    })
+    setCache(Array.from(byId.values()).sort((a, b) => new Date(b.time) - new Date(a.time)))
   } catch {
     /* 백엔드 미연결 → 빈 목록 유지 */
   }

@@ -183,7 +183,7 @@ def _sync_backend_env_from_pi_result(result: dict) -> None:
 
     mqtt_port = str(raspberrypi_env.get("MQTT_BROKER_PORT") or "1883").strip() or "1883"
     pi_agent_port = str(raspberrypi_env.get("PI_AGENT_HTTP_PORT") or runtime_env("PI_AGENT_HTTP_PORT", "8765")).strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
     _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", mqtt_host)
     _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{mqtt_host}:{pi_agent_port}")
@@ -199,7 +199,7 @@ def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
 
     mqtt_port = runtime_env("MQTT_BROKER_PORT", "1883").strip() or "1883"
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "8080").strip() or "8080"
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
     _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", pi_ip)
     _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")

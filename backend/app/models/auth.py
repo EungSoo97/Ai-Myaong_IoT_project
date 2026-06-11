@@ -10,6 +10,7 @@ class PetCreate(BaseModel):
     breed: Optional[str] = None
     gender: Optional[str] = None        # M / F
     birth_date: Optional[date] = None
+    age: Optional[int] = None
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
     circumference: Optional[float] = None
@@ -41,6 +42,7 @@ class PetResponse(BaseModel):
     breed: Optional[str] = None
     gender: Optional[str] = None
     birth_date: Optional[date] = None
+    age: Optional[int] = None
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
     circumference: Optional[float] = None
