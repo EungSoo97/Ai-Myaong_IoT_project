@@ -620,11 +620,11 @@ export function Dashboard() {
         </div>
       </button>
 
-      {/* 2) 캠 미리보기 (탭하면 전체화면으로) */}
+      {/* 2) 캠 미리보기 (탭하면 로봇 비전으로) */}
       <button
         type="button"
         data-tour="dash-cam"
-        onClick={openCamFull}
+        onClick={() => navigate("/vision")}
         className="mt-4 w-full text-left touch-active"
       >
         <Card className="overflow-hidden">
