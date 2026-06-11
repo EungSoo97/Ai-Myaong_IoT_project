@@ -17,6 +17,7 @@ import {
   Play,
   Clock,
   X,
+  Trash2,
 } from "lucide-react";
 import { Card, Badge } from "../components/ui";
 import { api, resolveMediaUrl } from "../api/api";
@@ -119,6 +120,7 @@ export function RobotVision() {
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false);
   const fsRef = useRef(null);
+  const visibleEventLog = eventLog.slice(0, 5);
 
   useEffect(() => {
     let mounted = true;
@@ -188,6 +190,22 @@ export function RobotVision() {
       }
     };
   }, []);
+
+  const deleteVisionEvent = async (event, domEvent) => {
+    domEvent?.stopPropagation();
+    if (!event?.eventId) return;
+    try {
+      await api.deleteAlert(event.eventId);
+      setEventLog((items) =>
+        items.filter((item) => item.eventId !== event.eventId),
+      );
+      setSelectedClip((current) =>
+        current?.eventId === event.eventId ? null : current,
+      );
+    } catch (error) {
+      console.error("[RobotVision] delete event failed:", error);
+    }
+  };
 
   // Fullscreen API ↔ React 상태 동기화 (ESC 해제 포함)
   useEffect(() => {
@@ -539,45 +557,73 @@ export function RobotVision() {
 
       {/* 이벤트 로그 */}
       <section className="mt-6">
-        <h3 className="font-display text-base font-bold text-brand-brown mb-3">
-          이벤트 로그
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-base font-bold text-brand-brown">
+            이벤트 로그
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-brand-mute font-semibold">
+              {Math.min(eventLog.length, 5)}/5
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate("/activity")}
+              className="text-xs text-brand-mute font-semibold flex items-center touch-active"
+            >
+              전체보기 <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
         <Card className="divide-y divide-brand-line">
-          {eventLog.length === 0 && (
+          {visibleEventLog.length === 0 && (
             <div className="px-4 py-5 text-center text-sm font-semibold text-brand-mute">
               아직 기록된 비전 이벤트가 없어요.
             </div>
           )}
-          {eventLog.map((e) => {
+          {visibleEventLog.map((e) => {
             const Icon = e.icon || EVENT_ICON[e.eventType] || Video;
             return (
-              <button
+              <div
                 key={e.id}
-                onClick={() => setSelectedClip(e)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-3.5"
               >
-                <span
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+                <button
+                  type="button"
+                  onClick={() => setSelectedClip(e)}
+                  className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream transition-colors rounded-2xl"
                 >
-                  <Icon className="w-5 h-5" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-brand-brown truncate">
-                    {e.type}
-                  </p>
-                  <p className="text-xs text-brand-mute truncate">
-                    {e.location}
-                    {e.clip_id ? "" : " · 영상 없음"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge tone={e.danger ? "danger" : "primary"}>
-                    {e.clip_id ? "VOD" : "기록"}
-                  </Badge>
-                  <span className="text-[11px] text-brand-mute">{e.time}</span>
-                  <ChevronRight className="w-4 h-4 text-brand-mute" />
-                </div>
-              </button>
+                  <span
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-brand-brown truncate">
+                      {e.type}
+                    </p>
+                    <p className="text-xs text-brand-mute truncate">
+                      {e.location}
+                      {e.clip_id ? "" : " · 영상 없음"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge tone={e.danger ? "danger" : "primary"}>
+                      {e.clip_id ? "VOD" : "기록"}
+                    </Badge>
+                    <span className="text-[11px] text-brand-mute">{e.time}</span>
+                    <ChevronRight className="w-4 h-4 text-brand-mute" />
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => deleteVisionEvent(e, event)}
+                  className="w-9 h-9 rounded-2xl bg-brand-cream text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                  aria-label="로그 삭제"
+                  title="로그 삭제"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             );
           })}
         </Card>
