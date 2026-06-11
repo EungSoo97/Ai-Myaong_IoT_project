@@ -113,7 +113,7 @@ export function RobotVision() {
   const [captureNotice, setCaptureNotice] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
   const controlBusyRef = useRef(false);
-  const commandQueueRef = useRef(Promise.resolve());
+  const pendingCommandCountRef = useRef(0);
   const captureNoticeTimerRef = useRef(null);
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
@@ -274,20 +274,23 @@ export function RobotVision() {
   const sendCommand = (kind, command) => {
     if (!command) return;
 
-    commandQueueRef.current = commandQueueRef.current
-      .catch(() => {})
-      .then(async () => {
-        controlBusyRef.current = true;
-        setControlBusy(true);
-        try {
-          if (kind === "camera") {
-            await api.moveCamera(command);
-          } else {
-            await api.moveRobot(command);
-          }
-        } catch (error) {
-          console.error(`[RobotVision] ${kind} command failed:`, error);
-        } finally {
+    pendingCommandCountRef.current += 1;
+    controlBusyRef.current = true;
+    setControlBusy(true);
+
+    const request =
+      kind === "camera" ? api.moveCamera(command) : api.moveRobot(command);
+
+    request
+      .catch((error) => {
+        console.error(`[RobotVision] ${kind} command failed:`, error);
+      })
+      .finally(() => {
+        pendingCommandCountRef.current = Math.max(
+          0,
+          pendingCommandCountRef.current - 1,
+        );
+        if (pendingCommandCountRef.current === 0) {
           controlBusyRef.current = false;
           setControlBusy(false);
         }
