@@ -189,21 +189,22 @@ export function Dashboard() {
   }, [recentLogs]);
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
+  // camState: connecting(초기·확인 중) → live(영상 로드됨) / off(주소 없음·실패)
   const [streamUrl, setStreamUrl] = useState("");
-  const [streamFailed, setStreamFailed] = useState(false);
+  const [camState, setCamState] = useState("connecting");
 
   useEffect(() => {
     let alive = true;
+    setCamState("connecting");
     api
       .getStreamUrl()
       .then((data) => {
-        if (alive) {
-          setStreamUrl(data.url || "");
-          setStreamFailed(false);
-        }
+        if (!alive) return;
+        if (data.url) setStreamUrl(data.url); // 로드되면 onLoad 에서 live 로
+        else setCamState("off");
       })
       .catch(() => {
-        if (alive) setStreamFailed(true);
+        if (alive) setCamState("off");
       });
     return () => {
       alive = false;
@@ -246,7 +247,8 @@ export function Dashboard() {
     };
   }, []);
 
-  const showLive = streamUrl && !streamFailed;
+  const showLive = camState === "live";
+  const camConnecting = camState === "connecting";
   const recentItems = useMemo(() => {
     const vision = (visionEvents || []).map((event) => {
       const item = mapVisionEventForList(event);
@@ -524,32 +526,46 @@ export function Dashboard() {
         className="mt-4 w-full text-left touch-active"
       >
         <Card className="overflow-hidden">
-          <div className="relative aspect-video bg-gradient-to-br from-brand-brown to-brand-brown-soft">
-            {showLive ? (
+          <div className="relative aspect-video bg-gradient-to-br from-brand-cream to-brand-line dark:from-[#2b2520] dark:to-[#15110e]">
+            {/* 영상은 주소가 있으면 항상 마운트해 로드/실패를 감지 (보일 땐 live) */}
+            {streamUrl && (
               <img
                 src={streamUrl}
                 alt="실시간 캠"
-                onError={() => setStreamFailed(true)}
-                className="absolute inset-0 w-full h-full object-cover"
+                onLoad={() => setCamState("live")}
+                onError={() => setCamState("off")}
+                className={`absolute inset-0 w-full h-full object-cover brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90 transition-opacity duration-300 ${showLive ? "opacity-100" : "opacity-0"}`}
               />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-white/85">
-                <div className="text-center">
-                  <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
-                  <p className="text-sm font-semibold">
-                    {streamFailed ? "캠 연결 대기 중" : "실시간 캠 보기"}
-                  </p>
-                  <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+            )}
+            {!showLive && (
+              <>
+                {/* 글래스 빛 반사(sheen) + 유리 테두리 */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 via-white/5 to-transparent dark:from-white/10 dark:via-white/0" />
+                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40 dark:ring-white/10 rounded-[inherit]" />
+                <div className="absolute inset-0 flex items-center justify-center text-brand-mute dark:text-white/85">
+                  <div className="text-center">
+                    <span className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center bg-white/40 dark:bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/50 dark:ring-white/15 shadow-sm">
+                      <Camera className="w-7 h-7 opacity-90" />
+                    </span>
+                    <p className="text-sm font-semibold">
+                      {camConnecting ? "연결 중…" : "캠 연결 대기 중"}
+                    </p>
+                    <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+                  </div>
                 </div>
-              </div>
+              </>
+            )}
+            {/* 심플·모던: 상하 은은한 그라데이션 (배지보다 아래 레이어) */}
+            {showLive && (
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
             )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
               <span
-                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : "bg-white/50"}`}
+                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : camConnecting ? "bg-amber-300 animate-pulse" : "bg-white/50"}`}
               />
-              {showLive ? "LIVE" : "OFF"}
+              {showLive ? "LIVE" : camConnecting ? "연결 중" : "OFF"}
             </span>
-            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-white/85 text-brand-brown text-[11px] font-bold">
+            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/45 text-white text-[11px] font-bold tracking-wide">
               HD
             </span>
           </div>
