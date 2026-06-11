@@ -18,6 +18,9 @@ import {
   ChevronRight,
   ChevronDown,
   Footprints,
+  Sparkles,
+  X,
+  Maximize2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -43,6 +46,17 @@ const EVENT_ICON = {
   away_person: UserX,
   capture_saved: Camera,
   clip_saved: Video,
+};
+
+const FEED_TYPE_LABEL = {
+  quick: "빠른 배식",
+  manual: "수동 배식",
+  auto: "자동 배식",
+};
+
+const WATER_TYPE_LABEL = {
+  manual: "수동 급수",
+  auto: "자동 급수",
 };
 
 const SHORTCUTS = [
@@ -169,6 +183,8 @@ export function Dashboard() {
   );
   useEffect(() => {
     refreshLogs();
+    const timer = window.setInterval(refreshLogs, 3000);
+    return () => window.clearInterval(timer);
   }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
@@ -176,7 +192,7 @@ export function Dashboard() {
       key: `f-${x.created_at}-${x.amount_g}`,
       icon: UtensilsCrossed,
       tone: "primary",
-      title: "배식 완료",
+      title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
       desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -184,7 +200,7 @@ export function Dashboard() {
       key: `w-${x.created_at}-${x.amount_ml}`,
       icon: Droplets,
       tone: "brown",
-      title: "급수 완료",
+      title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
       desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -198,6 +214,40 @@ export function Dashboard() {
   // camState: connecting(초기·확인 중) → live(영상 로드됨) / off(주소 없음·실패)
   const [streamUrl, setStreamUrl] = useState("");
   const [camState, setCamState] = useState("connecting");
+  const [camFull, setCamFull] = useState(false); // 캠 전체화면 오버레이
+
+  // 캠 전체화면 열기/닫기 (네이티브 풀스크린은 가능하면 함께 시도)
+  const openCamFull = () => {
+    setCamFull(true);
+    try {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch {
+      /* 미지원 환경 — 인앱 오버레이로 충분 */
+    }
+  };
+  const closeCamFull = () => {
+    setCamFull(false);
+    try {
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // ESC 로 닫기 + 전체화면일 때 body 스크롤 잠금
+  useEffect(() => {
+    if (!camFull) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") closeCamFull();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [camFull]);
 
   useEffect(() => {
     let alive = true;
@@ -524,11 +574,46 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
+      {/* 1.5) AI 건강 분석 티저 — 준비 중 (펫 정보 바로 아래에서 강조) */}
+      <button
+        type="button"
+        onClick={() => showToast("✨ AI 건강 분석은 곧 만나요!")}
+        className="mt-4 w-full text-left touch-active"
+      >
+        <div
+          className="relative overflow-hidden rounded-3xl px-5 py-4 shadow-soft ring-1 ring-inset ring-white/10"
+          style={{
+            background:
+              "linear-gradient(to right, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
+          }}
+        >
+          {/* 배경 장식 (반짝이) */}
+          <Sparkles className="pointer-events-none absolute -right-4 -top-4 w-24 h-24 text-white/15" />
+          <div className="relative flex items-center gap-3">
+            <span className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6 text-white" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-display text-base font-bold text-white">AI 건강 분석</p>
+                <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-bold">
+                  준비 중
+                </span>
+              </div>
+              <p className="text-xs text-white/85 mt-0.5 truncate">
+                우리 아이 데이터로 건강 상태를 똑똑하게 분석해드려요
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-white/80 shrink-0" />
+          </div>
+        </div>
+      </button>
+
+      {/* 2) 캠 미리보기 (탭하면 전체화면으로) */}
       <button
         type="button"
         data-tour="dash-cam"
-        onClick={() => navigate("/vision")}
+        onClick={openCamFull}
         className="mt-4 w-full text-left touch-active"
       >
         <Card className="overflow-hidden">
@@ -556,7 +641,7 @@ export function Dashboard() {
                     <p className="text-sm font-semibold">
                       {camConnecting ? "연결 중…" : "캠 연결 대기 중"}
                     </p>
-                    <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+                    <p className="text-xs opacity-75">탭하여 전체화면으로 보기</p>
                   </div>
                 </div>
               </>
