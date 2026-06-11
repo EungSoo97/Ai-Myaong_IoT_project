@@ -795,7 +795,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> tuple[boo
                 "role": "raspberrypi",
                 "ssid": current_wifi_ssid(),
                 "agent_port": int(os.getenv("PI_AGENT_HTTP_PORT", "8765")),
-                "stream_port": int(os.getenv("STREAM_PORT", "8080")),
+                "stream_port": int(os.getenv("STREAM_PORT", "8081")),
             }
             try:
                 body = json.dumps(payload).encode("utf-8")
