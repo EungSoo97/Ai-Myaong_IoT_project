@@ -6,7 +6,7 @@ BACKEND_ENV = Path(__file__).resolve().parents[1] / ".env"
 
 def runtime_env(key: str, default: str = "") -> str:
     file_values = read_env_values(BACKEND_ENV, (key,))
-    return file_values.get(key) or os.getenv(key, default)
+    return file_values.get(key) or _clean_env_value(os.getenv(key, default))
 
 
 def read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
@@ -19,5 +19,12 @@ def read_env_values(path: Path, keys: tuple[str, ...]) -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         if key in keys:
-            values[key] = value
+            values[key] = _clean_env_value(value)
     return values
+
+
+def _clean_env_value(value: str) -> str:
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {'"', "'"}:
+        return stripped[1:-1]
+    return stripped
