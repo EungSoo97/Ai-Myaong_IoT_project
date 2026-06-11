@@ -317,7 +317,7 @@ class MjpegHandler(BaseHTTPRequestHandler):
 
 
 def run_http_server() -> None:
-    port = int(os.getenv("STREAM_PORT", "8080"))
+    port = int(os.getenv("STREAM_PORT", "8081"))
     server = ThreadingHTTPServer(("0.0.0.0", port), MjpegHandler)
     print(f"[camera] MJPEG stream server running on http://0.0.0.0:{port}/stream")
     server.serve_forever()

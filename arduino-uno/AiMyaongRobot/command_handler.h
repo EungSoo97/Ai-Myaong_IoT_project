@@ -3,10 +3,12 @@
 #include "motor_control.h"
 #include "servo_control.h"
 
-constexpr bool SERIAL_COMMAND_DEBUG = false;
+constexpr bool SERIAL_COMMAND_DEBUG = true;
 
 inline bool handleCommand(const String& command) {
-  if (command == "FORWARD") {
+  if (command == "PINOUT") {
+    printMotorPinout();
+  } else if (command == "FORWARD") {
     moveForward();
   } else if (command == "BACKWARD") {
     moveBackward();
@@ -18,6 +20,8 @@ inline bool handleCommand(const String& command) {
     stopMotors();
   } else if (command == "MOTOR_TEST") {
     testMotors();
+  } else if (command == "MOTOR_DIAG") {
+    diagnoseMotors();
   } else if (command == "LEFT_MOTOR_TEST") {
     testLeftMotor();
   } else if (command == "RIGHT_MOTOR_TEST") {
