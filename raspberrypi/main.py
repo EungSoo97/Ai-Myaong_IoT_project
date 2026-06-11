@@ -2,6 +2,7 @@ import json
 import os
 import re
 import signal
+import ssl
 import subprocess
 import sys
 import threading
@@ -41,52 +42,22 @@ ROBOT_COMMANDS = {
     "CAM_CENTER",
 }
 
-MOVE_COMMAND_ALIASES = {
-    "F": "FORWARD",
-    "FORWARD": "FORWARD",
-    "FRONT": "FORWARD",
-    "B": "BACKWARD",
-    "BACK": "BACKWARD",
-    "BACKWARD": "BACKWARD",
-    "L": "LEFT",
-    "LEFT": "LEFT",
-    "R": "RIGHT",
-    "RIGHT": "RIGHT",
-    "S": "STOP",
-    "STOP": "STOP",
-}
-
-PANTILT_COMMAND_ALIASES = {
-    "UP": "CAM_UP",
-    "CAM_UP": "CAM_UP",
-    "DOWN": "CAM_DOWN",
-    "CAM_DOWN": "CAM_DOWN",
-    "LEFT": "CAM_LEFT",
-    "CAM_LEFT": "CAM_LEFT",
-    "RIGHT": "CAM_RIGHT",
-    "CAM_RIGHT": "CAM_RIGHT",
-    "CENTER": "CAM_CENTER",
-    "CAM_CENTER": "CAM_CENTER",
-}
-
 
 class RaspberryPiAgent:
     def __init__(self) -> None:
         self.serial = SerialComm()
         self.mqtt_disabled = os.getenv("MQTT_DISABLED", "false").lower() == "true"
-        self.mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
-        self.mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+        self.mqtt_host = os.getenv("MQTT_BROKER_HOST", "e44ad0126d10454591f26ef086205935.s1.eu.hivemq.cloud")
+        self.mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "8883"))
         self.mqtt_username = os.getenv("MQTT_USERNAME")
         self.mqtt_password = os.getenv("MQTT_PASSWORD")
-        self.mqtt_use_tls = os.getenv("MQTT_USE_TLS", "false").lower() == "true"
         self.client_id = os.getenv("MQTT_CLIENT_ID", "ai-myaong-raspberrypi")
         self.reconnect_delay = float(os.getenv("MQTT_RECONNECT_DELAY", "5"))
+        self.mqtt_tls = os.getenv("MQTT_TLS", "auto").lower()
+        self.mqtt_tls_insecure = os.getenv("MQTT_TLS_INSECURE", "false").lower() == "true"
         self.topics = tuple(
             topic.strip()
-            for topic in os.getenv(
-                "MQTT_TOPICS",
-                "ai-myaong/robot/move,ai-myaong/robot/pantilt,robot/move,robot/camera",
-            ).split(",")
+            for topic in os.getenv("MQTT_TOPICS", "robot/move,robot/camera").split(",")
             if topic.strip()
         )
         self._client = None
@@ -113,25 +84,22 @@ class RaspberryPiAgent:
         self._client = client
         if self.mqtt_username:
             client.username_pw_set(self.mqtt_username, self.mqtt_password)
-        if self.mqtt_use_tls:
-            client.tls_set()
+        if self._should_use_tls():
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            client.tls_insecure_set(self.mqtt_tls_insecure)
 
         client.on_connect = self.on_connect
         client.on_disconnect = self.on_disconnect
         client.on_message = self.on_message
-        client.reconnect_delay_set(min_delay=1, max_delay=max(2, int(self.reconnect_delay)))
+        # client.reconnect_delay_set(min_delay=1, max_delay=max(2, int(self.reconnect_delay)))
         print(f"[raspberrypi] connecting to MQTT broker {self.mqtt_host}:{self.mqtt_port}")
 
         try:
-            while not self._stopping.is_set():
-                try:
-                    client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
-                    client.loop_forever(retry_first_connection=True)
-                except KeyboardInterrupt:
-                    raise
-                except Exception as exc:
-                    print(f"[raspberrypi] MQTT reconnect failed: {exc}")
-                    time.sleep(self.reconnect_delay)
+            # while not self._stopping.is_set():
+                # try:
+            client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
+            # client.loop_forever(retry_first_connection=True)
+            client.loop_forever()
         except KeyboardInterrupt:
             print("[raspberrypi] stopped by user")
         finally:
@@ -148,6 +116,13 @@ class RaspberryPiAgent:
             return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.client_id)
         except AttributeError:
             return mqtt.Client(client_id=self.client_id)
+
+    def _should_use_tls(self) -> bool:
+        if self.mqtt_tls in {"true", "1", "yes", "on"}:
+            return True
+        if self.mqtt_tls in {"false", "0", "no", "off"}:
+            return False
+        return self.mqtt_port == 8883
 
     def on_connect(self, client, _userdata, _flags, reason_code, _properties=None) -> None:
         if not self._is_success(reason_code):
@@ -180,7 +155,7 @@ class RaspberryPiAgent:
                 print(f"[mqtt] backend announce parse error: {exc}")
             return
 
-        command = self._extract_command(topic, message.payload)
+        command = self._extract_command(message.payload)
         if not command:
             print(f"[raspberrypi] ignored empty command on {topic}")
             return
@@ -192,7 +167,7 @@ class RaspberryPiAgent:
         print(f"[raspberrypi] MQTT {topic} -> Arduino {command}")
         self.serial.send(command)
 
-    def _extract_command(self, topic: str, payload_bytes: bytes) -> str | None:
+    def _extract_command(self, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()
         if not payload_text:
             return None
@@ -200,10 +175,10 @@ class RaspberryPiAgent:
         try:
             payload = json.loads(payload_text)
         except json.JSONDecodeError:
-            return self._normalize_command(topic, payload_text)
+            return payload_text
 
         if isinstance(payload, str):
-            return self._normalize_command(topic, payload)
+            return payload.strip() or None
 
         if not isinstance(payload, dict):
             return None
@@ -217,19 +192,7 @@ class RaspberryPiAgent:
         if command is None:
             return None
 
-        return self._normalize_command(topic, str(command))
-
-    def _normalize_command(self, topic: str, command: str) -> str | None:
-        normalized = command.strip().upper().replace("-", "_")
-        if not normalized:
-            return None
-
-        if topic.endswith("/move"):
-            return MOVE_COMMAND_ALIASES.get(normalized, normalized)
-        if topic.endswith("/pantilt") or topic.endswith("/camera"):
-            return PANTILT_COMMAND_ALIASES.get(normalized, normalized)
-
-        return MOVE_COMMAND_ALIASES.get(normalized) or PANTILT_COMMAND_ALIASES.get(normalized) or normalized
+        return str(command).strip() or None
 
     def _is_success(self, reason_code) -> bool:
         try:
@@ -252,7 +215,7 @@ def start_wifi_http_server(agent: RaspberryPiAgent) -> None:
 def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None:
     import uvicorn
     from fastapi import FastAPI, HTTPException
-
+    from fastapi.responses import StreamingResponse
     app = FastAPI(title="Ai-Myaong Raspberry Pi Agent", version="0.1.0")
 
     @app.get("/api/wifi/scan")
@@ -270,7 +233,14 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
             "source": "raspberrypi",
             "wifiJob": WIFI_JOB_STATUS,
         }
-
+    @app.get("/api/camera/stream")
+    def camera_stream():
+        stream_port = os.getenv("STREAM_PORT", "8081").strip() or "8081"
+        stream_url = f"http://127.0.0.1:{stream_port}/stream.mjpg"
+        return StreamingResponse(
+            proxy_http_stream(stream_url),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
     @app.post("/api/wifi/desktop-backend")
     def save_desktop_backend(body: dict | None = None):
         body = body or {}
@@ -825,7 +795,7 @@ def register_to_desktop_backend(retries: int = 1, delay: float = 0) -> tuple[boo
                 "role": "raspberrypi",
                 "ssid": current_wifi_ssid(),
                 "agent_port": int(os.getenv("PI_AGENT_HTTP_PORT", "8765")),
-                "stream_port": int(os.getenv("STREAM_PORT", "8080")),
+                "stream_port": int(os.getenv("STREAM_PORT", "8081")),
             }
             try:
                 body = json.dumps(payload).encode("utf-8")
