@@ -1,5 +1,5 @@
-from collections import deque
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import mimetypes
 import os
@@ -8,9 +8,24 @@ import sys
 from time import time
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+import database.clips  # noqa: F401
+import database.detection_logs  # noqa: F401
+import database.emergency_clips  # noqa: F401
+import database.feed_logs  # noqa: F401
+import database.oauth2_providers  # noqa: F401
+import database.pet_health_reports  # noqa: F401
+import database.settings  # noqa: F401
+import database.user_credentials  # noqa: F401
+import database.user_oauth_connections  # noqa: F401
+import database.water_logs  # noqa: F401
+from database.alerts import Alert
+from database.base import get_db
+from database.pets import Pet
 
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
@@ -72,10 +87,6 @@ _control_state: dict = {
     "recording_updated_at": 0.0,
 }
 
-_event_seq = 0
-_events = deque(maxlen=100)
-
-
 def _resolve_media_path(raw_path: str) -> Path:
     if not raw_path:
         raise HTTPException(status_code=400, detail="media path is required")
@@ -100,6 +111,59 @@ def _resolve_media_path(raw_path: str) -> Path:
         raise HTTPException(status_code=404, detail="media file not found")
 
     return resolved
+
+
+def _vision_alert_type(event_type: str) -> str:
+    return f"vision.{event_type}"
+
+
+def _event_type_from_alert(alert_type: str) -> str:
+    return alert_type.removeprefix("vision.")
+
+
+def _event_link(event_type: str) -> str:
+    return "/vision" if event_type == "away_person" else "/activity"
+
+
+def _single_pet(db: Session) -> Pet:
+    pet = db.query(Pet).order_by(Pet.pet_id.asc()).first()
+    if not pet:
+        raise HTTPException(status_code=400, detail="Pet is required before saving vision events.")
+    return pet
+
+
+def _alert_to_vision_event(alert: Alert) -> dict:
+    try:
+        data = json.loads(alert.message or "{}")
+    except json.JSONDecodeError:
+        data = {"desc": alert.message or ""}
+
+    event_type = _event_type_from_alert(alert.alert_type)
+    created_at = alert.created_at
+    if created_at:
+        created_at_text = created_at.replace(tzinfo=timezone.utc).isoformat()
+    else:
+        created_at_text = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "id": alert.alert_id,
+        "type": event_type,
+        "title": data.get("title") or alert.alert_type,
+        "message": data.get("desc") or data.get("message") or "",
+        "source": data.get("source"),
+        "storage_path": data.get("media_path") or data.get("storage_path"),
+        "confidence": data.get("confidence"),
+        "created_at": created_at_text,
+    }
+
+
+def _log_vision_event(alert: Alert, payload: VisionEventCreate) -> None:
+    media = payload.storage_path or "-"
+    print(
+        f"[VisionEvent] type={payload.type} alert_id={alert.alert_id} "
+        f"pet_id={alert.pet_id} media={media}",
+        flush=True,
+    )
 
 
 @router.post("/detections")
@@ -144,22 +208,42 @@ def get_control_state(request: Request):
 
 
 @router.post("/events")
-def create_event(payload: VisionEventCreate):
-    global _event_seq
-    _event_seq += 1
-    event = {
-        "id": _event_seq,
-        **payload.model_dump(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+def create_event(payload: VisionEventCreate, db: Session = Depends(get_db)):
+    pet = _single_pet(db)
+    message = {
+        "title": payload.title,
+        "desc": payload.message,
+        "source": payload.source,
+        "media_path": payload.storage_path,
+        "storage_path": payload.storage_path,
+        "confidence": payload.confidence,
+        "link": _event_link(payload.type),
     }
-    _events.appendleft(event)
-    return event
+    alert = Alert(
+        user_id=pet.user_id,
+        pet_id=pet.pet_id,
+        alert_type=_vision_alert_type(payload.type),
+        message=json.dumps(message, ensure_ascii=False),
+        is_confirmed="N",
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    _log_vision_event(alert, payload)
+    return _alert_to_vision_event(alert)
 
 
 @router.get("/events/recent")
-def recent_events(limit: int = 20):
+def recent_events(limit: int = 20, db: Session = Depends(get_db)):
     limit = max(1, min(limit, 100))
-    return {"events": list(_events)[:limit]}
+    rows = (
+        db.query(Alert)
+        .filter(Alert.alert_type.like("vision.%"))
+        .order_by(Alert.created_at.desc(), Alert.alert_id.desc())
+        .limit(limit)
+        .all()
+    )
+    return {"events": [_alert_to_vision_event(row) for row in rows]}
 
 
 @router.get("/media")
