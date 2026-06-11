@@ -206,6 +206,12 @@ export const api = {
     request(`/api/pets/${petId}`, { method: "PATCH", body: JSON.stringify(body) }),
   deletePetApi: (petId) =>
     request(`/api/pets/${petId}`, { method: "DELETE" }),
+  createHealthReport: (petId) =>
+    request(`/api/pets/${petId}/health-report`, { method: "POST" }),
+  getHealthReports: (petId) =>
+    request(`/api/pets/${petId}/health-reports`),
+  getLatestHealthReport: (petId) =>
+    request(`/api/pets/${petId}/health-report/latest`),
 
   googleAuth: ({ email, name, oauth_id, picture, allow_create = true }) =>
     request("/api/auth/google", {
