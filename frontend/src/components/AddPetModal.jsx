@@ -19,7 +19,7 @@ const emptyPet = () => ({
   name: '', species: 'DOG', breed: '', gender: 'M',
   birthDate: '', age: '', weightKg: '', heightCm: '',
   circumference: '', legLength: '', // (선택) 체지방률 계산용
-  photo: '', notes: '',
+  photo: '', photoFile: null, notes: '',
 })
 
 /**
@@ -50,7 +50,7 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => set('photo', reader.result) // Base64
+    reader.onload = () => setPet((p) => ({ ...p, photo: reader.result, photoFile: file })) // Base64 preview + upload file
     reader.readAsDataURL(file)
   }
 

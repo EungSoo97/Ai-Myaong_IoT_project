@@ -31,6 +31,7 @@ export function fromApiPet(r, prevPhoto = "") {
     heightCm: r.height_cm ?? "",
     circumference: r.circumference ?? "",
     legLength: r.leg_length ?? "",
-    photo: prevPhoto || "",
+    photo: r.photo_path || prevPhoto || "",
+    photo_path: r.photo_path || "",
   };
 }

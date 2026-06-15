@@ -68,11 +68,16 @@ export function PetDetail() {
   // 수정 — DB 반영 + 로컬 동기화
   const handleEdit = async (updated) => {
     setShowEdit(false);
-    let saved = updated;
+    const { photoFile, ...localPet } = updated;
+    let saved = localPet;
     try {
       if (pet?.pet_id) {
         const r = await api.updatePetApi(pet.pet_id, toApiPet(updated));
         saved = fromApiPet(r, updated.photo);
+        if (photoFile) {
+          const photoResult = await api.uploadPetPhoto(pet.pet_id, photoFile);
+          saved = fromApiPet(photoResult, updated.photo);
+        }
       }
     } catch {
       /* 백엔드 미연결 → 로컬만 */
@@ -84,10 +89,15 @@ export function PetDetail() {
   // 펫이 없을 때 새로 등록 — DB 반영 + 로컬 동기화
   const handleRegister = async (newPet) => {
     setShowRegister(false);
-    let saved = newPet;
+    const { photoFile, ...localPet } = newPet;
+    let saved = localPet;
     try {
       const r = await api.createPet(toApiPet(newPet));
       saved = fromApiPet(r, newPet.photo);
+      if (photoFile) {
+        const photoResult = await api.uploadPetPhoto(r.pet_id, photoFile);
+        saved = fromApiPet(photoResult, newPet.photo);
+      }
     } catch {
       /* 백엔드 미연결 → 로컬만 */
     }

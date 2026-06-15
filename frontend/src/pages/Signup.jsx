@@ -153,6 +153,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
         userId: result.user?.username || "",
         email: result.user?.email || profile.email,
         nickname: result.user?.nickname || profile.name || "",
+        photo: result.user?.profile_photo_path || profile.picture || "",
+        profile_photo_path: result.user?.profile_photo_path || profile.picture || "",
       };
 
       saveAccount({
@@ -335,6 +337,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
         userId: result.user?.username || userInfo.userId,
         email: result.user?.email || userInfo.email,
         nickname: result.user?.nickname || userInfo.nickname,
+        photo: result.user?.profile_photo_path || "",
+        profile_photo_path: result.user?.profile_photo_path || "",
       };
       saveAccount({
         provider,
