@@ -558,9 +558,14 @@ export function RobotVision() {
       {/* 이벤트 로그 */}
       <section className="mt-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display text-base font-bold text-brand-brown">
-            이벤트 로그
-          </h3>
+          <div>
+            <h3 className="font-display text-base font-bold text-brand-brown">
+              이벤트 로그
+            </h3>
+            <p className="mt-0.5 text-[11px] font-semibold text-brand-mute">
+              최근 이벤트는 30일 동안 보관돼요.
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-brand-mute font-semibold">
               {Math.min(eventLog.length, 5)}/5

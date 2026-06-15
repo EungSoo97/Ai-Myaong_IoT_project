@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -617,6 +617,9 @@ export function Dashboard() {
             </button>
           </div>
         </div>
+        <p className="px-1 -mt-2 mb-3 text-[11px] font-semibold text-brand-mute">
+          최근 이벤트는 30일 동안 보관돼요.
+        </p>
         <div
           className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
             recentCollapsed ? "grid-rows-[0fr] opacity-0 -mt-1" : "grid-rows-[1fr] opacity-100"
@@ -673,7 +676,7 @@ export function Dashboard() {
                 <p className="font-display text-base font-bold text-brand-brown leading-tight">
                   활동량
                 </p>
-                <p className="text-[11px] text-brand-mute">우리 아이 발자국 🐾</p>
+                <p className="text-[11px] text-brand-mute">활동량 기록은 최대 1년까지 보관돼요.</p>
               </div>
             </div>
             {/* 일/주/월 탭 */}

@@ -8,6 +8,7 @@ from app.routers import device, feed, network, robot, stream, ws, auth, settings
 from app.mqtt.mqtt_client import MqttClient
 from app.services.database import Database
 from app.services.feed_service import FeedService
+from app.services.retention import cleanup_old_records
 from app.services.robot_service import RobotService
 from app.services.simulator import DeviceSimulator
 
@@ -67,6 +68,10 @@ app.include_router(vision.router)
 @app.on_event("startup")
 def startup() -> None:
     database.init()
+    try:
+        cleanup_old_records()
+    except Exception as error:
+        print(f"[Retention] cleanup skipped: {error}", flush=True)
     mqtt_client.start()
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
     # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)

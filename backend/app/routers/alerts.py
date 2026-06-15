@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 # ORM 매퍼 관계 해석을 위해 관련 모델 등록
 import database.clips  # noqa: F401
+import database.daily_activity_summaries  # noqa: F401
 import database.detection_logs  # noqa: F401
 import database.emergency_clips  # noqa: F401
 import database.feed_logs  # noqa: F401

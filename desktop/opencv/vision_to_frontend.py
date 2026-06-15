@@ -150,6 +150,88 @@ def draw_boxes(frame, detections):
         cv2.putText(frame, label, (x + 6, max(15, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (230, 230, 230), 1)
 
 
+def select_pet_detection(detections):
+    pets = [item for item in detections if item["label"] in ("Cat", "Dog")]
+    if not pets:
+        return None
+    return max(pets, key=lambda item: item.get("confidence", 0.0))
+
+
+def box_center(detection):
+    return (
+        detection["x"] + detection["w"] / 2,
+        detection["y"] + detection["h"] / 2,
+    )
+
+
+class ActivityTracker:
+    def __init__(self):
+        self.window_seconds = float(os.getenv("ACTIVITY_WINDOW_SECONDS", "60"))
+        self.no_motion_threshold = float(os.getenv("ACTIVITY_NO_MOTION_THRESHOLD", "0.002"))
+        self.low_threshold = float(os.getenv("ACTIVITY_LOW_THRESHOLD", "0.01"))
+        self.active_threshold = float(os.getenv("ACTIVITY_ACTIVE_THRESHOLD", "0.04"))
+        self.min_detected_ratio = float(os.getenv("ACTIVITY_MIN_DETECTED_RATIO", "0.2"))
+        self.reset()
+
+    def reset(self):
+        self.window_started_at = time.time()
+        self.last_center = None
+        self.last_seen_at = None
+        self.movement_scores = []
+        self.detected_seconds = 0.0
+
+    def update(self, frame, detections, now):
+        if now - self.window_started_at >= self.window_seconds:
+            self.print_summary(now)
+            self.reset()
+
+        pet = select_pet_detection(detections)
+        if pet is None:
+            self.last_center = None
+            self.last_seen_at = None
+            return
+
+        center = box_center(pet)
+        if self.last_center is not None:
+            h, w = frame.shape[:2]
+            diagonal = max((w * w + h * h) ** 0.5, 1.0)
+            distance = ((center[0] - self.last_center[0]) ** 2 + (center[1] - self.last_center[1]) ** 2) ** 0.5
+            self.movement_scores.append(distance / diagonal)
+
+        if self.last_seen_at is not None:
+            self.detected_seconds += max(0.0, now - self.last_seen_at)
+
+        self.last_center = center
+        self.last_seen_at = now
+
+    def print_summary(self, now):
+        elapsed = max(now - self.window_started_at, 1.0)
+        detected_ratio = self.detected_seconds / elapsed
+        if detected_ratio < self.min_detected_ratio or not self.movement_scores:
+            avg = 0.0
+            status = "INSUFFICIENT_DATA"
+        else:
+            avg = sum(self.movement_scores) / len(self.movement_scores)
+            status = self.classify(avg)
+
+        print(
+            "[Activity] "
+            f"avg={avg:.4f} status={status} "
+            f"detected={int(self.detected_seconds)}s/{int(elapsed)}s "
+            f"samples={len(self.movement_scores)}",
+            flush=True,
+        )
+
+    def classify(self, avg):
+        if avg < self.no_motion_threshold:
+            return "NO_MOTION"
+        if avg < self.low_threshold:
+            return "LOW"
+        if avg >= self.active_threshold:
+            return "ACTIVE"
+        return "NORMAL"
+
+
 def post_detections(backend_url, source, frame, detections):
     h, w = frame.shape[:2]
     payload = {
@@ -295,6 +377,7 @@ def main():
     last_away_person_event_at = 0.0
     last_event_error_at = 0.0
     recorder = ClipRecorder()
+    activity_tracker = ActivityTracker()
 
     try:
         for frame in frame_source:
@@ -361,6 +444,7 @@ def main():
             recorder.write(raw_frame)
 
             detections = detect_boxes(model, frame, class_filter)
+            activity_tracker.update(frame, detections, now)
             if away_mode:
                 person = next((item for item in detections if item["label"] == "Person"), None)
                 if person and now - last_away_person_event_at >= float(os.getenv("AWAY_PERSON_EVENT_COOLDOWN", "10")):

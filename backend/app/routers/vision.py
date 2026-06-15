@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 import database.clips  # noqa: F401
+import database.daily_activity_summaries  # noqa: F401
 import database.detection_logs  # noqa: F401
 import database.emergency_clips  # noqa: F401
 import database.feed_logs  # noqa: F401
