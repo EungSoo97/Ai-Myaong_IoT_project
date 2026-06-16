@@ -47,6 +47,7 @@ class PetResponse(BaseModel):
     height_cm: Optional[float] = None
     circumference: Optional[float] = None
     leg_length: Optional[float] = None
+    photo_path: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -58,6 +59,7 @@ class UserResponse(BaseModel):
     email: str
     nickname: Optional[str] = None
     oauth_provider: Optional[str] = None
+    profile_photo_path: Optional[str] = None
     pets: List[PetResponse] = []
 
     class Config:

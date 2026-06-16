@@ -18,11 +18,13 @@ export function resolveMediaUrl(path) {
 
 async function request(path, options = {}) {
   const token = sessionStorage.getItem("aimyaong:token");
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       headers: {
-        "Content-Type": "application/json",
+        ...(!isFormData ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
@@ -233,6 +235,14 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  uploadUserPhoto: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/api/auth/me/photo", {
+      method: "POST",
+      body: formData,
+    });
+  },
 
   setCredentials: ({ username, password }) =>
     request("/api/auth/me/credentials", {
@@ -254,8 +264,22 @@ export const api = {
     request("/api/pets", { method: "POST", body: JSON.stringify(body) }),
   updatePetApi: (petId, body) =>
     request(`/api/pets/${petId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  uploadPetPhoto: (petId, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request(`/api/pets/${petId}/photo`, {
+      method: "POST",
+      body: formData,
+    });
+  },
   deletePetApi: (petId) =>
     request(`/api/pets/${petId}`, { method: "DELETE" }),
+  createHealthReport: (petId) =>
+    request(`/api/pets/${petId}/health-report`, { method: "POST" }),
+  getHealthReports: (petId) =>
+    request(`/api/pets/${petId}/health-reports`),
+  getLatestHealthReport: (petId) =>
+    request(`/api/pets/${petId}/health-report/latest`),
 
   googleAuth: ({ email, name, oauth_id, picture, allow_create = true }) =>
     request("/api/auth/google", {
