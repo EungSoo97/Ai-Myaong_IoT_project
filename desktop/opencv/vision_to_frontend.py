@@ -165,12 +165,15 @@ def box_center(detection):
 
 
 class ActivityTracker:
-    def __init__(self):
+    def __init__(self, backend_url=None):
         self.window_seconds = float(os.getenv("ACTIVITY_WINDOW_SECONDS", "60"))
         self.no_motion_threshold = float(os.getenv("ACTIVITY_NO_MOTION_THRESHOLD", "0.002"))
         self.low_threshold = float(os.getenv("ACTIVITY_LOW_THRESHOLD", "0.01"))
         self.active_threshold = float(os.getenv("ACTIVITY_ACTIVE_THRESHOLD", "0.04"))
         self.min_detected_ratio = float(os.getenv("ACTIVITY_MIN_DETECTED_RATIO", "0.2"))
+        self.activity_score_scale = float(os.getenv("ACTIVITY_SCORE_SCALE", os.getenv("PAW_STEP_SCALE", "100")))
+        self.backend_url = backend_url
+        self.last_activity_error_at = 0.0
         self.reset()
 
     def reset(self):
@@ -207,20 +210,43 @@ class ActivityTracker:
     def print_summary(self, now):
         elapsed = max(now - self.window_started_at, 1.0)
         detected_ratio = self.detected_seconds / elapsed
+        movement_sum = sum(self.movement_scores)
         if detected_ratio < self.min_detected_ratio or not self.movement_scores:
             avg = 0.0
             status = "INSUFFICIENT_DATA"
+            activity_score = 0
         else:
-            avg = sum(self.movement_scores) / len(self.movement_scores)
+            avg = movement_sum / len(self.movement_scores)
             status = self.classify(avg)
+            activity_score = round(movement_sum * self.activity_score_scale)
+            self.post_activity(activity_score, status, self.detected_seconds, elapsed, now)
 
         print(
             "[Activity] "
             f"avg={avg:.4f} status={status} "
+            f"activity_score={activity_score} "
             f"detected={int(self.detected_seconds)}s/{int(elapsed)}s "
             f"samples={len(self.movement_scores)}",
             flush=True,
         )
+
+    def post_activity(self, activity_score, status, detected_seconds, window_seconds, now):
+        if not self.backend_url:
+            return
+
+        payload = {
+            "activity_score": activity_score,
+            "status": status,
+            "detected_seconds": detected_seconds,
+            "window_seconds": window_seconds,
+        }
+        try:
+            response = requests.post(f"{self.backend_url}/api/vision/activity", json=payload, timeout=0.5)
+            response.raise_for_status()
+        except requests.RequestException as error:
+            if now - self.last_activity_error_at > 5:
+                print(f"[Vision] Activity post failed: {error}", flush=True)
+                self.last_activity_error_at = now
 
     def classify(self, avg):
         if avg < self.no_motion_threshold:
@@ -377,7 +403,7 @@ def main():
     last_away_person_event_at = 0.0
     last_event_error_at = 0.0
     recorder = ClipRecorder()
-    activity_tracker = ActivityTracker()
+    activity_tracker = ActivityTracker(backend_url)
 
     try:
         for frame in frame_source:

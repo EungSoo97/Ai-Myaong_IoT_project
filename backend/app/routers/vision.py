@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import mimetypes
@@ -8,11 +8,12 @@ import sys
 from time import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.security import decode_access_token
 import database.clips  # noqa: F401
 import database.daily_activity_summaries  # noqa: F401
 import database.detection_logs  # noqa: F401
@@ -26,7 +27,9 @@ import database.user_oauth_connections  # noqa: F401
 import database.water_logs  # noqa: F401
 from database.alerts import Alert
 from database.base import get_db
+from database.daily_activity_summaries import DailyActivitySummary
 from database.pets import Pet
+from database.user import User
 
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
@@ -62,6 +65,13 @@ class VisionEventCreate(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
 
 
+class VisionActivityCreate(BaseModel):
+    activity_score: float = Field(ge=0)
+    status: Literal["NO_MOTION", "LOW", "NORMAL", "ACTIVE"]
+    detected_seconds: float = Field(ge=0)
+    window_seconds: float = Field(gt=0)
+
+
 class VisionRevealRequest(BaseModel):
     path: str
 
@@ -86,7 +96,24 @@ _control_state: dict = {
     "capture_requested_at": 0.0,
     "recording": False,
     "recording_updated_at": 0.0,
+    "active_user_id": None,
 }
+
+
+def _current_user(authorization: str | None, db: Session) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
+    payload = decode_access_token(authorization.split(" ", 1)[1])
+    if not payload:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    user = db.query(User).filter(User.user_id == int(payload["sub"])).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    return user
+
+
+def _remember_active_user(user: User) -> None:
+    _control_state["active_user_id"] = user.user_id
 
 def _resolve_media_path(raw_path: str) -> Path:
     if not raw_path:
@@ -126,8 +153,11 @@ def _event_link(event_type: str) -> str:
     return "/vision" if event_type == "away_person" else "/activity"
 
 
-def _single_pet(db: Session) -> Pet:
-    pet = db.query(Pet).order_by(Pet.pet_id.asc()).first()
+def _single_pet(db: Session, user_id: int | None = None) -> Pet:
+    query = db.query(Pet)
+    if user_id is not None:
+        query = query.filter(Pet.user_id == user_id)
+    pet = query.order_by(Pet.pet_id.asc()).first()
     if not pet:
         raise HTTPException(status_code=400, detail="Pet is required before saving vision events.")
     return pet
@@ -167,6 +197,13 @@ def _log_vision_event(alert: Alert, payload: VisionEventCreate) -> None:
     )
 
 
+def _active_pet(db: Session) -> Pet:
+    active_user_id = _control_state.get("active_user_id")
+    if active_user_id is None:
+        raise HTTPException(status_code=409, detail="Active vision user is required before saving vision data.")
+    return _single_pet(db, active_user_id)
+
+
 @router.post("/detections")
 def update_detections(payload: DetectionPayload):
     global _latest_detection
@@ -183,7 +220,9 @@ def latest_detections():
 
 
 @router.post("/capture")
-def request_capture():
+def request_capture(authorization: str = Header(None), db: Session = Depends(get_db)):
+    user = _current_user(authorization, db)
+    _remember_active_user(user)
     _control_state["capture_request_id"] += 1
     _control_state["capture_requested_at"] = time()
     return {
@@ -193,7 +232,9 @@ def request_capture():
 
 
 @router.post("/recording")
-def set_recording(payload: VisionRecordingRequest):
+def set_recording(payload: VisionRecordingRequest, authorization: str = Header(None), db: Session = Depends(get_db)):
+    user = _current_user(authorization, db)
+    _remember_active_user(user)
     _control_state["recording"] = payload.on
     _control_state["recording_updated_at"] = time()
     return {"ok": True, "recording": _control_state["recording"]}
@@ -210,7 +251,7 @@ def get_control_state(request: Request):
 
 @router.post("/events")
 def create_event(payload: VisionEventCreate, db: Session = Depends(get_db)):
-    pet = _single_pet(db)
+    pet = _active_pet(db)
     message = {
         "title": payload.title,
         "desc": payload.message,
@@ -234,12 +275,63 @@ def create_event(payload: VisionEventCreate, db: Session = Depends(get_db)):
     return _alert_to_vision_event(alert)
 
 
+@router.post("/activity")
+def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
+    pet = _active_pet(db)
+    summary_date = date.today()
+    detected_minutes = max(1, int((payload.detected_seconds + 59) // 60))
+
+    row = (
+        db.query(DailyActivitySummary)
+        .filter(
+            DailyActivitySummary.pet_id == pet.pet_id,
+            DailyActivitySummary.summary_date == summary_date,
+        )
+        .first()
+    )
+
+    if row:
+        previous_minutes = row.detected_minutes or 0
+        total_minutes = previous_minutes + detected_minutes
+        previous_score = row.avg_activity_level or 0.0
+        row.avg_activity_level = (
+            (previous_score * previous_minutes) + (payload.activity_score * detected_minutes)
+        ) / max(total_minutes, 1)
+        row.detected_minutes = total_minutes
+        row.status = payload.status
+    else:
+        row = DailyActivitySummary(
+            user_id=pet.user_id,
+            pet_id=pet.pet_id,
+            summary_date=summary_date,
+            avg_activity_level=payload.activity_score,
+            status=payload.status,
+            detected_minutes=detected_minutes,
+        )
+        db.add(row)
+
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "summary_id": row.summary_id,
+        "user_id": row.user_id,
+        "pet_id": row.pet_id,
+        "summary_date": row.summary_date.isoformat(),
+        "avg_activity_level": row.avg_activity_level,
+        "status": row.status,
+        "detected_minutes": row.detected_minutes,
+    }
+
+
 @router.get("/events/recent")
-def recent_events(limit: int = 20, db: Session = Depends(get_db)):
+def recent_events(limit: int = 20, authorization: str = Header(None), db: Session = Depends(get_db)):
+    user = _current_user(authorization, db)
+    _remember_active_user(user)
     limit = max(1, min(limit, 100))
     rows = (
         db.query(Alert)
-        .filter(Alert.alert_type.like("vision.%"))
+        .filter(Alert.user_id == user.user_id, Alert.alert_type.like("vision.%"))
         .order_by(Alert.created_at.desc(), Alert.alert_id.desc())
         .limit(limit)
         .all()
