@@ -68,7 +68,21 @@ export function Activity() {
 
   // 급여(배식/급수)는 DB 연동 / 감지는 mock(DETECTIONS) 유지
   useEffect(() => {
-    api.getDispenserLogs().then((d) => setFeedLogs({ feed: d.feed || [], water: d.water || [] })).catch(() => {})
+    let alive = true
+    const load = () => {
+      api
+        .getDispenserLogs()
+        .then((d) => {
+          if (alive) setFeedLogs({ feed: d.feed || [], water: d.water || [] })
+        })
+        .catch(() => {})
+    }
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   useEffect(() => {
@@ -100,11 +114,11 @@ export function Activity() {
     }
     const food = (feedLogs.feed || []).map((x, i) => {
       const amt = Math.round(Number(x.amount_g) || 0)
-      return { id: `f${i}-${x.created_at}`, cat: 'feed', kind: 'food', icon: UtensilsCrossed, type: '배식', amount: amt, unit: 'g', feedType: x.feed_type, desc: `사료 ${amt}g`, time: fmt(x.created_at) }
+      return { id: `f${i}-${x.created_at}`, cat: 'feed', kind: 'food', icon: UtensilsCrossed, type: '배식', amount: amt, unit: 'g', feedType: x.feed_type, desc: `사료 ${amt}g`, time: fmt(x.created_at), rawTime: x.created_at }
     })
     const water = (feedLogs.water || []).map((x, i) => {
       const amt = Math.round(Number(x.amount_ml) || 0)
-      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at) }
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at }
     })
     return [...food, ...water]
   }, [feedLogs])
