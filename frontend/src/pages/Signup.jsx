@@ -40,6 +40,8 @@ const C = {
   ok: 'rgb(var(--brand-success))',
 }
 
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // 프로필 이미지 최대 5MB
+
 /* 단계 메타 (약관 동의 단계 제거 → 유저 정보부터 시작) */
 const STEPS = [
   { key: "user", label: "정보 입력" },
@@ -611,10 +613,17 @@ function Divider() {
 /* ─────────────── Step 2 · 펫 정보 ─────────────── */
 function PetStep({ pet, setPetField, count, errors = {} }) {
   const fileRef = useRef(null);
+  const [imgErr, setImgErr] = useState("");
 
   const onPickImage = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_PHOTO_BYTES) {
+      setImgErr("이미지는 5MB 이하로 업로드해 주세요.");
+      e.target.value = ""; // 같은 파일 다시 고를 수 있게 초기화
+      return;
+    }
+    setImgErr("");
     const reader = new FileReader();
     reader.onload = () => setPetField("photo", reader.result); // Base64
     reader.readAsDataURL(file);
@@ -663,6 +672,12 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
           className="hidden"
         />
       </div>
+      <p
+        className="mt-2 text-center text-xs"
+        style={{ color: imgErr ? C.danger : C.mute }}
+      >
+        {imgErr || "JPG · PNG · 5MB 이하로 업로드해 주세요"}
+      </p>
 
       <div data-field="name">
         <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}

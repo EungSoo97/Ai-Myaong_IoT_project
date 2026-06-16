@@ -14,6 +14,7 @@ const C = {
 }
 
 const TODAY = new Date().toISOString().slice(0, 10) // 미래 생일 선택 방지
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // 프로필 이미지 최대 5MB
 
 const emptyPet = () => ({
   name: '', species: 'DOG', breed: '', gender: 'M',
@@ -49,6 +50,12 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
   const onPick = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > MAX_PHOTO_BYTES) {
+      setErr('이미지는 5MB 이하로 업로드해 주세요.')
+      e.target.value = '' // 같은 파일 다시 고를 수 있게 초기화
+      return
+    }
+    setErr('')
     const reader = new FileReader()
     reader.onload = () => set('photo', reader.result) // Base64
     reader.readAsDataURL(file)
@@ -102,6 +109,9 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
         </div>
+        <p className="mt-2 text-center text-xs" style={{ color: C.mute }}>
+          JPG · PNG · 5MB 이하로 업로드해 주세요
+        </p>
 
         <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
           onChange={(v) => set('name', v)} placeholder="예: 초코" />
