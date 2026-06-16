@@ -334,10 +334,15 @@ export function Dashboard() {
   const [showRegister, setShowRegister] = useState(false);
   const handleRegister = async (newPet) => {
     setShowRegister(false);
-    let saved = newPet;
+    const { photoFile, ...localPet } = newPet;
+    let saved = localPet;
     try {
       const r = await api.createPet(toApiPet(newPet)); // DB 저장 → pet_id 반환
       saved = fromApiPet(r, newPet.photo);
+      if (photoFile) {
+        const photoResult = await api.uploadPetPhoto(r.pet_id, photoFile);
+        saved = fromApiPet(photoResult, newPet.photo);
+      }
     } catch {
       /* 백엔드 미연결 → 로컬만 */
     }
