@@ -19,12 +19,15 @@ import { api } from '../api/api'
 import { useFeedSettings, setFoodAmount, setWaterAmount } from '../lib/dispenserSettings'
 import { addNotification } from '../lib/notificationRepository'
 
+// 브랜드 색 토큰(CSS 변수) 사용 → 다크모드에서 자동으로 차분한 톤으로 전환
 const COLORS = {
-  food: '#F08D86',
-  water: '#5BA4D9',
-  brown: '#4B3621',
-  mute: '#9C8A78',
+  food: 'rgb(var(--brand-food))',
+  water: 'rgb(var(--brand-water))',
+  brown: 'rgb(var(--brand-brown))',
+  mute: 'rgb(var(--brand-mute))',
 }
+// rgb(var(--x)) 색에 투명도 적용: rgb(var(--x) / a)
+const withAlpha = (c, a) => `${c.slice(0, -1)} / ${a})`
 
 /* 오늘(일간) 시간대 버킷 라벨 */
 const DAY_LABELS = ['아침', '점심', '오후', '저녁', '야식']
@@ -207,11 +210,11 @@ export function Dispenser() {
     }
     if (foodLow) {
       notifyLow('food', 'food_low', '사료 부족',
-        foodRemain <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `사료 잔여량 ${foodRemain}% · 보충해주세요!`)
+        foodRemain <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `남은 사료 ${foodRemain}% · 보충해주세요!`)
     }
     if (waterLow) {
       notifyLow('water', 'water_low', '물 부족',
-        waterRemain <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `수위 ${waterRemain}% · 보충해주세요!`)
+        waterRemain <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `남은 물 ${waterRemain}% · 보충해주세요!`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -268,7 +271,7 @@ export function Dispenser() {
       <section className="grid grid-cols-2 gap-3">
         <ResourceCard
           icon={<UtensilsCrossed className="w-4 h-4" />}
-          label="사료 잔여량"
+          label="남은 사료"
           value={foodRemain}
           unit="%"
           color="primary"
@@ -276,7 +279,7 @@ export function Dispenser() {
         />
         <ResourceCard
           icon={<Droplets className="w-4 h-4" />}
-          label="수위 (Water Level)"
+          label="남은 물"
           value={waterRemain}
           unit="%"
           color="water"
@@ -367,7 +370,7 @@ export function Dispenser() {
                 {/* 종류 아이콘 (색상 톤) */}
                 <span
                   className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{ background: `${isFood ? COLORS.food : COLORS.water}1A`, color: isFood ? COLORS.food : COLORS.water }}
+                  style={{ background: withAlpha(isFood ? COLORS.food : COLORS.water, 0.1), color: isFood ? COLORS.food : COLORS.water }}
                 >
                   {isFood ? <UtensilsCrossed className="w-5 h-5" /> : <Droplets className="w-5 h-5" />}
                 </span>
@@ -378,7 +381,7 @@ export function Dispenser() {
                     <p className="font-display text-lg font-bold text-brand-brown leading-none">{s.time}</p>
                     <span
                       className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
-                      style={{ background: `${isFood ? COLORS.food : COLORS.water}1A`, color: isFood ? COLORS.food : COLORS.water }}
+                      style={{ background: withAlpha(isFood ? COLORS.food : COLORS.water, 0.1), color: isFood ? COLORS.food : COLORS.water }}
                     >
                       {isFood ? '사료' : '물'}
                     </span>
@@ -443,10 +446,10 @@ export function Dispenser() {
         <div className="flex items-center justify-between px-1 mb-3">
           <h3 className="font-display text-base font-bold text-brand-brown">오늘 급여 통계</h3>
           <div className="flex items-center gap-1.5">
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.food}26`, color: COLORS.food }}>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: withAlpha(COLORS.food, 0.15), color: COLORS.food }}>
               사료 {todayTotal}g
             </span>
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${COLORS.water}26`, color: COLORS.water }}>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: withAlpha(COLORS.water, 0.15), color: COLORS.water }}>
               물 {todayWater}ml
             </span>
           </div>
@@ -502,10 +505,9 @@ export function Dispenser() {
 
 function ResourceCard({ icon, label, value, unit, color, low }) {
   const accent = color === 'water' ? COLORS.water : COLORS.food
-  const empty = value <= 0
   const danger = '#E26D5C'
   return (
-    <Card className={`px-4 py-4 transition-colors ${low ? 'border-2 border-brand-danger bg-brand-danger/5' : ''}`}>
+    <Card className={`px-4 py-4 transition-colors flex flex-col h-full ${low ? 'border-2 border-brand-danger bg-brand-danger/5' : ''}`}>
       {/* 라벨 + 상태 배지 */}
       <div className="flex items-center justify-between gap-1.5 mb-1.5">
         <div className="flex items-center gap-1.5 text-brand-mute min-w-0">
@@ -513,8 +515,8 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
           <p className="text-[11px] font-semibold truncate">{label}</p>
         </div>
         {low ? (
-          <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-danger text-white animate-pulse">
-            보충 필요
+          <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-danger text-white animate-pulse">
+            <AlertTriangle className="w-3 h-3 shrink-0" /> 보충 필요
           </span>
         ) : (
           <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-success/15 text-brand-success">
@@ -524,28 +526,20 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
       </div>
 
       {/* 잔여 수치 (부족 시 빨강) */}
-      <p className="font-display text-2xl font-bold leading-none" style={{ color: low ? danger : COLORS.brown }}>
+      <p className="font-display text-3xl font-bold leading-none" style={{ color: low ? danger : COLORS.brown }}>
         {value}
-        <span className="text-base ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
+        <span className="text-lg ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
       </p>
 
-      {/* 게이지 */}
-      <div className="mt-3 h-2.5 rounded-full bg-brand-line overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: low ? danger : accent }}
-        />
-      </div>
-
-      {/* 부족/없음 경고 배너 */}
-      {low && (
-        <div className="mt-2.5 flex items-center gap-1.5 rounded-xl bg-brand-danger/10 px-2.5 py-2 text-brand-danger animate-pulse">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="text-[11px] font-bold leading-tight">
-            {empty ? '비었어요! 지금 보충해주세요' : '부족해요! 보충해주세요'}
-          </span>
+      {/* 게이지 (남는 공간을 위로 밀어 아래에 배치 · % 와 간격 여유) */}
+      <div className="mt-auto pt-4">
+        <div className="h-2.5 rounded-full bg-brand-line overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: low ? danger : accent }}
+          />
         </div>
-      )}
+      </div>
     </Card>
   )
 }
@@ -560,7 +554,7 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
         <div className="flex items-center gap-2">
           <span
             className="w-9 h-9 rounded-2xl flex items-center justify-center"
-            style={{ background: `${accent}26`, color: accent }}
+            style={{ background: withAlpha(accent, 0.15), color: accent }}
           >
             {icon}
           </span>
@@ -569,7 +563,7 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
             <p className="font-display text-base font-bold text-brand-brown">1회 제공량</p>
           </div>
         </div>
-        <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${accent}26`, color: accent }}>
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: withAlpha(accent, 0.15), color: accent }}>
           {amount}{unitLabel}
         </span>
       </div>
@@ -758,7 +752,7 @@ function ScheduleModal({ initial, onClose, onSave }) {
         <div className="mt-4">
           <div className="flex items-center justify-between pl-1">
             <span className="text-sm font-bold text-brand-mute">{isFood ? '급여량' : '급수량'}</span>
-            <span className="px-2.5 py-1 rounded-full text-sm font-bold" style={{ background: `${accent}26`, color: accent }}>
+            <span className="px-2.5 py-1 rounded-full text-sm font-bold" style={{ background: withAlpha(accent, 0.15), color: accent }}>
               {amount}{unit}
             </span>
           </div>
