@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -18,13 +18,28 @@ import {
   ChevronRight,
   ChevronDown,
   Footprints,
+  Sparkles,
+  X,
+  Maximize2,
   Trash2,
 } from "lucide-react";
 import {
-  AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
 } from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
+import {
+  useAccount,
+  petAgeLabel,
+  speciesLabel,
+  addPet,
+  getAccount,
+  saveAccount,
+} from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, timeAgo } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
@@ -44,6 +59,17 @@ const EVENT_ICON = {
   away_person: UserX,
   capture_saved: Camera,
   clip_saved: Video,
+};
+
+const FEED_TYPE_LABEL = {
+  quick: "빠른 배식",
+  manual: "수동 배식",
+  auto: "자동 배식",
+};
+
+const WATER_TYPE_LABEL = {
+  manual: "수동 급수",
+  auto: "자동 급수",
 };
 
 const SHORTCUTS = [
@@ -130,9 +156,22 @@ function ActivityArea({ data }) {
             <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9C8A78" }} axisLine={false} tickLine={false} />
-        <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="#EFE3D2"
+          vertical={false}
+        />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 11, fill: "#9C8A78" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip
+          {...actTooltip}
+          formatter={(v) => [`${v}회`, "발자국"]}
+          cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }}
+        />
         <Area
           type="monotone"
           dataKey="value"
@@ -160,19 +199,28 @@ export function Dashboard() {
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
   const [recentLogs, setRecentLogs] = useState({ feed: [], water: [] });
+  const refreshLogs = useCallback(
+    () =>
+      api
+        .getDispenserLogs()
+        .then((d) =>
+          setRecentLogs({ feed: d.feed || [], water: d.water || [] }),
+        )
+        .catch(() => {}),
+    [],
+  );
   useEffect(() => {
-    api
-      .getDispenserLogs()
-      .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
-      .catch(() => {});
-  }, []);
+    refreshLogs();
+    const timer = window.setInterval(refreshLogs, 3000);
+    return () => window.clearInterval(timer);
+  }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
     const feed = (recentLogs.feed || []).map((x) => ({
       key: `f-${x.created_at}-${x.amount_g}`,
       icon: UtensilsCrossed,
       tone: "primary",
-      title: "배식 완료",
+      title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
       desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -180,7 +228,7 @@ export function Dashboard() {
       key: `w-${x.created_at}-${x.amount_ml}`,
       icon: Droplets,
       tone: "brown",
-      title: "급수 완료",
+      title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
       desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -191,21 +239,58 @@ export function Dashboard() {
   }, [recentLogs]);
 
   // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
+  // camState: connecting(초기·확인 중) → live(영상 로드됨) / off(주소 없음·실패)
   const [streamUrl, setStreamUrl] = useState("");
-  const [streamFailed, setStreamFailed] = useState(false);
+  const [camState, setCamState] = useState("connecting");
+  const [camFull, setCamFull] = useState(false); // 캠 전체화면 오버레이
+
+  // 캠 전체화면 열기/닫기 (네이티브 풀스크린은 가능하면 함께 시도)
+  const openCamFull = () => {
+    setCamFull(true);
+    try {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch {
+      /* 미지원 환경 — 인앱 오버레이로 충분 */
+    }
+  };
+  const closeCamFull = () => {
+    setCamFull(false);
+    try {
+      if (document.fullscreenElement)
+        document.exitFullscreen?.().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // ESC 로 닫기 + 전체화면일 때 body 스크롤 잠금
+  useEffect(() => {
+    if (!camFull) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") closeCamFull();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [camFull]);
 
   useEffect(() => {
     let alive = true;
+    setCamState("connecting");
     api
       .getStreamUrl()
       .then((data) => {
-        if (alive) {
-          setStreamUrl(data.url || "");
-          setStreamFailed(false);
-        }
+        if (!alive) return;
+        if (data.url)
+          setStreamUrl(data.url); // 로드되면 onLoad 에서 live 로
+        else setCamState("off");
       })
       .catch(() => {
-        if (alive) setStreamFailed(true);
+        if (alive) setCamState("off");
       });
     return () => {
       alive = false;
@@ -235,7 +320,8 @@ export function Dashboard() {
     };
   }, []);
 
-  const showLive = streamUrl && !streamFailed;
+  const showLive = camState === "live";
+  const camConnecting = camState === "connecting";
   const recentItems = useMemo(() => {
     const vision = (visionEvents || []).map((event) => {
       const item = mapVisionEventForList(event);
@@ -250,13 +336,18 @@ export function Dashboard() {
       .sort((a, b) => (b.t || 0) - (a.t || 0))
       .slice(0, 30);
   }, [visionEvents, recentActivity]);
-  const visibleRecentItems = useMemo(() => recentItems.slice(0, 5), [recentItems]);
+  const visibleRecentItems = useMemo(
+    () => recentItems.slice(0, 5),
+    [recentItems],
+  );
 
   const deleteRecentVisionEvent = async (item) => {
     if (!item?.eventId) return;
     try {
       await api.deleteAlert(item.eventId);
-      setVisionEvents((events) => events.filter((event) => event.id !== item.eventId));
+      setVisionEvents((events) =>
+        events.filter((event) => event.id !== item.eventId),
+      );
     } catch (error) {
       console.error("[Dashboard] delete recent event failed:", error);
     }
@@ -270,17 +361,26 @@ export function Dashboard() {
   const petName = pet?.name || "";
   const petBreed = pet?.breed || "";
   const petSpecies = pet ? speciesLabel(pet.species) : "";
-  const ageLabel = pet ? (pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate)) : "";
+  const ageLabel = pet
+    ? pet.age !== "" && pet.age != null
+      ? `${pet.age}살`
+      : petAgeLabel(pet.birthDate)
+    : "";
   const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
   const [showRegister, setShowRegister] = useState(false);
   const handleRegister = async (newPet) => {
     setShowRegister(false);
-    let saved = newPet;
+    const { photoFile, ...localPet } = newPet;
+    let saved = localPet;
     try {
       const r = await api.createPet(toApiPet(newPet)); // DB 저장 → pet_id 반환
       saved = fromApiPet(r, newPet.photo);
+      if (photoFile) {
+        const photoResult = await api.uploadPetPhoto(r.pet_id, photoFile);
+        saved = fromApiPet(photoResult, newPet.photo);
+      }
     } catch {
       /* 백엔드 미연결 → 로컬만 */
     }
@@ -303,7 +403,11 @@ export function Dashboard() {
   const actTotal = actData.reduce((s, d) => s + d.value, 0);
   const actAvg = Math.round(actTotal / actData.length);
   const actAvgLabel =
-    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "월 평균";
+    actPeriod === "day"
+      ? "시간대 평균"
+      : actPeriod === "week"
+        ? "일 평균"
+        : "월 평균";
 
   // 월간 차트: 진입 시 최신(현재 달, 오른쪽 끝)으로 스크롤
   const monthScrollRef = useRef(null);
@@ -332,7 +436,9 @@ export function Dashboard() {
   const onMonthMove = (e) => {
     if (!monthDrag.current) return;
     const el = monthScrollRef.current;
-    if (el) el.scrollLeft = monthDrag.current.left - (e.clientX - monthDrag.current.x);
+    if (el)
+      el.scrollLeft =
+        monthDrag.current.left - (e.clientX - monthDrag.current.x);
   };
   const onMonthUp = (e) => {
     if (!monthDrag.current) return;
@@ -406,7 +512,19 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
-        api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
+        // 최근 활동에 즉시 반영(낙관적 추가) → 새로고침 없이 바로 보임
+        setRecentLogs((prev) => ({
+          ...prev,
+          feed: [
+            { created_at: new Date().toISOString(), amount_g: feed.food },
+            ...(prev.feed || []),
+          ],
+        }));
+        // DB 기록 후 서버 기준으로 재동기화(실제 created_at 등)
+        api
+          .createFeedLog({ amount_g: feed.food, feed_type: "quick" })
+          .then(() => refreshLogs())
+          .catch(() => {});
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       } else if (id === "call") {
@@ -475,7 +593,11 @@ export function Dashboard() {
             <div className="relative">
               <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
                 {pet.photo ? (
-                  <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
+                  <img
+                    src={pet.photo}
+                    alt={petName}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <PawPrint className="w-9 h-9 text-brand-primary" />
                 )}
@@ -483,7 +605,9 @@ export function Dashboard() {
               <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+              <p className="text-xs text-brand-mute font-semibold">
+                우리집 {petSpecies}
+              </p>
               <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
                 {petName}
               </h2>
@@ -496,7 +620,10 @@ export function Dashboard() {
           </Card>
         </button>
       ) : (
-        <Card data-tour="dash-pet" className="paw-watermark px-5 py-6 text-center">
+        <Card
+          data-tour="dash-pet"
+          className="paw-watermark px-5 py-6 text-center"
+        >
           <span className="mx-auto w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mb-3">
             <PawPrint className="w-8 h-8 text-brand-primary/70" />
           </span>
@@ -516,7 +643,44 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
+      {/* 1.5) AI 건강 분석 티저 — 준비 중 (펫 정보 바로 아래에서 강조) */}
+      <button
+        type="button"
+        onClick={() => showToast("✨ AI 건강 분석은 곧 만나요!")}
+        className="mt-4 w-full text-left touch-active"
+      >
+        <div
+          className="relative overflow-hidden rounded-3xl px-5 py-4 shadow-soft ring-1 ring-inset ring-white/10"
+          style={{
+            background:
+              "linear-gradient(to right, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
+          }}
+        >
+          {/* 배경 장식 (반짝이) */}
+          <Sparkles className="pointer-events-none absolute -right-4 -top-4 w-24 h-24 text-white/15" />
+          <div className="relative flex items-center gap-3">
+            <span className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6 text-white" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-display text-base font-bold text-white">
+                  AI 건강 분석
+                </p>
+                <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-bold">
+                  준비 중
+                </span>
+              </div>
+              <p className="text-xs text-white/85 mt-0.5 truncate">
+                우리 아이 데이터로 건강 상태를 똑똑하게 분석해드려요
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-white/80 shrink-0" />
+          </div>
+        </div>
+      </button>
+
+      {/* 2) 캠 미리보기 (탭하면 로봇 비전으로) */}
       <button
         type="button"
         data-tour="dash-cam"
@@ -524,32 +688,48 @@ export function Dashboard() {
         className="mt-4 w-full text-left touch-active"
       >
         <Card className="overflow-hidden">
-          <div className="relative aspect-video bg-gradient-to-br from-brand-brown to-brand-brown-soft">
-            {showLive ? (
+          <div className="relative aspect-video bg-gradient-to-br from-brand-cream to-brand-line dark:from-[#2b2520] dark:to-[#15110e]">
+            {/* 영상은 주소가 있으면 항상 마운트해 로드/실패를 감지 (보일 땐 live) */}
+            {streamUrl && (
               <img
                 src={streamUrl}
                 alt="실시간 캠"
-                onError={() => setStreamFailed(true)}
-                className="absolute inset-0 w-full h-full object-cover"
+                onLoad={() => setCamState("live")}
+                onError={() => setCamState("off")}
+                className={`absolute inset-0 w-full h-full object-cover brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90 transition-opacity duration-300 ${showLive ? "opacity-100" : "opacity-0"}`}
               />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-white/85">
-                <div className="text-center">
-                  <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
-                  <p className="text-sm font-semibold">
-                    {streamFailed ? "캠 연결 대기 중" : "실시간 캠 보기"}
-                  </p>
-                  <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
+            )}
+            {!showLive && (
+              <>
+                {/* 글래스 빛 반사(sheen) + 유리 테두리 */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 via-white/5 to-transparent dark:from-white/10 dark:via-white/0" />
+                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40 dark:ring-white/10 rounded-[inherit]" />
+                <div className="absolute inset-0 flex items-center justify-center text-brand-mute dark:text-white/85">
+                  <div className="text-center">
+                    <span className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center bg-white/40 dark:bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/50 dark:ring-white/15 shadow-sm">
+                      <Camera className="w-7 h-7 opacity-90" />
+                    </span>
+                    <p className="text-sm font-semibold">
+                      {camConnecting ? "연결 중…" : "캠 연결 대기 중"}
+                    </p>
+                    <p className="text-xs opacity-75">
+                      탭하여 전체화면으로 보기
+                    </p>
+                  </div>
                 </div>
-              </div>
+              </>
+            )}
+            {/* 심플·모던: 상하 은은한 그라데이션 (배지보다 아래 레이어) */}
+            {showLive && (
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
             )}
             <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
               <span
-                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : "bg-white/50"}`}
+                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : camConnecting ? "bg-amber-300 animate-pulse" : "bg-white/50"}`}
               />
-              {showLive ? "LIVE" : "OFF"}
+              {showLive ? "LIVE" : camConnecting ? "연결 중" : "OFF"}
             </span>
-            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-white/85 text-brand-brown text-[11px] font-bold">
+            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/45 text-white text-[11px] font-bold tracking-wide">
               HD
             </span>
           </div>
@@ -580,7 +760,11 @@ export function Dashboard() {
                   <Icon className="w-6 h-6" />
                 </span>
                 <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
-                  {id === "away" ? (awayMode ? "외출 모드 ON" : "외출 모드") : label}
+                  {id === "away"
+                    ? awayMode
+                      ? "외출 모드 ON"
+                      : "외출 모드"
+                    : label}
                 </span>
               </button>
             );
@@ -622,42 +806,66 @@ export function Dashboard() {
         </p>
         <div
           className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
-            recentCollapsed ? "grid-rows-[0fr] opacity-0 -mt-1" : "grid-rows-[1fr] opacity-100"
+            recentCollapsed
+              ? "grid-rows-[0fr] opacity-0 -mt-1"
+              : "grid-rows-[1fr] opacity-100"
           }`}
         >
           <div className="min-h-0 overflow-hidden">
             <CreamCard className="divide-y divide-brand-line">
               {visibleRecentItems.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
+                <p className="px-4 py-8 text-center text-sm text-brand-mute">
+                  최근 활동이 없어요
+                </p>
               ) : (
                 visibleRecentItems.map((item) => {
-                  const { id, key, icon, eventType, tone, title, desc, time, eventId } = item;
+                  const {
+                    id,
+                    key,
+                    icon,
+                    eventType,
+                    tone,
+                    title,
+                    desc,
+                    time,
+                    eventId,
+                  } = item;
                   const Icon = icon || EVENT_ICON[eventType] || PawPrint;
                   return (
-                  <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
-                    <span
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+                    <div
+                      key={key || id}
+                      className="flex items-center gap-3 px-4 py-3.5"
                     >
-                      <Icon className="w-5 h-5" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
-                      <p className="text-xs text-brand-mute truncate">{desc}</p>
-                    </div>
-                    <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
-                    {eventId && (
-                      <button
-                        type="button"
-                        onClick={() => deleteRecentVisionEvent(item)}
-                        className="w-8 h-8 rounded-2xl bg-brand-card text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
-                        aria-label="로그 삭제"
-                        title="로그 삭제"
+                      <span
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                )})
+                        <Icon className="w-5 h-5" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-brand-brown truncate">
+                          {title}
+                        </p>
+                        <p className="text-xs text-brand-mute truncate">
+                          {desc}
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-brand-mute shrink-0">
+                        {time}
+                      </span>
+                      {eventId && (
+                        <button
+                          type="button"
+                          onClick={() => deleteRecentVisionEvent(item)}
+                          className="w-8 h-8 rounded-2xl bg-brand-card text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                          aria-label="로그 삭제"
+                          title="로그 삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </CreamCard>
           </div>
@@ -676,7 +884,9 @@ export function Dashboard() {
                 <p className="font-display text-base font-bold text-brand-brown leading-tight">
                   활동량
                 </p>
-                <p className="text-[11px] text-brand-mute">활동량 기록은 최대 1년까지 보관돼요.</p>
+                <p className="text-[11px] text-brand-mute">
+                  활동량 기록은 최대 1년까지 보관돼요.
+                </p>
               </div>
             </div>
             {/* 일/주/월 탭 */}
@@ -691,7 +901,9 @@ export function Dashboard() {
                   type="button"
                   onClick={() => setActPeriod(id)}
                   className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
-                    actPeriod === id ? "bg-brand-primary text-white shadow-soft" : "text-brand-mute"
+                    actPeriod === id
+                      ? "bg-brand-primary text-white shadow-soft"
+                      : "text-brand-mute"
                   }`}
                 >
                   {label}
@@ -712,12 +924,21 @@ export function Dashboard() {
               tabIndex={-1}
               className="mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
             >
-              <div style={{ width: Math.max(actData.length * 52, 320), height: 160 }}>
+              <div
+                style={{
+                  width: Math.max(actData.length * 52, 320),
+                  height: 160,
+                }}
+              >
                 <ActivityArea data={actData} />
               </div>
             </div>
           ) : (
-            <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+            <div
+              key={actPeriod}
+              className="page-enter mt-4"
+              style={{ width: "100%", height: 160 }}
+            >
               <ActivityArea data={actData} />
             </div>
           )}
@@ -725,13 +946,17 @@ export function Dashboard() {
           {/* 요약 */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
-              <p className="text-[11px] font-semibold text-brand-mute">총 발자국 🐾</p>
+              <p className="text-[11px] font-semibold text-brand-mute">
+                총 발자국 🐾
+              </p>
               <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
                 {actTotal.toLocaleString()}회
               </p>
             </div>
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
-              <p className="text-[11px] font-semibold text-brand-mute">{actAvgLabel}</p>
+              <p className="text-[11px] font-semibold text-brand-mute">
+                {actAvgLabel}
+              </p>
               <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
                 {actAvg.toLocaleString()}회
               </p>

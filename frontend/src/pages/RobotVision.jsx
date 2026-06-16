@@ -112,7 +112,7 @@ export function RobotVision() {
   const [detections, setDetections] = useState(null);
   const [eventLog, setEventLog] = useState([]);
   const [captureNotice, setCaptureNotice] = useState(false);
-  const [streamLive, setStreamLive] = useState(false);
+  const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const controlBusyRef = useRef(false);
   const pendingCommandCountRef = useRef(0);
   const captureNoticeTimerRef = useRef(null);
@@ -398,7 +398,7 @@ export function RobotVision() {
           className={
             isFullscreen
               ? "fullscreen-stage"
-              : "relative w-full aspect-video bg-gradient-to-br from-brand-brown to-black overflow-hidden"
+              : "relative w-full aspect-video bg-gradient-to-br from-brand-cream to-brand-line dark:from-[#2b2520] dark:to-black overflow-hidden"
           }
         >
           {isFullscreen ? (
@@ -427,7 +427,7 @@ export function RobotVision() {
                 mode={streamInfo.mode}
                 error={streamError}
                 className="absolute inset-0"
-                onStatusChange={setStreamLive}
+                onStatusChange={setCamStatus}
               />
               <DetectionOverlay
                 detections={detections}
@@ -435,12 +435,16 @@ export function RobotVision() {
               />
               <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
                 <span
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${streamLive ? "bg-black/55" : "bg-black/40"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${camStatus === "live" ? "bg-black/55" : "bg-black/40"}`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full ${streamLive ? "bg-red-400 animate-pulse" : "bg-white/40"}`}
+                    className={`w-2 h-2 rounded-full ${camStatus === "live" ? "bg-red-400 animate-pulse" : camStatus === "connecting" ? "bg-amber-300 animate-pulse" : "bg-white/40"}`}
                   />
-                  {streamLive ? "LIVE" : "오프라인"}
+                  {camStatus === "live"
+                    ? "LIVE"
+                    : camStatus === "connecting"
+                      ? "연결 중"
+                      : "오프라인"}
                 </span>
                 {recording && (
                   <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -699,7 +703,7 @@ function FullscreenView({
   detections,
 }) {
   const [micOn, setMicOn] = useState(false);
-  const [streamLive, setStreamLive] = useState(false); // 카메라 스트림 연결 상태
+  const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const toggleMic = () => {
     setMicOn((v) => {
       console.log("[RobotVision] mic:", !v ? "ON" : "OFF");
@@ -715,7 +719,7 @@ function FullscreenView({
         error={streamError}
         className="absolute inset-0"
         fullscreen
-        onStatusChange={setStreamLive}
+        onStatusChange={setCamStatus}
       />
       <DetectionOverlay
         detections={detections}
@@ -726,9 +730,13 @@ function FullscreenView({
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
         <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[11px] font-bold">
           <span
-            className={`w-2 h-2 rounded-full ${streamLive ? "bg-red-400 animate-pulse" : "bg-white/40"}`}
+            className={`w-2 h-2 rounded-full ${camStatus === "live" ? "bg-red-400 animate-pulse" : camStatus === "connecting" ? "bg-amber-300 animate-pulse" : "bg-white/40"}`}
           />
-          {streamLive ? "LIVE" : "오프라인"}
+          {camStatus === "live"
+            ? "LIVE"
+            : camStatus === "connecting"
+              ? "연결 중"
+              : "오프라인"}
         </span>
         {recording && (
           <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -994,42 +1002,51 @@ function StreamFrame({
   onStatusChange,
 }) {
   const [imageError, setImageError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setImageError(false);
+    setLoaded(false);
   }, [src]);
 
-  const showFallback = !src || error || imageError;
-  const live = !!src && !error && !imageError;
+  // connecting(주소 확인/로딩 중) → live(실제 로드됨) / off(실패)
+  const status =
+    error || imageError ? "off" : src && loaded ? "live" : "connecting";
+  const showFallback = status !== "live";
 
-  // 실제 스트림 연결 상태를 부모에 알림 (LIVE/오프라인 배지용)
+  // 실제 스트림 연결 상태를 부모에 알림 (LIVE/연결중/오프라인 배지용)
   useEffect(() => {
-    onStatusChange?.(live);
-  }, [live, onStatusChange]);
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   return (
     <div
-      className={`${className} bg-black flex items-center justify-center overflow-hidden`}
+      className={`${className} bg-brand-cream dark:bg-black flex items-center justify-center overflow-hidden`}
     >
       {src && !imageError && (
-        <img
-          src={src}
-          alt="Robot camera live stream"
-          onError={() => setImageError(true)}
-          onLoad={() => setImageError(false)}
-          className="w-full h-full object-cover"
-        />
+        <>
+          <img
+            src={src}
+            alt="Robot camera live stream"
+            onError={() => setImageError(true)}
+            onLoad={() => { setImageError(false); setLoaded(true) }}
+            className="w-full h-full object-cover brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90"
+          />
+          {/* 심플·모던: 상하 은은한 그라데이션으로 차분하게 + 배지 가독성 */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
+        </>
       )}
       {showFallback && (
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/75">
-          <div className="text-center px-6">
-            <Video
-              className={`${fullscreen ? "w-16 h-16" : "w-12 h-12"} mx-auto mb-2 opacity-75`}
-            />
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-cream via-brand-line to-brand-line dark:from-[#2b2520] dark:via-[#1f1815] dark:to-black flex items-center justify-center text-brand-mute dark:text-white/75">
+          {/* 글래스 빛 반사(sheen) + 유리 테두리 */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 via-white/5 to-transparent dark:from-white/10 dark:via-white/0" />
+          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40 dark:ring-white/10" />
+          <div className="relative text-center px-6">
+            <span className={`${fullscreen ? "w-20 h-20 mb-3" : "w-16 h-16 mb-2.5"} mx-auto rounded-full flex items-center justify-center bg-white/40 dark:bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/50 dark:ring-white/15 shadow-sm`}>
+              <Video className={`${fullscreen ? "w-9 h-9" : "w-7 h-7"} opacity-80`} />
+            </span>
             <p className="text-sm font-semibold">
-              {error || imageError
-                ? "카메라 스트림 연결 대기 중"
-                : "스트림 준비 중"}
+              {status === "off" ? "카메라 스트림 연결 대기 중" : "연결 중…"}
             </p>
             <p className="mt-1 text-xs opacity-70">
               {mode === "simulated" ? "시뮬레이션 스트림" : "MJPEG 실시간 캠"}
