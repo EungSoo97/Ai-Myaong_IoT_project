@@ -7,7 +7,7 @@ export function PageHeader({ title, subtitle, right }) {
   return (
     <header className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
       <div className="min-w-0">
-        <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">{title}</h1>
+        <h1 className="font-display text-xl sm:text-2xl font-bold text-brand-brown leading-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-brand-mute truncate">{subtitle}</p>}
       </div>
       {right}
