@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Wifi, Lock, RefreshCw, Loader2, Check, AlertTriangle, ChevronDown } from 'lucide-react'
+import { Wifi, Lock, RefreshCw, Loader2, Check, AlertTriangle, ChevronDown } from '../components/icons'
 import { getApiBaseUrl } from '../lib/backendUrls'
 
 /**

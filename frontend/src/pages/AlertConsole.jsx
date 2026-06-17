@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   Bell, ShieldAlert, UtensilsCrossed, Play, Phone, BellOff, Video,
   Clock, Cpu, PawPrint, CheckCheck, MapPin, Inbox, Dog, Cat, Repeat,
-} from 'lucide-react'
+} from '../components/icons'
 
 /* ═══════════════════════════════════════════════════════════
  * Mock 데이터 (백엔드 DB 스키마 그대로 · 관계형 구조)

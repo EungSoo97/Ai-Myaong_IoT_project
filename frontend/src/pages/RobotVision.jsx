@@ -18,7 +18,7 @@ import {
   Clock,
   X,
   Trash2,
-} from "lucide-react";
+} from '../components/icons';
 import { Card, Badge } from "../components/ui";
 import { api, resolveMediaUrl } from "../api/api";
 import { useWebSocket } from "../hooks/useWebSocket";

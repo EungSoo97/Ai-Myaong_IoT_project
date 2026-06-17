@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PawPrint } from 'lucide-react'
+import { PawPrint } from '../components/icons'
 
 const AUTH_KEY = 'aimyaong:auth'
 

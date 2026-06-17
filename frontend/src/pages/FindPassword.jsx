@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, ArrowRight } from 'lucide-react'
+import { User, ArrowRight } from '../components/icons'
 import { Brand, Field, BackLink } from './FindId'
 import { EmailVerifyField } from '../components/EmailVerifyField'
 
