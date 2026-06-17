@@ -13,7 +13,7 @@ import {
   Check,
 } from '../components/icons';
 import { Card, CreamCard, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel, clearAccount, saveAccount } from "../lib/accountRepository";
+import { useAccount, petAgeLabel, speciesLabel, clearAllLocalData, saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
 import { isStrongPassword } from "../components/PasswordField";
 
@@ -29,20 +29,16 @@ function handleLogout() {
 }
 
 async function handleWithdraw() {
-  // 회원 탈퇴 — 백엔드에서 계정+펫 삭제(DELETE /api/auth/me), 그 후 로컬 정리
+  // 회원 탈퇴 — 서버(DB)에서 계정+펫 삭제가 성공해야 로컬 정리 + 로그아웃.
+  // 서버 삭제가 실패하면 그대로 멈추고 실제 오류를 보여준다(조용히 넘어가지 않음).
   try {
     await api.deleteMe();
-  } catch {
-    /* 백엔드 미연결/오류여도 로컬은 정리하고 로그아웃 */
+  } catch (e) {
+    // 서버 삭제 실패 시 콘솔에만 남기고 중단 (로컬 정리/리다이렉트 안 함 → 가짜 성공 방지)
+    console.error("[회원탈퇴] 서버에서 계정/펫 삭제 실패:", e?.message || e);
+    return;
   }
-  try {
-    sessionStorage.removeItem("aimyaong:auth");
-    sessionStorage.removeItem("aimyaong:token");
-    sessionStorage.removeItem("aimyaong:user");
-  } catch {
-    /* ignore */
-  }
-  clearAccount();
+  clearAllLocalData(); // 계정·펫·외출모드·알림설정·온보딩·세션 전부 삭제 → 재가입 시 깨끗
   window.location.href = "/splash";
 }
 

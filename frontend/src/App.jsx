@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { PublicLayout, PrivateLayout } from './components/Layout'
+import { resetOnboarding } from './onboarding/onboardingPlatform'
 import { Splash } from './pages/Splash'
 import { Login } from './pages/Login'
 import Signup from './pages/Signup'
@@ -151,6 +152,7 @@ function SignupRoute({ onLogin }) {
   return (
     <Signup
       onComplete={() => {
+        resetOnboarding() // 신규/재가입 모두 온보딩을 최초 1회 다시 노출
         onLogin()
         navigate('/', { replace: true })
       }}

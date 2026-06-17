@@ -31,7 +31,7 @@ const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s %
  *  - verified, onVerifiedChange : 인증 완료 여부
  *  - label, hint
  */
-export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedChange, label = '이메일', hint, invalid = false }) {
+export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedChange, label = '이메일', hint, invalid = false, dense = false }) {
   const [sentCode, setSentCode] = useState(null) // 발송된 코드 or null
   const [code, setCode] = useState('')
   const [notice, setNotice] = useState('')
@@ -126,27 +126,33 @@ export function EmailVerifyField({ email, onEmailChange, verified, onVerifiedCha
   }
 
   return (
-    <div className="mt-5">
-      <span className="text-sm font-bold pl-1" style={{ color: invalid && !verified ? C.danger : C.mute }}>{label}</span>
+    <div className={dense ? 'mt-3.5' : 'mt-5'}>
+      <span className={`${dense ? 'text-[13px]' : 'text-sm'} font-bold pl-1`} style={{ color: invalid && !verified ? C.danger : C.mute }}>{label}</span>
 
       {/* 이메일 입력 (전체폭) */}
       <div
-        className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
+        className={`mt-1.5 flex items-center gap-2.5 rounded-2xl ${dense ? 'px-3 py-2' : 'px-4 py-4'}`}
         style={{ background: invalid && !verified ? '#FDECE9' : C.input, border: `1.5px solid ${verified ? C.ok : invalid ? C.danger : C.border}` }}
       >
-        <Mail className="w-5 h-5" style={{ color: C.mute }} />
+        {dense ? (
+          <span className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center ${verified ? 'bg-brand-success/10 text-brand-success' : invalid ? 'bg-brand-danger/10 text-brand-danger' : 'bg-brand-primary/12 text-brand-primary'}`}>
+            <Mail className="w-5 h-5" />
+          </span>
+        ) : (
+          <Mail className="w-5 h-5" style={{ color: verified ? C.ok : invalid ? C.danger : C.mute }} />
+        )}
         <input
           type="email"
           value={email}
           onChange={(e) => changeEmail(e.target.value)}
           disabled={verified}
           placeholder="example@aimyaong.com"
-          className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60 disabled:opacity-70"
+          className={`font-sans flex-1 min-w-0 bg-transparent outline-none disabled:opacity-70 ${dense ? 'text-[15px] font-semibold placeholder:font-normal placeholder:opacity-50' : 'text-base placeholder:opacity-60'}`}
           style={{ color: C.brown }}
         />
         {verified && (
           <span className="shrink-0 inline-flex items-center gap-1 text-sm font-bold" style={{ color: C.ok }}>
-            <Check className="w-4 h-4" /> 인증완료
+            <Check className="w-4 h-4" /> {dense ? '완료' : '인증완료'}
           </span>
         )}
       </div>

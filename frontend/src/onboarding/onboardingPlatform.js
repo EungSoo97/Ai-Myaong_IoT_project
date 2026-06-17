@@ -20,6 +20,18 @@ export function hasCompletedOnboarding() {
   }
 }
 
+/* 온보딩 재노출 트리거 — 회원가입 등 "최초 1회"를 다시 시작할 때 호출.
+ * 완료 플래그를 지워 다음 진입(대시보드)에서 튜토리얼이 처음부터 다시 뜨게 한다.
+ */
+export function resetOnboarding() {
+  if (!isWeb) return
+  try {
+    window.localStorage.removeItem(KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 /* 최초 로그인 안내 완료 처리.
  * 백엔드 API 호출을 가정한 가상 함수 → 성공 시 로컬에도 기록.
  * 내일 백엔드 붙으면 setTimeout 자리를 실제 PATCH 호출로 교체:

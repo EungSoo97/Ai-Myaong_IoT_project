@@ -7,6 +7,7 @@ const C = {
   border: 'rgb(var(--brand-line))',
   brown: 'rgb(var(--brand-brown))',
   mute: 'rgb(var(--brand-mute))',
+  primary: 'rgb(var(--brand-primary))',
   danger: 'rgb(var(--brand-danger))',
   ok: 'rgb(var(--brand-success))',
 }
@@ -114,21 +115,81 @@ export function PasswordField({
   placeholder = '8자 이상 · 영문·숫자·특수문자 포함',
   showStrength = true,
   invalid = false,
+  dense = false,
 }) {
   const [show, setShow] = useState(false)
   const { checks } = evaluatePassword(value)
   const st = strength(value)
   const level = LEVELS[st.score]
 
+  const toggleBtn = (
+    <button type="button" onClick={() => setShow((s) => !s)} aria-label="비밀번호 표시" style={{ color: C.mute }}>
+      {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+    </button>
+  )
+
+  const strengthBlock = showStrength && value && (
+    <div className="mt-2.5">
+      {/* 강도 그래프 (5단계) */}
+      <div className="flex gap-1.5">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="flex-1 h-1.5 rounded-full transition-colors"
+            style={{ background: i <= st.score ? level.color : C.border }}
+          />
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs font-bold" style={{ color: level.color }}>
+        비밀번호 강도: {level.label}
+      </p>
+      {st.score < 3 && st.tips[0] && (
+        <p className="mt-1 text-xs" style={{ color: C.mute }}>💡 {st.tips[0]}</p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        <Req ok={checks.length} text="8자 이상" />
+        <Req ok={checks.letter} text="영문" />
+        <Req ok={checks.number} text="숫자" />
+        <Req ok={checks.special} text="특수문자" />
+      </div>
+    </div>
+  )
+
+  if (dense) {
+    return (
+      <label className="mt-3.5 block">
+        <span className="text-[13px] font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>{label}</span>
+        <div
+          className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-3 py-2"
+          style={{ background: invalid ? '#FDECE9' : C.input, border: `1.5px solid ${invalid ? C.danger : C.border}` }}
+        >
+          <span className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center ${invalid ? 'bg-brand-danger/10 text-brand-danger' : 'bg-brand-primary/12 text-brand-primary'}`}>
+            <Lock className="w-5 h-5" />
+          </span>
+          <input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="font-sans flex-1 min-w-0 bg-transparent text-[15px] font-semibold outline-none placeholder:font-normal placeholder:opacity-50"
+            style={{ color: C.brown }}
+            autoComplete="new-password"
+          />
+          {toggleBtn}
+        </div>
+        {strengthBlock}
+      </label>
+    )
+  }
+
   return (
     <label className="mt-5 block">
       <span className="text-sm font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>{label}</span>
-
       <div
         className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
         style={{ background: invalid ? '#FDECE9' : C.input, border: `1.5px solid ${invalid ? C.danger : C.border}` }}
       >
-        <Lock className="w-5 h-5" style={{ color: C.mute }} />
+        <Lock className="w-5 h-5" style={{ color: invalid ? C.danger : C.mute }} />
         <input
           type={show ? 'text' : 'password'}
           value={value}
@@ -138,41 +199,9 @@ export function PasswordField({
           style={{ color: C.brown }}
           autoComplete="new-password"
         />
-        <button type="button" onClick={() => setShow((s) => !s)} aria-label="비밀번호 표시" style={{ color: C.mute }}>
-          {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-        </button>
+        {toggleBtn}
       </div>
-
-      {showStrength && value && (
-        <div className="mt-2.5">
-          {/* 강도 그래프 (5단계) */}
-          <div className="flex gap-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="flex-1 h-1.5 rounded-full transition-colors"
-                style={{ background: i <= st.score ? level.color : C.border }}
-              />
-            ))}
-          </div>
-          <p className="mt-1.5 text-xs font-bold" style={{ color: level.color }}>
-            비밀번호 강도: {level.label}
-          </p>
-
-          {/* 약점 팁 (강함 미만일 때) */}
-          {st.score < 3 && st.tips[0] && (
-            <p className="mt-1 text-xs" style={{ color: C.mute }}>💡 {st.tips[0]}</p>
-          )}
-
-          {/* 조건 체크리스트 (가입 필수 조건) */}
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            <Req ok={checks.length} text="8자 이상" />
-            <Req ok={checks.letter} text="영문" />
-            <Req ok={checks.number} text="숫자" />
-            <Req ok={checks.special} text="특수문자" />
-          </div>
-        </div>
-      )}
+      {strengthBlock}
     </label>
   )
 }

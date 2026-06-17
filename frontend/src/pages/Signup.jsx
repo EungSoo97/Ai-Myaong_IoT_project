@@ -78,6 +78,7 @@ const emptyPet = () => ({
   circumference: "", // (선택) 고양이: 갈비뼈 둘레 / 강아지: 골반 둘레 (cm)
   legLength: "", // (선택) 하퇴골 길이 (cm) — 체지방률 계산용
   photo: "", // Base64 미리보기 문자열
+  photoFile: null, // 실제 업로드 파일 (Supabase 업로드용)
   notes: "",
 });
 
@@ -102,6 +103,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
   const [emailVerified, setEmailVerified] = useState(false); // 이메일 인증 완료 여부
   const [provider, setProvider] = useState("email"); // 'email' | 'google'
   const [pet, setPet] = useState(emptyPet()); // 펫 1마리
+  const [authUser, setAuthUser] = useState(null); // 구글 인증으로 만들어진 유저(펫 단계에서 사용)
+  const [alreadyMember, setAlreadyMember] = useState(false); // 이미 가입된 구글 계정 안내 모달
 
   const [finalPayload, setFinalPayload] = useState(null); // 완료 화면용
   const [err, setErr] = useState("");
@@ -147,10 +150,16 @@ export default function Signup({ onComplete, onBackToLogin }) {
         picture: profile.picture,
         allow_create: true,
       });
+
+      // 이미 가입된 계정이면 재가입(펫 단계) 진행하지 않고 안내 모달 표시
+      if (!result.is_new_user) {
+        setAlreadyMember(true);
+        return;
+      }
+
       sessionStorage.setItem("aimyaong:token", result.access_token);
       sessionStorage.setItem("aimyaong:user", JSON.stringify(result.user));
 
-      const savedPets = (result.user?.pets || []).map((p) => fromApiPet(p));
       const savedUser = {
         userId: result.user?.username || "",
         email: result.user?.email || profile.email,
@@ -159,15 +168,13 @@ export default function Signup({ onComplete, onBackToLogin }) {
         profile_photo_path: result.user?.profile_photo_path || profile.picture || "",
       };
 
-      saveAccount({
-        provider: "google",
-        user: savedUser,
-        pets: savedPets,
-        createdAt: new Date().toISOString(),
-      });
+      // 구글 계정은 생성됐고, 이메일 가입과 동일하게 펫 입력 단계로 이동
       setProvider("google");
-      setFinalPayload({ provider: "google", user: savedUser, pets: savedPets });
-      setScreen("done");
+      setAuthUser(savedUser);
+      setPet(emptyPet()); // 이전 흔적 없이 빈 폼에서 입력
+      setFieldErrors({});
+      setErr("");
+      setStep(STEP_PET);
     } catch (e) {
       setErr(e.message || "구글 회원가입에 실패했어요.");
     } finally {
@@ -310,6 +317,41 @@ export default function Signup({ onComplete, onBackToLogin }) {
     setLoading(true);
     setErr("");
     try {
+      if (provider === "google") {
+        // 구글 계정은 이미 생성됨 → 입력한 펫만 DB 에 추가
+        const created = await api.createPet({
+          name: pet.name,
+          species: pet.species,
+          breed: pet.breed,
+          gender: pet.gender,
+          birth_date: pet.birthDate || null,
+          age: ageFromBirthDate(pet.birthDate),
+          weight_kg: pet.weightKg ? Number(pet.weightKg) : null,
+          height_cm: pet.heightCm ? Number(pet.heightCm) : null,
+          circumference: pet.circumference ? Number(pet.circumference) : null,
+          leg_length: pet.legLength ? Number(pet.legLength) : null,
+        });
+        let savedPet = fromApiPet(created, pet.photo);
+        if (pet.photoFile && created?.pet_id) {
+          try {
+            const withPhoto = await api.uploadPetPhoto(created.pet_id, pet.photoFile);
+            savedPet = fromApiPet(withPhoto, pet.photo);
+          } catch {
+            /* 사진 업로드 실패해도 펫 등록 자체는 유지 */
+          }
+        }
+        const savedUser = authUser || { userId: "", email: "", nickname: "", photo: "", profile_photo_path: "" };
+        saveAccount({
+          provider: "google",
+          user: savedUser,
+          pets: [savedPet],
+          createdAt: new Date().toISOString(),
+        });
+        setFinalPayload({ provider: "google", user: savedUser, pets: [savedPet] });
+        setScreen("done");
+        return;
+      }
+
       const result = await api.signup({
         username: userInfo.userId.trim(),
         email: userInfo.email,
@@ -335,6 +377,15 @@ export default function Signup({ onComplete, onBackToLogin }) {
       const savedPets = (result.user?.pets || []).map((p, index) =>
         fromApiPet(p, index === 0 ? pet.photo : ""),
       );
+      const firstPetId = result.user?.pets?.[0]?.pet_id;
+      if (pet.photoFile && firstPetId) {
+        try {
+          const withPhoto = await api.uploadPetPhoto(firstPetId, pet.photoFile);
+          savedPets[0] = fromApiPet(withPhoto, pet.photo);
+        } catch {
+          /* 사진 업로드 실패해도 가입은 유지 */
+        }
+      }
       const savedUser = {
         userId: result.user?.username || userInfo.userId,
         email: result.user?.email || userInfo.email,
@@ -452,7 +503,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
           </p>
         )}
         <div className="flex gap-3">
-        {step > 0 && (
+        {step > 0 && provider !== "google" && (
           <button
             type="button"
             onClick={prev}
@@ -489,6 +540,60 @@ export default function Signup({ onComplete, onBackToLogin }) {
           </button>
         )}
         </div>
+      </div>
+
+      {/* 이미 가입된 계정 안내 (모던 모바일: 블러 시트) */}
+      {alreadyMember && <AlreadyMemberSheet onLogin={onBackToLogin} onClose={() => setAlreadyMember(false)} />}
+    </div>
+  );
+}
+
+/* 이미 가입된 구글 계정 안내 — 바텀시트 스타일 (블러 배경 + 슬라이드 업) */
+function AlreadyMemberSheet({ onLogin, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center px-4 pb-4 sm:items-center"
+      onClick={onClose}
+    >
+      {/* 블러 딤 */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      {/* 시트 */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-[400px] rounded-3xl px-6 pt-3 pb-8 shadow-soft-lg page-enter"
+        style={{ background: C.card, paddingBottom: "calc(env(safe-area-inset-bottom) + 1.25rem)" }}
+      >
+        <div className="mx-auto mb-5 h-1.5 w-10 rounded-full" style={{ background: C.border }} />
+        <span
+          className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ background: "rgb(var(--brand-primary) / 0.12)", color: C.primary }}
+        >
+          <User className="w-7 h-7" />
+        </span>
+        <h3 className="text-center font-display text-lg font-bold" style={{ color: C.brown }}>
+          이미 가입된 계정이에요
+        </h3>
+        <p className="mt-1.5 text-center text-sm leading-relaxed" style={{ color: C.mute }}>
+          이 구글 계정은 이미 회원으로 등록돼 있어요.
+          <br />
+          로그인 페이지에서 로그인해 주세요.
+        </p>
+        <button
+          type="button"
+          onClick={onLogin}
+          className="mt-6 w-full rounded-2xl py-4 text-base font-bold text-white shadow-soft transition-colors active:brightness-95"
+          style={{ background: C.primary }}
+        >
+          로그인하러 가기
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 w-full rounded-2xl py-3 text-sm font-bold transition-colors active:brightness-95"
+          style={{ color: C.mute }}
+        >
+          닫기
+        </button>
       </div>
     </div>
   );
@@ -553,7 +658,7 @@ function UserStep({
         title="회원 정보를 입력해 주세요"
       />
 
-      <div className="mt-5">
+      <div className="mt-4">
         <GoogleButton label="Google로 빠른 가입" onSuccess={onGoogle} />
       </div>
       <Divider />
@@ -570,11 +675,11 @@ function UserStep({
       </div>
       <div data-field="password">
         <PasswordField label="비밀번호" value={userInfo.password}
-          onChange={(v) => setUser('password', v)} invalid={errors.password} />
+          onChange={(v) => setUser('password', v)} invalid={errors.password} dense />
       </div>
       <div data-field="passwordConfirm">
         <PasswordField label="비밀번호 확인" value={userInfo.passwordConfirm}
-          onChange={(v) => setUser('passwordConfirm', v)} placeholder="비밀번호 재입력" showStrength={false} invalid={errors.passwordConfirm} />
+          onChange={(v) => setUser('passwordConfirm', v)} placeholder="비밀번호 재입력" showStrength={false} invalid={errors.passwordConfirm} dense />
         {userInfo.passwordConfirm && (
           <p className="mt-1.5 text-xs font-bold pl-1"
             style={{ color: userInfo.password === userInfo.passwordConfirm ? C.ok : C.danger }}>
@@ -591,11 +696,12 @@ function UserStep({
           label="이메일"
           hint="아이디/비밀번호 찾기에 사용돼요."
           invalid={errors.email}
+          dense
         />
       </div>
       <div data-field="nickname">
         <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={userInfo.nickname}
-          onChange={(v) => setUser('nickname', v)} placeholder="집사 이름" invalid={errors.nickname} />
+          onChange={(v) => setUser('nickname', v)} placeholder="집사 이름" invalid={errors.nickname} dense />
       </div>
     </div>
   );
@@ -629,8 +735,9 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
     }
     setImgErr("");
     const reader = new FileReader();
-    reader.onload = () => setPetField("photo", reader.result); // Base64
+    reader.onload = () => setPetField("photo", reader.result); // Base64 미리보기
     reader.readAsDataURL(file);
+    setPetField("photoFile", file); // 실제 파일 → 가입 완료 시 Supabase 업로드
   };
 
   return (
@@ -645,24 +752,30 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
       />
 
       {/* 프로필 이미지 미리보기 */}
-      <div className="mt-5 flex justify-center">
+      <div className="mt-4 flex justify-center">
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="relative w-28 h-28 rounded-full flex items-center justify-center overflow-hidden transition-colors"
-          style={{ background: C.input, border: `2px dashed ${C.border}` }}
+          className="relative w-28 h-28 shrink-0"
         >
-          {pet.photo ? (
-            <img
-              src={pet.photo}
-              alt="펫 미리보기"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <Camera className="w-8 h-8" style={{ color: C.mute }} />
-          )}
+          {/* 원형 이미지/플레이스홀더 — overflow-hidden 은 이 안쪽만 (배지는 안 잘리게) */}
           <span
-            className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
+            className="absolute inset-0 rounded-full flex items-center justify-center overflow-hidden"
+            style={{ background: C.input, border: `2px dashed ${C.border}` }}
+          >
+            {pet.photo ? (
+              <img
+                src={pet.photo}
+                alt="펫 미리보기"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Camera className="w-8 h-8" style={{ color: C.mute }} />
+            )}
+          </span>
+          {/* 카메라 배지 — 바깥 레이어(클립 안 됨), 원 가장자리에 안착 */}
+          <span
+            className="absolute bottom-1 right-1 w-8 h-8 rounded-full flex items-center justify-center shadow-soft"
             style={{ background: C.primary, border: "2px solid #fff" }}
           >
             <Camera className="w-4 h-4 text-white" />
@@ -685,11 +798,11 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
 
       <div data-field="name">
         <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
-          onChange={(v) => setPetField('name', v)} placeholder="예: 나비" invalid={errors.name} />
+          onChange={(v) => setPetField('name', v)} placeholder="예: 나비" invalid={errors.name} dense />
       </div>
 
       {/* 종류 (DOG / CAT) */}
-      <FieldLabel>종류</FieldLabel>
+      <FieldLabel icon={<PawPrint className="w-4 h-4" />}>종류</FieldLabel>
       <div className="mt-1.5 grid grid-cols-2 gap-2.5">
         <SegBtn
           active={pet.species === "DOG"}
@@ -707,7 +820,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
 
       <div data-field="breed">
         <Field icon={<PawPrint className="w-5 h-5" />} label="품종" value={pet.breed}
-          onChange={(v) => setPetField('breed', v)} placeholder="예: 코리안숏헤어" invalid={errors.breed} />
+          onChange={(v) => setPetField('breed', v)} placeholder="예: 코리안숏헤어" invalid={errors.breed} dense />
       </div>
 
       {/* 성별 */}
@@ -726,7 +839,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
       </div>
 
       <div data-field="birthDate">
-        <FieldLabel>생년월일</FieldLabel>
+        <FieldLabel icon={<Calendar className="w-4 h-4" />}>생년월일</FieldLabel>
         <div className="mt-1.5">
           <DateWheel value={pet.birthDate} onChange={(v) => setPetField('birthDate', v)} />
         </div>
@@ -738,6 +851,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(v) => setPetField("weightKg", v)}
         placeholder="예: 4.2"
         type="number"
+        dense
       />
       <Field
         icon={<Ruler className="w-5 h-5" />}
@@ -746,6 +860,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(v) => setPetField("heightCm", v)}
         placeholder="예: 25"
         type="number"
+        dense
       />
       <Field
         icon={<Ruler className="w-5 h-5" />}
@@ -754,6 +869,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(v) => setPetField("circumference", v)}
         placeholder="선택 · 예: 32"
         type="number"
+        dense
       />
       <Field
         icon={<Ruler className="w-5 h-5" />}
@@ -762,19 +878,20 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(v) => setPetField("legLength", v)}
         placeholder="선택 · 예: 12"
         type="number"
+        dense
       />
       <p className="mt-1.5 text-xs pl-1" style={{ color: C.mute }}>
         둘레·하퇴골 길이를 입력하면 체지방률이 자동 계산돼요. (선택)
       </p>
 
       {/* 특이사항 */}
-      <FieldLabel>특이사항</FieldLabel>
+      <FieldLabel icon={<Pencil className="w-4 h-4" />}>특이사항</FieldLabel>
       <textarea
         value={pet.notes}
         onChange={(e) => setPetField("notes", e.target.value)}
         rows={3}
         placeholder="알러지, 복용 약, 성격 등"
-        className="font-sans mt-1.5 w-full rounded-2xl px-4 py-4 text-base outline-none resize-none placeholder:opacity-60"
+        className="font-sans mt-1.5 w-full rounded-2xl px-3.5 py-3 text-[15px] outline-none resize-none placeholder:opacity-60"
         style={{
           background: C.input,
           border: `1.5px solid ${C.border}`,
@@ -968,12 +1085,13 @@ function SectionTitle({ icon, title }) {
   );
 }
 
-function FieldLabel({ children }) {
+function FieldLabel({ children, icon }) {
   return (
     <span
-      className="mt-5 block text-sm font-bold pl-1"
+      className="mt-3.5 flex items-center gap-1.5 text-[13px] font-bold pl-1"
       style={{ color: C.mute }}
     >
+      {icon && <span style={{ color: C.primary }}>{icon}</span>}
       {children}
     </span>
   );
@@ -992,30 +1110,27 @@ function UsernameField({
   const messageColor = confirmed ? C.ok : C.danger;
 
   return (
-    <label className="mt-5 block">
-      <span
-        className="text-sm font-bold pl-1"
-        style={{ color: invalid ? C.danger : C.mute }}
-      >
+    <label className="mt-3.5 block">
+      <span className="text-[13px] font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>
         아이디
       </span>
-      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-stretch">
         <div
-          className="flex items-center gap-2.5 rounded-2xl px-4 py-4"
+          className="flex items-center gap-2.5 rounded-2xl px-3 py-2"
           style={{
             background: invalid ? "#FDECE9" : C.input,
             border: `1.5px solid ${invalid ? C.danger : C.border}`,
           }}
         >
-          <span style={{ color: invalid ? C.danger : C.mute }}>
+          <IconChip invalid={invalid}>
             <User className="w-5 h-5" />
-          </span>
+          </IconChip>
           <input
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="로그인에 사용할 아이디"
-            className="font-sans flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
+            className="font-sans flex-1 min-w-0 bg-transparent text-[15px] font-semibold outline-none placeholder:font-normal placeholder:opacity-50"
             style={{ color: C.brown }}
           />
         </div>
@@ -1023,7 +1138,7 @@ function UsernameField({
           type="button"
           onClick={onCheck}
           disabled={checking || !trimmed}
-          className="inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-2xl px-4 py-4 text-sm font-bold transition-colors disabled:opacity-50 active:brightness-95"
+          className="inline-flex min-w-[76px] items-center justify-center gap-1.5 rounded-2xl px-3.5 text-sm font-bold transition-colors disabled:opacity-50 active:brightness-95"
           style={{
             background: confirmed ? C.ok : C.primary,
             color: "#fff",
@@ -1052,7 +1167,35 @@ function Field({
   placeholder,
   invalid,
   max,
+  dense = false,
 }) {
+  if (dense) {
+    return (
+      <label className="mt-3.5 block">
+        <span className="text-[13px] font-bold pl-1" style={{ color: invalid ? C.danger : C.mute }}>
+          {label}
+        </span>
+        <div
+          className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-3 py-2"
+          style={{
+            background: invalid ? "#FDECE9" : C.input,
+            border: `1.5px solid ${invalid ? C.danger : C.border}`,
+          }}
+        >
+          {icon && <IconChip invalid={invalid}>{icon}</IconChip>}
+          <input
+            type={type}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            max={max}
+            className="font-sans flex-1 min-w-0 bg-transparent text-[15px] font-semibold outline-none placeholder:font-normal placeholder:opacity-50"
+            style={{ color: C.brown }}
+          />
+        </div>
+      </label>
+    );
+  }
   return (
     <label className="mt-5 block">
       <span
@@ -1085,12 +1228,25 @@ function Field({
   );
 }
 
+/* 코랄 칩 안에 아이콘 (둥글둥글 귀여운 입력 필드용) */
+function IconChip({ children, invalid }) {
+  return (
+    <span
+      className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center ${
+        invalid ? "bg-brand-danger/10 text-brand-danger" : "bg-brand-primary/12 text-brand-primary"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
 function SegBtn({ active, onClick, icon, label }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center justify-center gap-1.5 rounded-2xl py-4 text-base font-bold transition-colors active:brightness-95"
+      className="inline-flex items-center justify-center gap-1.5 rounded-2xl py-3 text-base font-bold transition-colors active:brightness-95"
       style={{
         background: active ? C.primary : C.input,
         color: active ? "#fff" : C.brown,
