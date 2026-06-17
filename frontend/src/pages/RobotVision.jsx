@@ -1030,7 +1030,7 @@ function StreamFrame({
             alt="Robot camera live stream"
             onError={() => setImageError(true)}
             onLoad={() => { setImageError(false); setLoaded(true) }}
-            className="w-full h-full object-cover brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90"
+            className="w-full h-full object-contain bg-black brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90"
           />
           {/* 심플·모던: 상하 은은한 그라데이션으로 차분하게 + 배지 가독성 */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
@@ -1076,31 +1076,39 @@ function DetectionOverlay({ detections, className = "" }) {
   }
 
   return (
-    <div className={`${className} pointer-events-none overflow-hidden`}>
-      {boxes.map((box, index) => {
-        const left = (box.x / frameWidth) * 100;
-        const top = (box.y / frameHeight) * 100;
-        const width = (box.w / frameWidth) * 100;
-        const height = (box.h / frameHeight) * 100;
-        const label = `${box.label} ${Math.round((box.confidence || 0) * 100)}%`;
+    <div className={`${className} pointer-events-none flex items-center justify-center overflow-hidden`}>
+      <div
+        className="relative max-w-full max-h-full"
+        style={{
+          height: "100%",
+          aspectRatio: `${frameWidth} / ${frameHeight}`,
+        }}
+      >
+        {boxes.map((box, index) => {
+          const left = (box.x / frameWidth) * 100;
+          const top = (box.y / frameHeight) * 100;
+          const width = (box.w / frameWidth) * 100;
+          const height = (box.h / frameHeight) * 100;
+          const label = `${box.label} ${Math.round((box.confidence || 0) * 100)}%`;
 
-        return (
-          <div
-            key={`${box.label}-${index}-${box.x}-${box.y}`}
-            className="absolute border-2 border-emerald-400 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-            style={{
-              left: `${left}%`,
-              top: `${top}%`,
-              width: `${width}%`,
-              height: `${height}%`,
-            }}
-          >
-            <span className="absolute left-0 top-0 -translate-y-full rounded-t-md bg-black/70 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
-              {label}
-            </span>
-          </div>
-        );
-      })}
+          return (
+            <div
+              key={`${box.label}-${index}-${box.x}-${box.y}`}
+              className="absolute border-2 border-emerald-400 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                width: `${width}%`,
+                height: `${height}%`,
+              }}
+            >
+              <span className="absolute left-0 top-0 -translate-y-full rounded-t-md bg-black/70 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+                {label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -171,7 +171,8 @@ class ActivityTracker:
         self.low_threshold = float(os.getenv("ACTIVITY_LOW_THRESHOLD", "0.01"))
         self.active_threshold = float(os.getenv("ACTIVITY_ACTIVE_THRESHOLD", "0.04"))
         self.min_detected_ratio = float(os.getenv("ACTIVITY_MIN_DETECTED_RATIO", "0.2"))
-        self.activity_score_scale = float(os.getenv("ACTIVITY_SCORE_SCALE", os.getenv("PAW_STEP_SCALE", "100")))
+        self.movement_deadzone = float(os.getenv("ACTIVITY_MOVEMENT_DEADZONE", "0.003"))
+        self.activity_score_scale = float(os.getenv("ACTIVITY_SCORE_SCALE", os.getenv("PAW_STEP_SCALE", "50")))
         self.backend_url = backend_url
         self.last_activity_error_at = 0.0
         self.reset()
@@ -199,7 +200,9 @@ class ActivityTracker:
             h, w = frame.shape[:2]
             diagonal = max((w * w + h * h) ** 0.5, 1.0)
             distance = ((center[0] - self.last_center[0]) ** 2 + (center[1] - self.last_center[1]) ** 2) ** 0.5
-            self.movement_scores.append(distance / diagonal)
+            normalized_movement = distance / diagonal
+            movement_score = max(0.0, normalized_movement - self.movement_deadzone)
+            self.movement_scores.append(movement_score)
 
         if self.last_seen_at is not None:
             self.detected_seconds += max(0.0, now - self.last_seen_at)
