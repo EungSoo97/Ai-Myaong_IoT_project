@@ -8,7 +8,7 @@ import {
   Search,
   Signal,
   Wifi,
-} from 'lucide-react'
+} from '../components/icons'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Card, GhostButton, PrimaryButton } from '../components/ui'
 import { api } from '../api/api'

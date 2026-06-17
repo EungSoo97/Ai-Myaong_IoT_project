@@ -9,7 +9,7 @@ import {
   Activity,
   Heart,
   Pencil,
-} from "lucide-react";
+} from '../components/icons';
 import { Card, PrimaryButton } from "../components/ui";
 import {
   useAccount,

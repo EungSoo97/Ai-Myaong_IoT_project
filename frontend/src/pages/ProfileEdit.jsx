@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, ChevronLeft, User, Mail, Smile, Lock } from 'lucide-react'
+import { Camera, ChevronLeft, User, Mail, Smile, Lock } from '../components/icons'
 import { Card } from '../components/ui'
 import { useAccount, updateUser } from '../lib/accountRepository'
 import { api } from '../api/api'

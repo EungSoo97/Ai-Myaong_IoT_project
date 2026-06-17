@@ -28,7 +28,7 @@ import {
   ShieldAlert,
   Calendar,
   Scale,
-} from "lucide-react";
+} from '../components/icons';
 import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -843,16 +843,18 @@ export function Dashboard() {
         />
       )}
 
-      {/* 스크롤 투 탑 버튼 */}
+      {/* 스크롤 투 탑 버튼 — 모바일 프레임(max-w-[480px]) 기준 우측 정렬 */}
       {showScrollTop && (
-        <button
-          type="button"
-          onClick={scrollToTop}
-          className="fixed bottom-20 right-16 w-12 h-12 rounded-full bg-brand-bg/90 backdrop-blur-md text-brand-brown shadow-soft-lg flex items-center justify-center touch-active hover:bg-brand-bg transition-all z-40 border border-brand-line/50"
-          aria-label="맨 위로"
-        >
-          <ChevronUp className="w-6 h-6" />
-        </button>
+        <div className="fixed bottom-20 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 pointer-events-none">
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="pointer-events-auto absolute bottom-0 right-5 w-12 h-12 rounded-full bg-brand-bg/90 backdrop-blur-md text-brand-brown shadow-soft-lg flex items-center justify-center touch-active hover:bg-brand-bg transition-all border border-brand-line/50"
+            aria-label="맨 위로"
+          >
+            <ChevronUp className="w-6 h-6" />
+          </button>
+        </div>
       )}
     </div>
   );

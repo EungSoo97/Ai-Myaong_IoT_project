@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, PawPrint, Dog, Cat, Camera } from 'lucide-react'
+import { X, PawPrint, Dog, Cat, Camera } from './icons'
 import { DateWheel } from './DateWheel'
 
 /* Warm-tone 팔레트 */

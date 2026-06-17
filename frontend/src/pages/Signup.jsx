@@ -16,7 +16,7 @@ import {
   PartyPopper,
   Trash2,
   Pencil,
-} from "lucide-react";
+} from '../components/icons';
 import { GoogleButton } from "../components/GoogleButton";
 import { EmailVerifyField } from "../components/EmailVerifyField";
 import { DateWheel } from "../components/DateWheel";

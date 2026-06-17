@@ -14,7 +14,7 @@ import {
   Cpu,
   Check,
   X,
-} from "lucide-react";
+} from '../components/icons';
 import {
   Card,
   CreamCard,

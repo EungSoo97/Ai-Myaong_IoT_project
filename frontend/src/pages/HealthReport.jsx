@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Sparkles } from "lucide-react";
+import { ChevronLeft, Sparkles } from '../components/icons';
 import { Card } from "../components/ui";
 import { HealthReportPanel } from "../components/HealthReportPanel";
 import { useAccount, speciesLabel } from "../lib/accountRepository";

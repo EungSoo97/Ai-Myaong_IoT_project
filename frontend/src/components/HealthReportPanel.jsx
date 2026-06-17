@@ -20,7 +20,7 @@ import {
   Target,
   Clock,
   Stethoscope,
-} from "lucide-react";
+} from './icons';
 import { Card } from "./ui";
 import { api } from "../api/api";
 
@@ -417,16 +417,14 @@ function buildCategories(advice) {
         <div className="space-y-2">
           {advice.reference_comparison.map((item, i) => (
             <ThemedItem key={i} tone={TONE.blue}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[15px] font-extrabold" style={{ color: C.brown }}>
-                  {item.metric || "비교 항목"}
+              <p className="break-keep text-[15px] font-extrabold" style={{ color: C.brown }}>
+                {item.metric || "비교 항목"}
+              </p>
+              {item.judgment && (
+                <p className={`mt-1.5 rounded-lg px-2.5 py-1.5 break-keep text-[11px] font-bold leading-relaxed ${TONE.blue.badge}`}>
+                  {item.judgment}
                 </p>
-                {item.judgment && (
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${TONE.blue.badge}`}>
-                    {item.judgment}
-                  </span>
-                )}
-              </div>
+              )}
               {item.reference && (
                 <SubLine icon={<Target className="w-3.5 h-3.5 text-brand-water" />} label="기준" text={item.reference} />
               )}

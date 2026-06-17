@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock, LogIn, User } from "lucide-react";
+import { Lock, LogIn, User } from '../components/icons';
 import { GoogleButton } from "../components/GoogleButton";
 import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
