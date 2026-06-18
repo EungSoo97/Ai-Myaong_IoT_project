@@ -3,6 +3,7 @@ from database.base import SessionLocal
 
 import database.alerts
 import database.clips
+import database.daily_activity_summaries
 import database.detection_logs
 import database.emergency_clips
 import database.feed_logs

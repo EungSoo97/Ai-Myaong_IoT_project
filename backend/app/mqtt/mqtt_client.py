@@ -10,7 +10,7 @@ from app.runtime_config import runtime_env
 class MqttClient:
     def __init__(self) -> None:
         self.host = "localhost"
-        self.port = 1883
+        self.port = 8883
         self.username = ""
         self.password = ""
         self.use_tls = False

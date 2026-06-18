@@ -6,7 +6,6 @@ import { getWebSocketUrl } from "../lib/backendUrls";
 
 import {
   Wifi,
-  WifiOff,
   Bell,
   Camera,
   Video,
@@ -20,20 +19,25 @@ import {
   ChevronUp,
   Footprints,
   Sparkles,
-  X,
-  Maximize2,
   Trash2,
-  HeartPulse,
-  AlertTriangle,
-  ShieldAlert,
-  Calendar,
-  Scale,
-} from '../components/icons';
+} from "lucide-react";
 import {
-  AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
 } from "recharts";
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
-import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
+import {
+  useAccount,
+  petAgeLabel,
+  speciesLabel,
+  addPet,
+  getAccount,
+  saveAccount,
+} from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
 import { useNotifications, timeAgo } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
@@ -65,14 +69,6 @@ const WATER_TYPE_LABEL = {
   manual: "수동 급수",
   auto: "자동 급수",
 };
-
-// AI 리포트 risk_level → 펫 카드 건강 상태 배지
-const HEALTH_STATUS = {
-  low: { label: "건강 양호", tone: "success", Icon: HeartPulse },
-  medium: { label: "주의 필요", tone: "warn", Icon: AlertTriangle },
-  high: { label: "건강 경고", tone: "danger", Icon: ShieldAlert },
-};
-const DEFAULT_HEALTH = { label: "분석 전", tone: "brown", Icon: Sparkles };
 
 const SHORTCUTS = [
   {
@@ -146,9 +142,22 @@ function ActivityArea({ data }) {
             <stop offset="100%" stopColor={ACT_PRIMARY} stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#EFE3D2" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9C8A78" }} axisLine={false} tickLine={false} />
-        <Tooltip {...actTooltip} formatter={(v) => [`${v}회`, "발자국"]} cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="#EFE3D2"
+          vertical={false}
+        />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 11, fill: "#9C8A78" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip
+          {...actTooltip}
+          formatter={(v) => [`${v}회`, "발자국"]}
+          cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }}
+        />
         <Area
           type="monotone"
           dataKey="value"
@@ -181,7 +190,9 @@ export function Dashboard() {
     () =>
       api
         .getDispenserLogs()
-        .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
+        .then((d) =>
+          setRecentLogs({ feed: d.feed || [], water: d.water || [] }),
+        )
         .catch(() => {}),
     [],
   );
@@ -251,13 +262,18 @@ export function Dashboard() {
       .sort((a, b) => (b.t || 0) - (a.t || 0))
       .slice(0, 30);
   }, [visionEvents, recentActivity]);
-  const visibleRecentItems = useMemo(() => recentItems.slice(0, 5), [recentItems]);
+  const visibleRecentItems = useMemo(
+    () => recentItems.slice(0, 5),
+    [recentItems],
+  );
 
   const deleteRecentVisionEvent = async (item) => {
     if (!item?.eventId) return;
     try {
       await api.deleteAlert(item.eventId);
-      setVisionEvents((events) => events.filter((event) => event.id !== item.eventId));
+      setVisionEvents((events) =>
+        events.filter((event) => event.id !== item.eventId),
+      );
     } catch (error) {
       console.error("[Dashboard] delete recent event failed:", error);
     }
@@ -271,30 +287,12 @@ export function Dashboard() {
   const petName = pet?.name || "";
   const petBreed = pet?.breed || "";
   const petSpecies = pet ? speciesLabel(pet.species) : "";
-  const ageLabel = pet ? (pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate)) : "";
-
-  // AI 리포트 최신 위험도 → 건강 상태 배지 (하드코딩 제거)
-  const [healthRisk, setHealthRisk] = useState(null);
-  useEffect(() => {
-    const pid = pet?.pet_id;
-    if (!pid) {
-      setHealthRisk(null);
-      return;
-    }
-    let alive = true;
-    api
-      .getLatestHealthReport(pid)
-      .then((d) => {
-        if (alive) setHealthRisk(d?.risk_level || null);
-      })
-      .catch(() => {
-        if (alive) setHealthRisk(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [pet?.pet_id]);
-  const health = HEALTH_STATUS[healthRisk] || DEFAULT_HEALTH;
+  const ageLabel = pet
+    ? pet.age !== "" && pet.age != null
+      ? `${pet.age}살`
+      : petAgeLabel(pet.birthDate)
+    : "";
+  const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
 
   // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
   const [showRegister, setShowRegister] = useState(false);
@@ -331,7 +329,11 @@ export function Dashboard() {
   const actTotal = actData.reduce((s, d) => s + d.value, 0);
   const actAvg = Math.round(actTotal / actData.length);
   const actAvgLabel =
-    actPeriod === "day" ? "시간대 평균" : actPeriod === "week" ? "일 평균" : "월 평균";
+    actPeriod === "day"
+      ? "시간대 평균"
+      : actPeriod === "week"
+        ? "일 평균"
+        : "월 평균";
 
   // 월간 차트: 진입 시 최신(현재 달, 오른쪽 끝)으로 스크롤
   const monthScrollRef = useRef(null);
@@ -360,25 +362,14 @@ export function Dashboard() {
   const onMonthMove = (e) => {
     if (!monthDrag.current) return;
     const el = monthScrollRef.current;
-    if (el) el.scrollLeft = monthDrag.current.left - (e.clientX - monthDrag.current.x);
+    if (el)
+      el.scrollLeft =
+        monthDrag.current.left - (e.clientX - monthDrag.current.x);
   };
   const onMonthUp = (e) => {
     if (!monthDrag.current) return;
     monthDrag.current = null;
     monthScrollRef.current?.releasePointerCapture?.(e.pointerId);
-  };
-
-  // 스크롤 투 탑 버튼
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 300);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
@@ -391,6 +382,17 @@ export function Dashboard() {
     }
   });
   const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 360);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
   useEffect(() => {
@@ -497,21 +499,12 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/settings")}
-              className={`relative w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active ${
-                isConnected ? "" : "ring-2 ring-brand-danger/60"
-              }`}
-              aria-label={isConnected ? "설정 · 연결됨" : "설정 · 연결 끊김"}
+              className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
+              aria-label="설정"
             >
-              {isConnected ? (
-                <Wifi className="w-5 h-5 text-brand-success" />
-              ) : (
-                <WifiOff className="w-5 h-5 text-brand-danger" />
-              )}
-              {!isConnected && (
-                <span className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-brand-danger text-white flex items-center justify-center border-2 border-brand-bg animate-pulse">
-                  <X className="w-2.5 h-2.5" strokeWidth={3} />
-                </span>
-              )}
+              <Wifi
+                className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
+              />
             </button>
           </div>
         }
@@ -525,58 +518,41 @@ export function Dashboard() {
           onClick={() => navigate("/pet/0")}
           className="w-full text-left touch-active"
         >
-          <Card className="paw-watermark p-5">
-            <div className="flex items-center gap-4">
-              <div className="relative shrink-0">
-                <div className="w-24 h-24 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-                  {pet.photo ? (
-                    <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
-                  ) : (
-                    <PawPrint className="w-11 h-11 text-brand-primary" />
-                  )}
-                </div>
-                <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-brand-success border-[3px] border-brand-card" />
+          <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+                {pet.photo ? (
+                  <img
+                    src={pet.photo}
+                    alt={petName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <PawPrint className="w-9 h-9 text-brand-primary" />
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
-                <h2 className="font-display text-[26px] font-bold text-brand-brown leading-tight truncate">
-                  {petName}
-                </h2>
-                <div className="mt-2">
-                  <Badge tone={health.tone} className="flex items-center gap-1.5">
-                    <health.Icon className="w-3.5 h-3.5" />
-                    {health.label}
-                  </Badge>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
             </div>
-
-            {/* 펫 지표 스트립 */}
-            <div className="mt-4 grid grid-cols-3 divide-x divide-brand-line/70 rounded-2xl bg-brand-cream/40 py-3.5">
-              <div className="px-2 text-center">
-                <p className="text-[11px] font-semibold text-brand-mute">나이</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
-                  {ageLabel || "-"}
-                </p>
-              </div>
-              <div className="px-2 text-center">
-                <p className="text-[11px] font-semibold text-brand-mute">몸무게</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
-                  {pet.weightKg ? `${pet.weightKg}kg` : "-"}
-                </p>
-              </div>
-              <div className="px-2 text-center min-w-0">
-                <p className="text-[11px] font-semibold text-brand-mute">품종</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none truncate">
-                  {petBreed || "-"}
-                </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-brand-mute font-semibold">
+                우리집 {petSpecies}
+              </p>
+              <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+                {petName}
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
+                <Badge tone="success">건강 양호</Badge>
               </div>
             </div>
+            <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
           </Card>
         </button>
       ) : (
-        <Card data-tour="dash-pet" className="paw-watermark px-5 py-6 text-center">
+        <Card
+          data-tour="dash-pet"
+          className="paw-watermark px-5 py-6 text-center"
+        >
           <span className="mx-auto w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mb-3">
             <PawPrint className="w-8 h-8 text-brand-primary/70" />
           </span>
@@ -596,47 +572,44 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 1.5) AI 건강 분석 진입 — 리포트 페이지와 같은 색감 (밝은 카드 + 코랄 오라) */}
+      {/* 1.5) AI 건강 분석 */}
       <button
         type="button"
-        onClick={() => navigate("/health-report/0")}
+        onClick={() => (pet ? navigate("/health-report/0") : showToast("🐾 반려동물을 먼저 등록해 주세요"))}
         className="mt-4 w-full text-left touch-active"
       >
-        <div className="relative overflow-hidden rounded-3xl bg-brand-card border border-brand-line/60 shadow-soft p-4">
-          {/* 코랄 오라 (강하게) */}
-          <div className="pointer-events-none absolute -right-6 -top-12 w-40 h-40 rounded-full bg-brand-primary/35 blur-2xl" />
-          <Sparkles className="pointer-events-none absolute right-3 top-3 w-16 h-16 text-brand-primary/10" />
-          <div className="relative flex items-center gap-3.5">
-            {/* 그라데이션 엠블럼 + 코랄 글로우 */}
-            <span
-              className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
-                boxShadow: "0 6px 16px -4px rgb(var(--brand-primary) / 0.55)",
-              }}
-            >
-              <Sparkles className="w-6 h-6" />
+        <div
+          className="relative overflow-hidden rounded-3xl px-5 py-4 shadow-soft ring-1 ring-inset ring-white/10"
+          style={{
+            background:
+              "linear-gradient(to right, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
+          }}
+        >
+          {/* 배경 장식 (반짝이) */}
+          <Sparkles className="pointer-events-none absolute -right-4 -top-4 w-24 h-24 text-white/15" />
+          <div className="relative flex items-center gap-3">
+            <span className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6 text-white" />
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-base font-extrabold text-brand-brown">AI 건강 분석</p>
-                <span className="rounded-full bg-brand-primary/15 px-1.5 py-0.5 text-[10px] font-extrabold text-brand-primary">
+                <p className="font-display text-base font-bold text-white">
+                  AI 건강 분석
+                </p>
+                <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-bold">
                   NEW
                 </span>
               </div>
-              <p className="mt-0.5 text-xs font-semibold text-brand-mute truncate">
-                우리 아이 데이터로 건강 상태를 분석하러 가기
+              <p className="text-xs text-white/85 mt-0.5 truncate">
+                우리 아이 데이터로 건강 상태를 똑똑하게 분석해드려요
               </p>
             </div>
-            <span className="w-8 h-8 shrink-0 rounded-full bg-brand-primary/12 flex items-center justify-center text-brand-primary">
-              <ChevronRight className="w-5 h-5" />
-            </span>
+            <ChevronRight className="w-5 h-5 text-white/80 shrink-0" />
           </div>
         </div>
       </button>
 
-      {/* 3) 숏컷 (Grid) */}
+      {/* 2) 숏컷 (Grid) */}
       <section className="mt-5" data-tour="dash-shortcuts">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
@@ -660,7 +633,11 @@ export function Dashboard() {
                   <Icon className="w-6 h-6" />
                 </span>
                 <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
-                  {id === "away" ? (awayMode ? "외출 모드 ON" : "외출 모드") : label}
+                  {id === "away"
+                    ? awayMode
+                      ? "외출 모드 ON"
+                      : "외출 모드"
+                    : label}
                 </span>
               </button>
             );
@@ -697,44 +674,71 @@ export function Dashboard() {
             </button>
           </div>
         </div>
+        <p className="px-1 -mt-2 mb-3 text-[11px] font-semibold text-brand-mute">
+          최근 이벤트는 30일 동안 보관돼요.
+        </p>
         <div
           className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
-            recentCollapsed ? "grid-rows-[0fr] opacity-0 -mt-1" : "grid-rows-[1fr] opacity-100"
+            recentCollapsed
+              ? "grid-rows-[0fr] opacity-0 -mt-1"
+              : "grid-rows-[1fr] opacity-100"
           }`}
         >
           <div className="min-h-0 overflow-hidden">
             <CreamCard className="divide-y divide-brand-line">
               {visibleRecentItems.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-brand-mute">최근 활동이 없어요</p>
+                <p className="px-4 py-8 text-center text-sm text-brand-mute">
+                  최근 활동이 없어요
+                </p>
               ) : (
                 visibleRecentItems.map((item) => {
-                  const { id, key, icon, eventType, tone, title, desc, time, eventId } = item;
+                  const {
+                    id,
+                    key,
+                    icon,
+                    eventType,
+                    tone,
+                    title,
+                    desc,
+                    time,
+                    eventId,
+                  } = item;
                   const Icon = icon || EVENT_ICON[eventType] || PawPrint;
                   return (
-                  <div key={key || id} className="flex items-center gap-3 px-4 py-3.5">
-                    <span
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
+                    <div
+                      key={key || id}
+                      className="flex items-center gap-3 px-4 py-3.5"
                     >
-                      <Icon className="w-5 h-5" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-brand-brown truncate">{title}</p>
-                      <p className="text-xs text-brand-mute truncate">{desc}</p>
-                    </div>
-                    <span className="text-[11px] text-brand-mute shrink-0">{time}</span>
-                    {eventId && (
-                      <button
-                        type="button"
-                        onClick={() => deleteRecentVisionEvent(item)}
-                        className="w-8 h-8 rounded-2xl bg-brand-card text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
-                        aria-label="로그 삭제"
-                        title="로그 삭제"
+                      <span
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${TONE[tone]}`}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                )})
+                        <Icon className="w-5 h-5" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-brand-brown truncate">
+                          {title}
+                        </p>
+                        <p className="text-xs text-brand-mute truncate">
+                          {desc}
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-brand-mute shrink-0">
+                        {time}
+                      </span>
+                      {eventId && (
+                        <button
+                          type="button"
+                          onClick={() => deleteRecentVisionEvent(item)}
+                          className="w-8 h-8 rounded-2xl bg-brand-card text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                          aria-label="로그 삭제"
+                          title="로그 삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </CreamCard>
           </div>
@@ -753,7 +757,9 @@ export function Dashboard() {
                 <p className="font-display text-base font-bold text-brand-brown leading-tight">
                   활동량
                 </p>
-                <p className="text-[11px] text-brand-mute">우리 아이 발자국 🐾</p>
+                <p className="text-[11px] text-brand-mute">
+                  활동량 기록은 최대 1년까지 보관돼요.
+                </p>
               </div>
             </div>
             {/* 일/주/월 탭 */}
@@ -768,7 +774,9 @@ export function Dashboard() {
                   type="button"
                   onClick={() => setActPeriod(id)}
                   className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
-                    actPeriod === id ? "bg-brand-primary text-white shadow-soft" : "text-brand-mute"
+                    actPeriod === id
+                      ? "bg-brand-primary text-white shadow-soft"
+                      : "text-brand-mute"
                   }`}
                 >
                   {label}
@@ -789,12 +797,21 @@ export function Dashboard() {
               tabIndex={-1}
               className="mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
             >
-              <div style={{ width: Math.max(actData.length * 52, 320), height: 160 }}>
+              <div
+                style={{
+                  width: Math.max(actData.length * 52, 320),
+                  height: 160,
+                }}
+              >
                 <ActivityArea data={actData} />
               </div>
             </div>
           ) : (
-            <div key={actPeriod} className="page-enter mt-4" style={{ width: "100%", height: 160 }}>
+            <div
+              key={actPeriod}
+              className="page-enter mt-4"
+              style={{ width: "100%", height: 160 }}
+            >
               <ActivityArea data={actData} />
             </div>
           )}
@@ -802,13 +819,17 @@ export function Dashboard() {
           {/* 요약 */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
-              <p className="text-[11px] font-semibold text-brand-mute">총 발자국 🐾</p>
+              <p className="text-[11px] font-semibold text-brand-mute">
+                총 발자국 🐾
+              </p>
               <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
                 {actTotal.toLocaleString()}회
               </p>
             </div>
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
-              <p className="text-[11px] font-semibold text-brand-mute">{actAvgLabel}</p>
+              <p className="text-[11px] font-semibold text-brand-mute">
+                {actAvgLabel}
+              </p>
               <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
                 {actAvg.toLocaleString()}회
               </p>
@@ -843,18 +864,15 @@ export function Dashboard() {
         />
       )}
 
-      {/* 스크롤 투 탑 버튼 — 모바일 프레임(max-w-[480px]) 기준 우측 정렬 */}
       {showScrollTop && (
-        <div className="fixed bottom-20 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 pointer-events-none">
-          <button
-            type="button"
-            onClick={scrollToTop}
-            className="pointer-events-auto absolute bottom-0 right-5 w-12 h-12 rounded-full bg-brand-bg/90 backdrop-blur-md text-brand-brown shadow-soft-lg flex items-center justify-center touch-active hover:bg-brand-bg transition-all border border-brand-line/50"
-            aria-label="맨 위로"
-          >
-            <ChevronUp className="w-6 h-6" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="맨 위로"
+          className="fixed right-5 bottom-24 z-40 w-12 h-12 rounded-full bg-brand-brown text-white shadow-soft-lg flex items-center justify-center touch-active"
+        >
+          <ChevronUp className="w-5 h-5" />
+        </button>
       )}
     </div>
   );
