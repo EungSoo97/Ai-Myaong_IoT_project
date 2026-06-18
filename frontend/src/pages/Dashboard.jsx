@@ -572,10 +572,10 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 1.5) AI 건강 분석 티저 — 준비 중 (펫 정보 바로 아래에서 강조) */}
+      {/* 1.5) AI 건강 분석 */}
       <button
         type="button"
-        onClick={() => showToast("✨ AI 건강 분석은 곧 만나요!")}
+        onClick={() => (pet ? navigate("/health-report/0") : showToast("🐾 반려동물을 먼저 등록해 주세요"))}
         className="mt-4 w-full text-left touch-active"
       >
         <div
@@ -597,7 +597,7 @@ export function Dashboard() {
                   AI 건강 분석
                 </p>
                 <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-bold">
-                  준비 중
+                  NEW
                 </span>
               </div>
               <p className="text-xs text-white/85 mt-0.5 truncate">
