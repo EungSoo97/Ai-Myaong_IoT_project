@@ -17,6 +17,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { AuthVideoLayout } from "../components/auth/AuthVideoLayout";
 import { GoogleButton } from "../components/GoogleButton";
 import { EmailVerifyField } from "../components/EmailVerifyField";
 import { DateWheel } from "../components/DateWheel";
@@ -384,15 +385,13 @@ export default function Signup({ onComplete, onBackToLogin }) {
 
   /* ───────── 회원가입 단계 화면 ───────── */
   return (
-    <div
-      className="page-enter font-cute flex-1 flex flex-col h-[100dvh] overflow-hidden"
-      style={{ background: C.bg }}
-    >
+    <AuthVideoLayout className="page-enter font-cute">
+      <div className="auth-signup-shell flex w-full max-w-[430px] flex-col overflow-hidden">
       {/* 상단 고정: 브랜드 + 단계 인디케이터 */}
       <div className="shrink-0 px-5 pt-6 sm:px-8">
-        <div className="text-center">
+        <div className="auth-brand-text text-center">
           <h1
-            className="font-display text-3xl font-bold tracking-tight"
+            className="font-cute text-3xl font-bold tracking-tight"
             style={{ color: C.brown }}
           >
             Ai<span style={{ color: C.primary }}>:</span>Myaong
@@ -417,8 +416,7 @@ export default function Signup({ onComplete, onBackToLogin }) {
       {/* 중앙: 스크롤 영역 (폼 카드) */}
       <div className="flex-1 overflow-y-auto min-h-0 px-5 pt-4 pb-6 sm:px-8">
         <div
-          className="rounded-3xl p-6 shadow-lg"
-          style={{ background: C.card, border: `1px solid ${C.border}` }}
+          className="auth-glass-card rounded-3xl p-6 shadow-lg"
         >
           <div key={step} className="page-enter">
             {step === STEP_USER && (
@@ -441,8 +439,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
 
       {/* 하단 고정: 에러 + 네비게이션 */}
       <div
-        className="shrink-0 px-5 pt-3 sm:px-8"
-        style={{ background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.75rem)' }}
+        className="auth-glass-panel shrink-0 rounded-t-3xl px-5 pt-3 sm:px-8"
+        style={{ borderTop: `1px solid ${C.border}`, paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.75rem)' }}
       >
         {err && (
           <p className="mb-2.5 text-center text-sm font-bold" style={{ color: C.danger }}>
@@ -488,7 +486,8 @@ export default function Signup({ onComplete, onBackToLogin }) {
         )}
         </div>
       </div>
-    </div>
+      </div>
+    </AuthVideoLayout>
   );
 }
 
@@ -759,7 +758,7 @@ function PetStep({ pet, setPetField, count, errors = {} }) {
         onChange={(e) => setPetField("notes", e.target.value)}
         rows={3}
         placeholder="알러지, 복용 약, 성격 등"
-        className="font-sans mt-1.5 w-full rounded-2xl px-4 py-4 text-base outline-none resize-none placeholder:opacity-60"
+        className="auth-input font-sans mt-1.5 w-full rounded-2xl px-4 py-4 text-base outline-none resize-none placeholder:opacity-60"
         style={{
           background: C.input,
           border: `1.5px solid ${C.border}`,
@@ -986,7 +985,7 @@ function UsernameField({
       </span>
       <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
         <div
-          className="flex items-center gap-2.5 rounded-2xl px-4 py-4"
+          className="auth-input flex items-center gap-2.5 rounded-2xl px-4 py-4"
           style={{
             background: invalid ? "#FDECE9" : C.input,
             border: `1.5px solid ${invalid ? C.danger : C.border}`,
@@ -1047,7 +1046,7 @@ function Field({
         {label}
       </span>
       <div
-        className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
+        className="auth-input mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
         style={{
           background: invalid ? "#FDECE9" : C.input,
           border: `1.5px solid ${invalid ? C.danger : C.border}`,
