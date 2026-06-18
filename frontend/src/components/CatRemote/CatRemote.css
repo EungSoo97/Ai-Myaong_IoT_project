@@ -1,0 +1,386 @@
+.cat-remote-wrap {
+  position: fixed;
+  right: max(10px, calc((100vw - 480px) / 2 + 10px));
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.cat-remote-wrap.is-hidden {
+  right: max(10px, calc((100vw - 480px) / 2 + 10px));
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  z-index: 40;
+}
+
+.ctrl-buttons {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(14px) scale(0.96);
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ctrl-buttons.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-18px) scale(1);
+}
+
+.ctrl-btn {
+  width: 92px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgb(var(--brand-line));
+  border-radius: 999px;
+  background: rgb(var(--brand-card));
+  color: rgb(var(--brand-brown));
+  box-shadow: 0 4px 12px rgba(75, 54, 33, 0.14);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.ctrl-btn:hover {
+  background: rgb(var(--brand-cream));
+  border-color: rgb(var(--brand-primary));
+}
+
+.ctrl-btn:active {
+  transform: scale(0.95);
+}
+
+.cat-top-button {
+  position: relative;
+  width: 112px;
+  height: 62px;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cat-top-button:active {
+  transform: scale(0.95);
+}
+
+.cat-frame {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.14));
+  transform-origin: 58% 92%;
+  will-change: transform;
+}
+
+.cat-frame.sleep-set {
+  width: 112px;
+  height: auto;
+}
+
+.cat-frame.feed-set {
+  right: -4px;
+  bottom: -4px;
+  width: 118px;
+  height: 112px;
+  object-fit: contain;
+  object-position: right bottom;
+  transform-origin: 56% 90%;
+}
+
+.cat-frame.grooming-set {
+  right: -3px;
+  bottom: -4px;
+  width: 118px;
+  height: 98px;
+  object-fit: contain;
+  object-position: right bottom;
+  transform-origin: 56% 92%;
+}
+
+.cat-frame.tail-set {
+  left: -2px;
+  right: auto;
+  bottom: -2px;
+  width: auto;
+  height: 96px;
+  transform-origin: 42% 94%;
+}
+
+.cat-frame.hide-set {
+  right: -24px;
+  bottom: -10px;
+  width: 168px;
+  height: 118px;
+  object-fit: contain;
+  object-position: right bottom;
+  transform-origin: 52% 92%;
+}
+
+.cat-frame.breathe {
+  animation: catBreath 2.6s ease-in-out infinite;
+}
+
+.cat-frame.jumping {
+  animation: catJump 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-frame.feeding {
+  animation: catFeed 1.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-frame.grooming {
+  animation: catGrooming 2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-frame.tailing {
+  animation: none;
+  transform: scale(0.88);
+}
+
+.cat-frame.hiding {
+  animation: catHideSettle 2.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-home-button {
+  position: relative;
+  width: 112px;
+  height: 62px;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  overflow: visible;
+  transform: translateY(0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-home-button:hover,
+.cat-home-button:focus-visible {
+  transform: translateY(-12px);
+}
+
+.cat-home-button:active {
+  transform: translateY(-8px) scale(0.96);
+}
+
+.cat-home-frame {
+  position: absolute;
+  right: 0;
+  bottom: -52px;
+  width: 112px;
+  height: auto;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.13));
+  transition: bottom 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-home-button:hover .cat-home-frame,
+.cat-home-button:focus-visible .cat-home-frame {
+  bottom: -28px;
+}
+
+.cat-top-button.switching .cat-frame.sleep-set {
+  animation: catFrameSwitchSleep 0.22s ease-out;
+}
+
+.cat-top-button.switching .cat-frame.feed-set {
+  animation: catFrameSwitchFeed 0.22s ease-out;
+}
+
+.cat-top-button.switching .cat-frame.grooming-set {
+  animation: catFrameSwitchGrooming 0.22s ease-out;
+}
+
+.cat-top-button.switching .cat-frame.tail-set {
+  animation: catFrameSwitchTail 0.22s ease-out;
+}
+
+.cat-top-button.switching .cat-frame.hide-set {
+  animation: catFrameSwitchHide 0.22s ease-out;
+}
+
+@keyframes catBreath {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-3px) scale(1.015);
+  }
+}
+
+@keyframes catJump {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+
+  16% {
+    transform: translate3d(0, 4px, 0) rotate(0deg) scale(0.97);
+  }
+
+  42% {
+    transform: translate3d(0, -32px, 0) rotate(-4deg) scale(1.06);
+  }
+
+  68% {
+    transform: translate3d(0, -20px, 0) rotate(3deg) scale(1.03);
+  }
+
+  84% {
+    transform: translate3d(0, -6px, 0) rotate(-1deg) scale(1.01);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes catFeed {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(0.92);
+  }
+
+  12% {
+    transform: translate3d(0, 1px, 0) rotate(0.6deg) scale(0.92);
+  }
+
+  28% {
+    transform: translate3d(0, -3px, 0) rotate(-1deg) scale(0.925);
+  }
+
+  46% {
+    transform: translate3d(0, 0, 0) rotate(0.8deg) scale(0.92);
+  }
+
+  64% {
+    transform: translate3d(0, -2px, 0) rotate(-0.6deg) scale(0.925);
+  }
+
+  82% {
+    transform: translate3d(0, 1px, 0) rotate(0.4deg) scale(0.92);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(0.92);
+  }
+}
+
+@keyframes catGrooming {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(0.9);
+  }
+
+  18% {
+    transform: translate3d(0, 1px, 0) rotate(0.4deg) scale(0.9);
+  }
+
+  38% {
+    transform: translate3d(0, -2px, 0) rotate(-0.8deg) scale(0.91);
+  }
+
+  58% {
+    transform: translate3d(0, 0, 0) rotate(0.6deg) scale(0.905);
+  }
+
+  78% {
+    transform: translate3d(0, -1px, 0) rotate(-0.4deg) scale(0.91);
+  }
+}
+
+@keyframes catFrameSwitchSleep {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0) scale(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes catFrameSwitchFeed {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0) scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.94);
+  }
+}
+
+@keyframes catFrameSwitchGrooming {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0) scale(0.86);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.9);
+  }
+}
+
+@keyframes catFrameSwitchTail {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 3px, 0) scale(0.84);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.88);
+  }
+}
+
+@keyframes catFrameSwitchHide {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0) scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes catHideSettle {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.96);
+  }
+
+  55% {
+    transform: translate3d(0, -4px, 0) scale(1);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
