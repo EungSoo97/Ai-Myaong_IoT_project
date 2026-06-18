@@ -17,6 +17,7 @@ import { Dispenser } from './pages/Dispenser'
 import { Feeding } from './pages/Feeding'
 import { Activity } from './pages/Activity'
 import { PetDetail } from './pages/PetDetail'
+import { HealthReport } from './pages/HealthReport'
 import { ProfileEdit } from './pages/ProfileEdit'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
@@ -93,6 +94,7 @@ function App() {
           <Route path="activity" element={<Activity />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="pet/:idx" element={<PetDetail />} />
+          <Route path="health-report/:idx" element={<HealthReport />} />
           <Route path="profile/edit" element={<ProfileEdit />} />
           <Route path="settings" element={<Settings />} />
           <Route path="mypage" element={<MyPage />} />

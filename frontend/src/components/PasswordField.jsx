@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lock, Eye, EyeOff, Check, X } from 'lucide-react'
+import { Lock, Eye, EyeOff, Check, X } from './icons'
 
 /* Warm-tone 팔레트 */
 const C = {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Check } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Check } from './icons'
 import { useOnboarding } from '../onboarding/useOnboarding'
 
 /* ───────────────────────────────────────────────────────────

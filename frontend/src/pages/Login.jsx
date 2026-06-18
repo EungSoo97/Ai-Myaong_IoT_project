@@ -1,29 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock, LogIn, User } from "lucide-react";
+// import { Lock, LogIn, User } from "lucide-react";
 import { AuthVideoLayout } from "../components/auth/AuthVideoLayout";
+import { Lock, LogIn, User } from "../components/icons";
 import { GoogleButton } from "../components/GoogleButton";
 import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
 import { fromApiPet } from "../lib/petMap";
 
-
 /* Warm-tone 팔레트 */
 const C = {
-  bg: 'rgb(var(--brand-bg))',
-  card: 'rgb(var(--brand-card))',
-  input: 'rgb(var(--brand-input))',
-  border: 'rgb(var(--brand-line))',
-  brown: 'rgb(var(--brand-brown))',
-  mute: 'rgb(var(--brand-mute))',
-  primary: 'rgb(var(--brand-primary))',
-  primaryDeep: 'rgb(var(--brand-primary-deep))',
-  outline: 'rgb(var(--brand-brown))',
+  bg: "rgb(var(--brand-bg))",
+  card: "rgb(var(--brand-card))",
+  input: "rgb(var(--brand-input))",
+  border: "rgb(var(--brand-line))",
+  brown: "rgb(var(--brand-brown))",
+  mute: "rgb(var(--brand-mute))",
+  primary: "rgb(var(--brand-primary))",
+  primaryDeep: "rgb(var(--brand-primary-deep))",
+  outline: "rgb(var(--brand-brown))",
   // 고양이 일러스트 색은 의도된 고정값 (다크에서도 동일 유지)
-  catOrange: '#F0A56E',
-  catOrangeDark: '#E58A4F',
-  catCream: '#FAF1E2',
-  catPink: '#F5B5A4',
-}
+  catOrange: "#F0A56E",
+  catOrangeDark: "#E58A4F",
+  catCream: "#FAF1E2",
+  catPink: "#F5B5A4",
+};
 
 /* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
  * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
@@ -257,7 +257,11 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
               비밀번호 찾기
             </button>
             <span />
-            <button type="button" onClick={onSignup} className="auth-login-actions-primary">
+            <button
+              type="button"
+              onClick={onSignup}
+              className="auth-login-actions-primary"
+            >
               회원가입
             </button>
           </div>
