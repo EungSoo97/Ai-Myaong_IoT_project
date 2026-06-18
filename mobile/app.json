@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Ai:Myaong",
+    "slug": "ai-myaong-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "aimyaong",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aimyaong.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "프로필과 반려동물 사진을 선택하기 위해 사진 접근 권한이 필요합니다."
+      }
+    },
+    "android": {
+      "package": "com.aimyaong.mobile",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "프로필과 반려동물 사진을 선택하기 위해 사진 접근 권한이 필요합니다."
+        }
+      ],
+      "expo-video"
+    ]
+  }
+}
