@@ -29,7 +29,9 @@ function MobileShell({ children }) {
 export function PublicLayout() {
   return (
     <MobileShell>
-      <Outlet />
+      <div className="public-route-stage">
+        <Outlet />
+      </div>
     </MobileShell>
   )
 }
