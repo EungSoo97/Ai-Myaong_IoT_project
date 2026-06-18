@@ -14,6 +14,7 @@ const C = {
   danger: 'rgb(var(--brand-danger))', ok: 'rgb(var(--brand-success))',
 }
 
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // 프로필 이미지 최대 5MB
 const TEST_CODE = '123456'
 const GOOGLE_PROFILE = { email: 'user@gmail.com', nickname: '구글유저' }
 const LS_KEY = 'petflow:account'
@@ -389,9 +390,16 @@ function UserStep({ userInfo, setU }) {
 
 function PetStep({ pet, setP, count }) {
   const fileRef = useRef(null)
+  const [imgErr, setImgErr] = useState('')
   const onPick = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > MAX_PHOTO_BYTES) {
+      setImgErr('이미지는 5MB 이하로 업로드해 주세요.')
+      e.target.value = '' // 같은 파일 다시 고를 수 있게 초기화
+      return
+    }
+    setImgErr('')
     const reader = new FileReader()
     reader.onload = () => setP('photo', reader.result) // Base64 프리뷰
     reader.readAsDataURL(file)
@@ -413,6 +421,9 @@ function PetStep({ pet, setP, count }) {
         </button>
         <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
       </div>
+      <p className="mt-2 text-center text-xs" style={{ color: imgErr ? C.danger : C.mute }}>
+        {imgErr || 'JPG · PNG · 5MB 이하로 업로드해 주세요'}
+      </p>
 
       <Input label="이름" value={pet.name} onChange={(v) => setP('name', v)} placeholder="예: 초코" />
 

@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic, Droplets,
   Activity as ActivityIcon, X, Play, MapPin, Clock, Cpu, PawPrint, Dog, Cat,
   CheckCheck, ShieldAlert,
-} from 'lucide-react'
+} from '../components/icons'
 import { Card, CreamCard, Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
 import { mapVisionEventForList } from '../lib/visionEventMapper'

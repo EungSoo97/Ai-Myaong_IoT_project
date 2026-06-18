@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, UserX, AlertTriangle, UtensilsCrossed, Droplets,
   Moon, PhoneCall, Bell, Trash2,
-} from 'lucide-react'
+} from '../components/icons'
 import { Card } from '../components/ui'
 import {
   useNotifications, removeNotification, clearNotifications, timeAgo,

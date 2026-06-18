@@ -1,4 +1,4 @@
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon } from './icons'
 import { useTheme } from '../theme/ThemeProvider'
 
 const OPTIONS = [

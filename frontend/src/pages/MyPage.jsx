@@ -11,7 +11,7 @@ import {
   Eye,
   EyeOff,
   Check,
-} from "lucide-react";
+} from '../components/icons';
 import { Card, CreamCard, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, clearAccount, saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";

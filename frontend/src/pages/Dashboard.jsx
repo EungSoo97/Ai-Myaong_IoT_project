@@ -7,7 +7,6 @@ import { getWebSocketUrl } from "../lib/backendUrls";
 import {
   Wifi,
   Bell,
-  PhoneCall,
   Camera,
   Video,
   UserX,
@@ -17,10 +16,9 @@ import {
   Plane,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Footprints,
   Sparkles,
-  X,
-  Maximize2,
   Trash2,
 } from "lucide-react";
 import {
@@ -83,18 +81,6 @@ const SHORTCUTS = [
     id: "away",
     label: "외출 모드",
     icon: Plane,
-    tone: "bg-brand-cream text-brand-brown",
-  },
-  {
-    id: "call",
-    label: "음성 호출",
-    icon: PhoneCall,
-    tone: "bg-brand-cream text-brand-brown",
-  },
-  {
-    id: "cap",
-    label: "캡처",
-    icon: Camera,
     tone: "bg-brand-cream text-brand-brown",
   },
 ];
@@ -195,6 +181,7 @@ export function Dashboard() {
   const unread = notifications.length;
   const [visionEvents, setVisionEvents] = useState([]);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
@@ -238,65 +225,6 @@ export function Dashboard() {
       .map((x) => ({ ...x, time: timeAgo(new Date(x.t).toISOString()) }));
   }, [recentLogs]);
 
-  // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
-  // camState: connecting(초기·확인 중) → live(영상 로드됨) / off(주소 없음·실패)
-  const [streamUrl, setStreamUrl] = useState("");
-  const [camState, setCamState] = useState("connecting");
-  const [camFull, setCamFull] = useState(false); // 캠 전체화면 오버레이
-
-  // 캠 전체화면 열기/닫기 (네이티브 풀스크린은 가능하면 함께 시도)
-  const openCamFull = () => {
-    setCamFull(true);
-    try {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    } catch {
-      /* 미지원 환경 — 인앱 오버레이로 충분 */
-    }
-  };
-  const closeCamFull = () => {
-    setCamFull(false);
-    try {
-      if (document.fullscreenElement)
-        document.exitFullscreen?.().catch(() => {});
-    } catch {
-      /* ignore */
-    }
-  };
-
-  // ESC 로 닫기 + 전체화면일 때 body 스크롤 잠금
-  useEffect(() => {
-    if (!camFull) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") closeCamFull();
-    };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [camFull]);
-
-  useEffect(() => {
-    let alive = true;
-    setCamState("connecting");
-    api
-      .getStreamUrl()
-      .then((data) => {
-        if (!alive) return;
-        if (data.url)
-          setStreamUrl(data.url); // 로드되면 onLoad 에서 live 로
-        else setCamState("off");
-      })
-      .catch(() => {
-        if (alive) setCamState("off");
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   useEffect(() => {
     let alive = true;
     const load = () => {
@@ -320,8 +248,6 @@ export function Dashboard() {
     };
   }, []);
 
-  const showLive = camState === "live";
-  const camConnecting = camState === "connecting";
   const recentItems = useMemo(() => {
     const vision = (visionEvents || []).map((event) => {
       const item = mapVisionEventForList(event);
@@ -457,6 +383,17 @@ export function Dashboard() {
   });
   const [busyId, setBusyId] = useState(null);
 
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 360);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
   useEffect(() => {
     api
@@ -527,19 +464,11 @@ export function Dashboard() {
           .catch(() => {});
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
-      } else if (id === "call") {
-        await api.voiceCall();
-        showToast("📞 음성 호출을 시작했어요");
-      } else if (id === "cap") {
-        await api.captureSnapshot();
-        showToast("📸 화면을 캡처했어요");
       }
     } catch {
       // 서버 미연결/미구현
       const msg = {
         feed: "배식 실패 — 기기 연결을 확인해 주세요",
-        call: "음성 호출은 곧 지원돼요 (기기 연동 준비 중)",
-        cap: "캡처는 곧 지원돼요 (기기 연동 준비 중)",
       }[id];
       showToast(msg);
     } finally {
@@ -680,68 +609,12 @@ export function Dashboard() {
         </div>
       </button>
 
-      {/* 2) 캠 미리보기 (탭하면 로봇 비전으로) */}
-      <button
-        type="button"
-        data-tour="dash-cam"
-        onClick={() => navigate("/vision")}
-        className="mt-4 w-full text-left touch-active"
-      >
-        <Card className="overflow-hidden">
-          <div className="relative aspect-video bg-gradient-to-br from-brand-cream to-brand-line dark:from-[#2b2520] dark:to-[#15110e]">
-            {/* 영상은 주소가 있으면 항상 마운트해 로드/실패를 감지 (보일 땐 live) */}
-            {streamUrl && (
-              <img
-                src={streamUrl}
-                alt="실시간 캠"
-                onLoad={() => setCamState("live")}
-                onError={() => setCamState("off")}
-                className={`absolute inset-0 w-full h-full object-cover brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90 transition-opacity duration-300 ${showLive ? "opacity-100" : "opacity-0"}`}
-              />
-            )}
-            {!showLive && (
-              <>
-                {/* 글래스 빛 반사(sheen) + 유리 테두리 */}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 via-white/5 to-transparent dark:from-white/10 dark:via-white/0" />
-                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40 dark:ring-white/10 rounded-[inherit]" />
-                <div className="absolute inset-0 flex items-center justify-center text-brand-mute dark:text-white/85">
-                  <div className="text-center">
-                    <span className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center bg-white/40 dark:bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/50 dark:ring-white/15 shadow-sm">
-                      <Camera className="w-7 h-7 opacity-90" />
-                    </span>
-                    <p className="text-sm font-semibold">
-                      {camConnecting ? "연결 중…" : "캠 연결 대기 중"}
-                    </p>
-                    <p className="text-xs opacity-75">
-                      탭하여 전체화면으로 보기
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-            {/* 심플·모던: 상하 은은한 그라데이션 (배지보다 아래 레이어) */}
-            {showLive && (
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
-            )}
-            <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
-              <span
-                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : camConnecting ? "bg-amber-300 animate-pulse" : "bg-white/50"}`}
-              />
-              {showLive ? "LIVE" : camConnecting ? "연결 중" : "OFF"}
-            </span>
-            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/45 text-white text-[11px] font-bold tracking-wide">
-              HD
-            </span>
-          </div>
-        </Card>
-      </button>
-
-      {/* 3) 숏컷 (Grid) */}
+      {/* 2) 숏컷 (Grid) */}
       <section className="mt-5" data-tour="dash-shortcuts">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
             const active = id === "away" && awayMode;
             const isBusy = busyId === id;
@@ -989,6 +862,17 @@ export function Dashboard() {
           onClose={() => setShowRegister(false)}
           onSave={handleRegister}
         />
+      )}
+
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="맨 위로"
+          className="fixed right-5 bottom-24 z-40 w-12 h-12 rounded-full bg-brand-brown text-white shadow-soft-lg flex items-center justify-center touch-active"
+        >
+          <ChevronUp className="w-5 h-5" />
+        </button>
       )}
     </div>
   );

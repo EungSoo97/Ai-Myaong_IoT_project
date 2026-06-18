@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { BottomTabBar } from './BottomTabBar'
+import { CatRemote } from './CatRemote/CatRemote'
 import { OnboardingTour } from './OnboardingTour'
 import { PageTransition } from './PageTransition'
 
@@ -46,6 +47,7 @@ export function PrivateLayout() {
           <Outlet />
         </PageTransition>
       </main>
+      <CatRemote />
       <BottomTabBar />
       <OnboardingTour />
     </MobileShell>

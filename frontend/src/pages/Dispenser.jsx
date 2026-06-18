@@ -12,7 +12,7 @@ import {
   ChevronRight,
   X,
   Plus as PlusIcon,
-} from 'lucide-react'
+} from '../components/icons'
 import { Card, CreamCard, PageHeader, PrimaryButton } from '../components/ui'
 import { TimeWheel } from '../components/TimeWheel'
 import { api } from '../api/api'
