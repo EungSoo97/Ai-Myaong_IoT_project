@@ -46,6 +46,7 @@ export function CatRemote() {
   const [hidden, setHidden] = useState(false)
   const [homeFrameIndex, setHomeFrameIndex] = useState(0)
   const [easterEggOpen, setEasterEggOpen] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [frameSet, setFrameSet] = useState('sleep')
   const [frameIndex, setFrameIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -56,6 +57,8 @@ export function CatRemote() {
   const timeoutRef = useRef(null)
   const tailTimeoutRef = useRef(null)
   const clickTimeoutRef = useRef(null)
+  const longPressTimeoutRef = useRef(null)
+  const suppressNextClickRef = useRef(false)
 
   const frames =
     frameSet === 'feed'
@@ -135,6 +138,7 @@ export function CatRemote() {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       if (tailTimeoutRef.current) clearTimeout(tailTimeoutRef.current)
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current)
+      if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current)
     }
   }, [])
 
@@ -163,6 +167,11 @@ export function CatRemote() {
       clearTimeout(clickTimeoutRef.current)
       clickTimeoutRef.current = null
     }
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current)
+      longPressTimeoutRef.current = null
+    }
   }
 
   const toggleRemote = () => {
@@ -182,6 +191,10 @@ export function CatRemote() {
 
   const handleRemoteClick = () => {
     if (playing) return
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false
+      return
+    }
     if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current)
 
     clickTimeoutRef.current = setTimeout(() => {
@@ -202,6 +215,23 @@ export function CatRemote() {
     setFrameSet('sleep')
     setFrameIndex(1)
     setAction('idle')
+  }
+
+  const startLongPress = () => {
+    if (playing || frameSet !== 'sleep') return
+    if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current)
+
+    longPressTimeoutRef.current = setTimeout(() => {
+      longPressTimeoutRef.current = null
+      suppressNextClickRef.current = true
+      revealEasterEgg()
+    }, 520)
+  }
+
+  const cancelLongPress = () => {
+    if (!longPressTimeoutRef.current) return
+    clearTimeout(longPressTimeoutRef.current)
+    longPressTimeoutRef.current = null
   }
 
   const playMoveAnimation = (targetTop) => {
@@ -337,18 +367,23 @@ export function CatRemote() {
   const restoreCat = () => {
     if (playing) return
     clearPendingAnimation()
+    setRestoring(true)
     setEasterEggOpen(false)
-    setHidden(false)
-    setRemoteOpen(false)
-    setSwitchingFrameSet(true)
-    setFrameSet('sleep')
-    setFrameIndex(0)
-    setAction('idle')
 
     timeoutRef.current = setTimeout(() => {
-      setSwitchingFrameSet(false)
-      timeoutRef.current = null
-    }, TRANSITION_DURATION)
+      setHidden(false)
+      setRemoteOpen(false)
+      setSwitchingFrameSet(true)
+      setFrameSet('sleep')
+      setFrameIndex(0)
+      setAction('idle')
+      setRestoring(false)
+
+      timeoutRef.current = setTimeout(() => {
+        setSwitchingFrameSet(false)
+        timeoutRef.current = null
+      }, TRANSITION_DURATION)
+    }, 520)
   }
 
   const feedCat = (event) => {
@@ -387,7 +422,7 @@ export function CatRemote() {
       {hidden ? (
         <button
           type="button"
-          className="cat-home-button"
+          className={`cat-home-button ${restoring ? 'restoring' : ''}`}
           onClick={restoreCat}
           aria-label="Show cat remote"
         >
@@ -424,6 +459,10 @@ export function CatRemote() {
         }`}
         onClick={handleRemoteClick}
         onDoubleClick={revealEasterEgg}
+        onPointerDown={startLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onPointerLeave={cancelLongPress}
         aria-label="Open cat remote"
         aria-expanded={remoteOpen}
       >

@@ -16,7 +16,6 @@ import {
   Plane,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   Footprints,
   Sparkles,
   Trash2,
@@ -181,7 +180,6 @@ export function Dashboard() {
   const unread = notifications.length;
   const [visionEvents, setVisionEvents] = useState([]);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
-  const [showScrollTop, setShowScrollTop] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
@@ -382,17 +380,6 @@ export function Dashboard() {
     }
   });
   const [busyId, setBusyId] = useState(null);
-
-  useEffect(() => {
-    const onScroll = () => setShowScrollTop(window.scrollY > 360);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
   useEffect(() => {
@@ -864,16 +851,6 @@ export function Dashboard() {
         />
       )}
 
-      {showScrollTop && (
-        <button
-          type="button"
-          onClick={scrollToTop}
-          aria-label="맨 위로"
-          className="fixed right-5 bottom-24 z-40 w-12 h-12 rounded-full bg-brand-brown text-white shadow-soft-lg flex items-center justify-center touch-active"
-        >
-          <ChevronUp className="w-5 h-5" />
-        </button>
-      )}
     </div>
   );
 }
