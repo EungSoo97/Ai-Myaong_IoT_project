@@ -161,7 +161,7 @@ export function Activity() {
         </button>
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">활동 전체 보기</h1>
-          <p className="text-sm text-brand-mute truncate">오늘의 감지 · 급여 기록</p>
+          <p className="text-sm text-brand-mute truncate">최근 이벤트는 30일 동안 보관돼요.</p>
         </div>
       </header>
 
