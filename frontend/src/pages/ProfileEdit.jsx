@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, User, Mail, Smile, Lock } from 'lucide-react'
+import { Camera, ChevronLeft, User, Mail, Smile, Lock } from '../components/icons'
 import { Card } from '../components/ui'
 import { useAccount, updateUser } from '../lib/accountRepository'
 import { api } from '../api/api'
@@ -22,9 +22,23 @@ export function ProfileEdit() {
 
   const [nickname, setNickname] = useState(user.nickname || '')
   const [email, setEmail] = useState(user.email || '')
+  const [photo, setPhoto] = useState(user.photo || user.profile_photo_path || '')
+  const [photoFile, setPhotoFile] = useState(null)
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  const onPick = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPhoto(reader.result)
+      setPhotoFile(file)
+    }
+    reader.readAsDataURL(file)
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -37,18 +51,25 @@ export function ProfileEdit() {
     setBusy(true)
     try {
       // 1) DB 반영 (백엔드 PATCH /me 준비되면 실제 컬럼 변경)
-      const updated = await api.updateMe({ nickname: nn, email: em })
-      const data = updated && (updated.nickname || updated.email) ? updated : { nickname: nn, email: em }
+      let updated = await api.updateMe({ nickname: nn, email: em })
+      if (photoFile) {
+        updated = await api.uploadUserPhoto(photoFile)
+      }
+      const data =
+        updated && (updated.nickname || updated.email) ?
+          updated
+        : { nickname: nn, email: em, profile_photo_path: photo }
+      const photoUrl = data.profile_photo_path || photo
       // 2) 토큰 유저(sessionStorage) 동기화
       try {
         const su = JSON.parse(sessionStorage.getItem('aimyaong:user') || '{}')
-        sessionStorage.setItem('aimyaong:user', JSON.stringify({ ...su, nickname: data.nickname, email: data.email }))
+        sessionStorage.setItem('aimyaong:user', JSON.stringify({ ...su, ...data, photo: photoUrl }))
       } catch { /* ignore */ }
       // 3) 화면용 로컬(useAccount) 동기화
-      updateUser({ nickname: data.nickname, email: data.email })
+      updateUser({ nickname: data.nickname, email: data.email, photo: photoUrl, profile_photo_path: photoUrl })
     } catch {
       // 백엔드 미구현/오류 → 로컬만이라도 반영 (기존 동작 유지)
-      updateUser({ nickname: nn, email: em })
+      updateUser({ nickname: nn, email: em, photo })
     } finally {
       setBusy(false)
       setSaved(true)
@@ -73,6 +94,21 @@ export function ProfileEdit() {
 
       <form onSubmit={submit}>
         <Card className="px-5 py-5">
+          <div className="mb-5 flex justify-center">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="relative w-24 h-24 rounded-full flex items-center justify-center overflow-hidden shadow-soft"
+              style={{ background: C.input, border: `2px dashed ${C.border}` }}
+            >
+              {photo ?
+                <img src={photo} alt="프로필" className="w-full h-full object-cover" />
+              : <Camera className="w-7 h-7" style={{ color: C.mute }} />}
+              <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ background: C.primary, border: '2px solid #fff' }}>＋</span>
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
+          </div>
+
           {/* 아이디 (읽기 전용) */}
           <ReadOnly label="아이디" icon={<User className="w-5 h-5" />} value={user.userId || '—'} />
 

@@ -7,7 +7,7 @@ import {
   ChevronRight,
   Wifi,
   User
-} from 'lucide-react'
+} from './icons'
 
 const menuItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard },

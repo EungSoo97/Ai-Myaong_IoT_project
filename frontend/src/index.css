@@ -21,6 +21,10 @@
   --brand-danger: 226 109 92;
   --brand-input: 255 246 233;       /* 입력칸 배경 (#FFF6E9) */
   --brand-primary-deep: 214 129 74; /* 진한 주황 (#D6814A) */
+  --brand-food: 240 141 134;        /* 식량 다홍 (#F08D86) */
+  --brand-water: 91 164 217;        /* 급수 하늘색 (#5BA4D9) */
+  --ai-grad-from: 240 141 134;      /* AI 분석 배너 그라데이션 시작 (#F08D86) */
+  --ai-grad-to: 244 169 140;        /* AI 분석 배너 그라데이션 끝 (#F4A98C) */
   color-scheme: light;
 }
 
@@ -40,6 +44,10 @@
   --brand-danger: 233 124 108;
   --brand-input: 48 43 37;          /* 입력칸 배경(다크) */
   --brand-primary-deep: 224 140 86; /* 진한 주황(다크) */
+  --brand-food: 224 138 130;        /* 식량 다홍 — 다크에선 살짝 차분하게 */
+  --brand-water: 124 168 200;       /* 급수 하늘색 — 다크에선 채도 낮춰 차분하게 */
+  --ai-grad-from: 143 72 66;        /* AI 분석 배너 — 다크에선 깊은 벽돌톤 (#8F4842) */
+  --ai-grad-to: 168 95 78;          /* AI 분석 배너 끝 — 다크 (#A85F4E) */
   color-scheme: dark;
 }
 

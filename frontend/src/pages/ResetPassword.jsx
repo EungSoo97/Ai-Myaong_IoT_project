@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, LogIn } from 'lucide-react'
+import { Check, LogIn } from '../components/icons'
 import { Brand, BackLink } from './FindId'
 import { PasswordField, isStrongPassword } from '../components/PasswordField'
 import { updatePassword } from '../lib/accountRepository'

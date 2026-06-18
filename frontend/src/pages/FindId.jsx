@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, ChevronLeft, Search, LogIn, Eye, EyeOff } from 'lucide-react'
+import { User, ChevronLeft, Search, LogIn, Eye, EyeOff } from '../components/icons'
 import { EmailVerifyField } from '../components/EmailVerifyField'
 
 /* Warm-tone 팔레트 (Login.jsx 와 동일) */

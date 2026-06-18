@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mail, Check, Clock } from 'lucide-react'
+import { Mail, Check, Clock } from './icons'
 import { sendVerificationEmail, emailjsConfigured } from '../lib/sendVerificationEmail'
 
 /* Warm-tone 팔레트 */

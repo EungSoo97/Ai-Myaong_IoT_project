@@ -196,6 +196,20 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Health reports use the SQLAlchemy `PET_HEALTH_REPORTS` model. The project table setup uses
+`Base.metadata.create_all`, which creates the new `period_start`, `period_end`,
+`input_summary_json`, and `risk_level` columns only for new databases/tables. Existing
+databases need those columns added with a manual migration before the health-report APIs store
+the extra metadata.
+
+Health report API smoke test:
+
+```cmd
+curl -X POST http://localhost:8000/api/pets/1/health-report -H "Authorization: Bearer <token>"
+curl http://localhost:8000/api/pets/1/health-reports -H "Authorization: Bearer <token>"
+curl http://localhost:8000/api/pets/1/health-report/latest -H "Authorization: Bearer <token>"
+```
+
 ### Frontend
 
 ```cmd

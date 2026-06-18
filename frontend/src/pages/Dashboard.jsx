@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { api } from "../api/api";
@@ -6,8 +6,8 @@ import { getWebSocketUrl } from "../lib/backendUrls";
 
 import {
   Wifi,
+  WifiOff,
   Bell,
-  PhoneCall,
   Camera,
   Video,
   UserX,
@@ -17,9 +17,18 @@ import {
   Plane,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Footprints,
+  Sparkles,
+  X,
+  Maximize2,
   Trash2,
-} from "lucide-react";
+  HeartPulse,
+  AlertTriangle,
+  ShieldAlert,
+  Calendar,
+  Scale,
+} from '../components/icons';
 import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -46,6 +55,25 @@ const EVENT_ICON = {
   clip_saved: Video,
 };
 
+const FEED_TYPE_LABEL = {
+  quick: "빠른 배식",
+  manual: "수동 배식",
+  auto: "자동 배식",
+};
+
+const WATER_TYPE_LABEL = {
+  manual: "수동 급수",
+  auto: "자동 급수",
+};
+
+// AI 리포트 risk_level → 펫 카드 건강 상태 배지
+const HEALTH_STATUS = {
+  low: { label: "건강 양호", tone: "success", Icon: HeartPulse },
+  medium: { label: "주의 필요", tone: "warn", Icon: AlertTriangle },
+  high: { label: "건강 경고", tone: "danger", Icon: ShieldAlert },
+};
+const DEFAULT_HEALTH = { label: "분석 전", tone: "brown", Icon: Sparkles };
+
 const SHORTCUTS = [
   {
     id: "feed",
@@ -57,18 +85,6 @@ const SHORTCUTS = [
     id: "away",
     label: "외출 모드",
     icon: Plane,
-    tone: "bg-brand-cream text-brand-brown",
-  },
-  {
-    id: "call",
-    label: "음성 호출",
-    icon: PhoneCall,
-    tone: "bg-brand-cream text-brand-brown",
-  },
-  {
-    id: "cap",
-    label: "캡처",
-    icon: Camera,
     tone: "bg-brand-cream text-brand-brown",
   },
 ];
@@ -156,23 +172,31 @@ export function Dashboard() {
   const unread = notifications.length;
   const [visionEvents, setVisionEvents] = useState([]);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
   const [recentLogs, setRecentLogs] = useState({ feed: [], water: [] });
+  const refreshLogs = useCallback(
+    () =>
+      api
+        .getDispenserLogs()
+        .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
+        .catch(() => {}),
+    [],
+  );
   useEffect(() => {
-    api
-      .getDispenserLogs()
-      .then((d) => setRecentLogs({ feed: d.feed || [], water: d.water || [] }))
-      .catch(() => {});
-  }, []);
+    refreshLogs();
+    const timer = window.setInterval(refreshLogs, 3000);
+    return () => window.clearInterval(timer);
+  }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
     const feed = (recentLogs.feed || []).map((x) => ({
       key: `f-${x.created_at}-${x.amount_g}`,
       icon: UtensilsCrossed,
       tone: "primary",
-      title: "배식 완료",
+      title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
       desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -180,7 +204,7 @@ export function Dashboard() {
       key: `w-${x.created_at}-${x.amount_ml}`,
       icon: Droplets,
       tone: "brown",
-      title: "급수 완료",
+      title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
       desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
       t: new Date(x.created_at).getTime(),
     }));
@@ -189,28 +213,6 @@ export function Dashboard() {
       .slice(0, 30)
       .map((x) => ({ ...x, time: timeAgo(new Date(x.t).toISOString()) }));
   }, [recentLogs]);
-
-  // 실시간 캠 스트림 (RobotVision 과 동일한 소스 재사용 · 프론트만)
-  const [streamUrl, setStreamUrl] = useState("");
-  const [streamFailed, setStreamFailed] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .getStreamUrl()
-      .then((data) => {
-        if (alive) {
-          setStreamUrl(data.url || "");
-          setStreamFailed(false);
-        }
-      })
-      .catch(() => {
-        if (alive) setStreamFailed(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -235,7 +237,6 @@ export function Dashboard() {
     };
   }, []);
 
-  const showLive = streamUrl && !streamFailed;
   const recentItems = useMemo(() => {
     const vision = (visionEvents || []).map((event) => {
       const item = mapVisionEventForList(event);
@@ -271,16 +272,43 @@ export function Dashboard() {
   const petBreed = pet?.breed || "";
   const petSpecies = pet ? speciesLabel(pet.species) : "";
   const ageLabel = pet ? (pet.age !== "" && pet.age != null ? `${pet.age}살` : petAgeLabel(pet.birthDate)) : "";
-  const ageBreed = [ageLabel, petBreed].filter(Boolean).join(" · ");
+
+  // AI 리포트 최신 위험도 → 건강 상태 배지 (하드코딩 제거)
+  const [healthRisk, setHealthRisk] = useState(null);
+  useEffect(() => {
+    const pid = pet?.pet_id;
+    if (!pid) {
+      setHealthRisk(null);
+      return;
+    }
+    let alive = true;
+    api
+      .getLatestHealthReport(pid)
+      .then((d) => {
+        if (alive) setHealthRisk(d?.risk_level || null);
+      })
+      .catch(() => {
+        if (alive) setHealthRisk(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [pet?.pet_id]);
+  const health = HEALTH_STATUS[healthRisk] || DEFAULT_HEALTH;
 
   // 펫 등록 (없을 때 바로 등록) — DB 반영 + 로컬 동기화
   const [showRegister, setShowRegister] = useState(false);
   const handleRegister = async (newPet) => {
     setShowRegister(false);
-    let saved = newPet;
+    const { photoFile, ...localPet } = newPet;
+    let saved = localPet;
     try {
       const r = await api.createPet(toApiPet(newPet)); // DB 저장 → pet_id 반환
       saved = fromApiPet(r, newPet.photo);
+      if (photoFile) {
+        const photoResult = await api.uploadPetPhoto(r.pet_id, photoFile);
+        saved = fromApiPet(photoResult, newPet.photo);
+      }
     } catch {
       /* 백엔드 미연결 → 로컬만 */
     }
@@ -338,6 +366,19 @@ export function Dashboard() {
     if (!monthDrag.current) return;
     monthDrag.current = null;
     monthScrollRef.current?.releasePointerCapture?.(e.pointerId);
+  };
+
+  // 스크롤 투 탑 버튼
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
@@ -406,22 +447,26 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
-        api.createFeedLog({ amount_g: feed.food, feed_type: "quick" }).catch(() => {}); // DB 기록
+        // 최근 활동에 즉시 반영(낙관적 추가) → 새로고침 없이 바로 보임
+        setRecentLogs((prev) => ({
+          ...prev,
+          feed: [
+            { created_at: new Date().toISOString(), amount_g: feed.food },
+            ...(prev.feed || []),
+          ],
+        }));
+        // DB 기록 후 서버 기준으로 재동기화(실제 created_at 등)
+        api
+          .createFeedLog({ amount_g: feed.food, feed_type: "quick" })
+          .then(() => refreshLogs())
+          .catch(() => {});
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
-      } else if (id === "call") {
-        await api.voiceCall();
-        showToast("📞 음성 호출을 시작했어요");
-      } else if (id === "cap") {
-        await api.captureSnapshot();
-        showToast("📸 화면을 캡처했어요");
       }
     } catch {
       // 서버 미연결/미구현
       const msg = {
         feed: "배식 실패 — 기기 연결을 확인해 주세요",
-        call: "음성 호출은 곧 지원돼요 (기기 연동 준비 중)",
-        cap: "캡처는 곧 지원돼요 (기기 연동 준비 중)",
       }[id];
       showToast(msg);
     } finally {
@@ -452,12 +497,21 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/settings")}
-              className="w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active"
-              aria-label="설정"
+              className={`relative w-11 h-11 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active ${
+                isConnected ? "" : "ring-2 ring-brand-danger/60"
+              }`}
+              aria-label={isConnected ? "설정 · 연결됨" : "설정 · 연결 끊김"}
             >
-              <Wifi
-                className={`w-5 h-5 ${isConnected ? "text-brand-success" : "text-brand-danger"}`}
-              />
+              {isConnected ? (
+                <Wifi className="w-5 h-5 text-brand-success" />
+              ) : (
+                <WifiOff className="w-5 h-5 text-brand-danger" />
+              )}
+              {!isConnected && (
+                <span className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-brand-danger text-white flex items-center justify-center border-2 border-brand-bg animate-pulse">
+                  <X className="w-2.5 h-2.5" strokeWidth={3} />
+                </span>
+              )}
             </button>
           </div>
         }
@@ -471,28 +525,54 @@ export function Dashboard() {
           onClick={() => navigate("/pet/0")}
           className="w-full text-left touch-active"
         >
-          <Card className="paw-watermark px-5 py-5 flex items-center gap-4">
-            <div className="relative">
-              <div className="w-20 h-20 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
-                {pet.photo ? (
-                  <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
-                ) : (
-                  <PawPrint className="w-9 h-9 text-brand-primary" />
-                )}
+          <Card className="paw-watermark p-5">
+            <div className="flex items-center gap-4">
+              <div className="relative shrink-0">
+                <div className="w-24 h-24 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+                  {pet.photo ? (
+                    <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
+                  ) : (
+                    <PawPrint className="w-11 h-11 text-brand-primary" />
+                  )}
+                </div>
+                <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-brand-success border-[3px] border-brand-card" />
               </div>
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-success border-2 border-white" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
+                <h2 className="font-display text-[26px] font-bold text-brand-brown leading-tight truncate">
+                  {petName}
+                </h2>
+                <div className="mt-2">
+                  <Badge tone={health.tone} className="flex items-center gap-1.5">
+                    <health.Icon className="w-3.5 h-3.5" />
+                    {health.label}
+                  </Badge>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
-              <h2 className="font-display text-2xl font-bold text-brand-brown leading-tight">
-                {petName}
-              </h2>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {ageBreed && <Badge tone="brown">{ageBreed}</Badge>}
-                <Badge tone="success">건강 양호</Badge>
+
+            {/* 펫 지표 스트립 */}
+            <div className="mt-4 grid grid-cols-3 divide-x divide-brand-line/70 rounded-2xl bg-brand-cream/40 py-3.5">
+              <div className="px-2 text-center">
+                <p className="text-[11px] font-semibold text-brand-mute">나이</p>
+                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
+                  {ageLabel || "-"}
+                </p>
+              </div>
+              <div className="px-2 text-center">
+                <p className="text-[11px] font-semibold text-brand-mute">몸무게</p>
+                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
+                  {pet.weightKg ? `${pet.weightKg}kg` : "-"}
+                </p>
+              </div>
+              <div className="px-2 text-center min-w-0">
+                <p className="text-[11px] font-semibold text-brand-mute">품종</p>
+                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none truncate">
+                  {petBreed || "-"}
+                </p>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
           </Card>
         </button>
       ) : (
@@ -516,44 +596,44 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 2) 캠 미리보기 (탭하면 /vision 이동) */}
+      {/* 1.5) AI 건강 분석 진입 — 리포트 페이지와 같은 색감 (밝은 카드 + 코랄 오라) */}
       <button
         type="button"
-        data-tour="dash-cam"
-        onClick={() => navigate("/vision")}
+        onClick={() => navigate("/health-report/0")}
         className="mt-4 w-full text-left touch-active"
       >
-        <Card className="overflow-hidden">
-          <div className="relative aspect-video bg-gradient-to-br from-brand-brown to-brand-brown-soft">
-            {showLive ? (
-              <img
-                src={streamUrl}
-                alt="실시간 캠"
-                onError={() => setStreamFailed(true)}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-white/85">
-                <div className="text-center">
-                  <Camera className="w-10 h-10 mx-auto mb-2 opacity-90" />
-                  <p className="text-sm font-semibold">
-                    {streamFailed ? "캠 연결 대기 중" : "실시간 캠 보기"}
-                  </p>
-                  <p className="text-xs opacity-75">탭하여 로봇 비전으로 이동</p>
-                </div>
-              </div>
-            )}
-            <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 text-white text-[11px] font-bold">
-              <span
-                className={`w-2 h-2 rounded-full ${showLive ? "bg-red-400 animate-pulse" : "bg-white/50"}`}
-              />
-              {showLive ? "LIVE" : "OFF"}
+        <div className="relative overflow-hidden rounded-3xl bg-brand-card border border-brand-line/60 shadow-soft p-4">
+          {/* 코랄 오라 (강하게) */}
+          <div className="pointer-events-none absolute -right-6 -top-12 w-40 h-40 rounded-full bg-brand-primary/35 blur-2xl" />
+          <Sparkles className="pointer-events-none absolute right-3 top-3 w-16 h-16 text-brand-primary/10" />
+          <div className="relative flex items-center gap-3.5">
+            {/* 그라데이션 엠블럼 + 코랄 글로우 */}
+            <span
+              className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
+                boxShadow: "0 6px 16px -4px rgb(var(--brand-primary) / 0.55)",
+              }}
+            >
+              <Sparkles className="w-6 h-6" />
             </span>
-            <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-white/85 text-brand-brown text-[11px] font-bold">
-              HD
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-base font-extrabold text-brand-brown">AI 건강 분석</p>
+                <span className="rounded-full bg-brand-primary/15 px-1.5 py-0.5 text-[10px] font-extrabold text-brand-primary">
+                  NEW
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs font-semibold text-brand-mute truncate">
+                우리 아이 데이터로 건강 상태를 분석하러 가기
+              </p>
+            </div>
+            <span className="w-8 h-8 shrink-0 rounded-full bg-brand-primary/12 flex items-center justify-center text-brand-primary">
+              <ChevronRight className="w-5 h-5" />
             </span>
           </div>
-        </Card>
+        </div>
       </button>
 
       {/* 3) 숏컷 (Grid) */}
@@ -561,7 +641,7 @@ export function Dashboard() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
             const active = id === "away" && awayMode;
             const isBusy = busyId === id;
@@ -761,6 +841,20 @@ export function Dashboard() {
           onClose={() => setShowRegister(false)}
           onSave={handleRegister}
         />
+      )}
+
+      {/* 스크롤 투 탑 버튼 — 모바일 프레임(max-w-[480px]) 기준 우측 정렬 */}
+      {showScrollTop && (
+        <div className="fixed bottom-20 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 pointer-events-none">
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="pointer-events-auto absolute bottom-0 right-5 w-12 h-12 rounded-full bg-brand-bg/90 backdrop-blur-md text-brand-brown shadow-soft-lg flex items-center justify-center touch-active hover:bg-brand-bg transition-all border border-brand-line/50"
+            aria-label="맨 위로"
+          >
+            <ChevronUp className="w-6 h-6" />
+          </button>
+        </div>
       )}
     </div>
   );

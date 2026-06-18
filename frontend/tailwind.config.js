@@ -24,6 +24,8 @@ export default {
         'brand-success': 'rgb(var(--brand-success) / <alpha-value>)',
         'brand-warning': 'rgb(var(--brand-warning) / <alpha-value>)',
         'brand-danger': 'rgb(var(--brand-danger) / <alpha-value>)',
+        'brand-food': 'rgb(var(--brand-food) / <alpha-value>)',
+        'brand-water': 'rgb(var(--brand-water) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Pretendard', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],

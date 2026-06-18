@@ -1,4 +1,4 @@
-import { Navigation, Radio } from 'lucide-react'
+import { Navigation, Radio } from './icons'
 
 export function RobotSimulator({ status, compact = false }) {
   const position = status?.position || { x: 0, y: 0, heading: 0 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock, LogIn, User } from "lucide-react";
+import { Lock, LogIn, User } from '../components/icons';
 import { GoogleButton } from "../components/GoogleButton";
 import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
@@ -28,16 +28,25 @@ const C = {
  * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
 async function applyLoggedInUser(result, provider) {
   const u = result?.user || {};
+  let userInfo = u;
   let pets = [];
   try {
     const me = await api.getMe(); // user + pets (DB)
+    userInfo = { ...u, ...me };
     pets = (me.pets || []).map((p) => fromApiPet(p));
   } catch {
     /* DB 조회 실패 → 펫 없이 진행 */
   }
+  const photo = userInfo.profile_photo_path || "";
   saveAccount({
     provider,
-    user: { userId: u.username, email: u.email, nickname: u.nickname },
+    user: {
+      userId: userInfo.username,
+      email: userInfo.email,
+      nickname: userInfo.nickname,
+      photo,
+      profile_photo_path: photo,
+    },
     pets,
     createdAt: new Date().toISOString(),
   });

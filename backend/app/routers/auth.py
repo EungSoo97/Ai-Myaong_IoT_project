@@ -10,7 +10,7 @@ import database.settings
 import database.user_credentials
 import database.user_oauth_connections
 import database.water_logs
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
@@ -24,6 +24,7 @@ from app.models.auth import (
     UpdateMeRequest,
     UserResponse,
 )
+from app.services.supabase_storage import upload_image_to_supabase
 from database.base import get_db
 from database.oauth2_providers import OAuth2Provider
 from database.pets import Pet
@@ -33,6 +34,7 @@ from database.user_oauth_connections import UserOAuthConnection
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+USER_PHOTO_DIR = "user-photo"
 
 
 def _username_for(user: User) -> str | None:
@@ -53,6 +55,7 @@ def _to_user_response(user: User) -> UserResponse:
         email=user.email,
         nickname=user.nickname,
         oauth_provider=_oauth_provider_for(user),
+        profile_photo_path=user.profile_photo_path,
         pets=[PetResponse.model_validate(p) for p in user.pets],
     )
 
@@ -162,6 +165,20 @@ def update_me(body: UpdateMeRequest, authorization: str = Header(None), db: Sess
             raise HTTPException(status_code=409, detail="Email is already in use.")
         user.email = body.email
 
+    db.commit()
+    db.refresh(user)
+    return _to_user_response(user)
+
+
+@router.post("/me/photo", response_model=UserResponse)
+def upload_me_photo(
+    file: UploadFile = File(...),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    public_url = upload_image_to_supabase(USER_PHOTO_DIR, user.user_id, file)
+    user.profile_photo_path = public_url
     db.commit()
     db.refresh(user)
     return _to_user_response(user)
