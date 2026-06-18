@@ -19,35 +19,35 @@
   --brand-success: 127 183 126;
   --brand-warning: 240 184 96;
   --brand-danger: 226 109 92;
-  --brand-input: 255 246 233;       /* 입력칸 배경 (#FFF6E9) */
+  --brand-input: 255 246 233; /* 입력칸 배경 (#FFF6E9) */
   --brand-primary-deep: 214 129 74; /* 진한 주황 (#D6814A) */
-  --brand-food: 240 141 134;        /* 식량 다홍 (#F08D86) */
-  --brand-water: 91 164 217;        /* 급수 하늘색 (#5BA4D9) */
-  --ai-grad-from: 240 141 134;      /* AI 분석 배너 그라데이션 시작 (#F08D86) */
-  --ai-grad-to: 244 169 140;        /* AI 분석 배너 그라데이션 끝 (#F4A98C) */
+  --brand-food: 240 141 134; /* 식량 다홍 (#F08D86) */
+  --brand-water: 91 164 217; /* 급수 하늘색 (#5BA4D9) */
+  --ai-grad-from: 240 141 134; /* AI 분석 배너 그라데이션 시작 (#F08D86) */
+  --ai-grad-to: 244 169 140; /* AI 분석 배너 그라데이션 끝 (#F4A98C) */
   color-scheme: light;
 }
 
 .dark {
   --brand-primary: 240 146 139;
   --brand-primary-soft: 199 130 124;
-  --brand-brown: 242 233 221;      /* 기본 텍스트: 다크에선 밝게 */
+  --brand-brown: 242 233 221; /* 기본 텍스트: 다크에선 밝게 */
   --brand-brown-soft: 205 187 166;
-  --brand-bg: 26 23 20;            /* 페이지 배경 (따뜻한 차콜) */
-  --brand-card: 38 34 30;          /* 카드 */
-  --brand-cream: 46 40 35;         /* 크림 surface */
+  --brand-bg: 26 23 20; /* 페이지 배경 (따뜻한 차콜) */
+  --brand-card: 38 34 30; /* 카드 */
+  --brand-cream: 46 40 35; /* 크림 surface */
   --brand-paw: 120 84 78;
   --brand-mute: 168 150 132;
-  --brand-line: 58 51 44;          /* 보더/구분선 */
+  --brand-line: 58 51 44; /* 보더/구분선 */
   --brand-success: 138 198 137;
   --brand-warning: 240 184 96;
   --brand-danger: 233 124 108;
-  --brand-input: 48 43 37;          /* 입력칸 배경(다크) */
+  --brand-input: 48 43 37; /* 입력칸 배경(다크) */
   --brand-primary-deep: 224 140 86; /* 진한 주황(다크) */
-  --brand-food: 224 138 130;        /* 식량 다홍 — 다크에선 살짝 차분하게 */
-  --brand-water: 124 168 200;       /* 급수 하늘색 — 다크에선 채도 낮춰 차분하게 */
-  --ai-grad-from: 143 72 66;        /* AI 분석 배너 — 다크에선 깊은 벽돌톤 (#8F4842) */
-  --ai-grad-to: 168 95 78;          /* AI 분석 배너 끝 — 다크 (#A85F4E) */
+  --brand-food: 224 138 130; /* 식량 다홍 — 다크에선 살짝 차분하게 */
+  --brand-water: 124 168 200; /* 급수 하늘색 — 다크에선 채도 낮춰 차분하게 */
+  --ai-grad-from: 143 72 66; /* AI 분석 배너 — 다크에선 깊은 벽돌톤 (#8F4842) */
+  --ai-grad-to: 168 95 78; /* AI 분석 배너 끝 — 다크 (#A85F4E) */
   color-scheme: dark;
 }
 
@@ -57,19 +57,28 @@
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
 }
 
 body {
-  font-family: 'Pretendard', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Pretendard",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   background-color: rgb(var(--brand-bg));
   color: rgb(var(--brand-brown));
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 ::-webkit-scrollbar {
@@ -118,7 +127,9 @@ body {
 
 /* Touch optimization */
 @media (pointer: coarse) {
-  button, a, [role="button"] {
+  button,
+  a,
+  [role="button"] {
     min-height: 36px;
   }
 }
@@ -138,7 +149,9 @@ body {
 }
 
 .touch-active {
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
 }
 .touch-active:active {
   opacity: 0.85;
@@ -147,68 +160,92 @@ body {
 
 /* Display headings */
 .font-display {
-  font-family: 'Gmarket Sans TTF', 'Gmarket Sans', 'Pretendard', system-ui, sans-serif;
+  font-family:
+    "Gmarket Sans TTF", "Gmarket Sans", "Pretendard", system-ui, sans-serif;
   letter-spacing: -0.01em;
 }
 
 /* Cute rounded font (동물 귀여움 느낌) */
 .font-cute {
-  font-family: 'Jua', 'Pretendard', system-ui, sans-serif;
+  font-family: "Jua", "Pretendard", system-ui, sans-serif;
   letter-spacing: 0.01em;
 }
 
 /* Cute handwriting accent */
 .font-hand {
-  font-family: 'Gaegu', 'Jua', 'Pretendard', system-ui, sans-serif;
+  font-family: "Gaegu", "Jua", "Pretendard", system-ui, sans-serif;
 }
 
 /* 로그인 고양이 둥실 애니메이션 */
 @keyframes catBob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
 }
 .cat-bob {
   animation: catBob 3s ease-in-out infinite;
   will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) {
-  .cat-bob { animation: none; }
+  .cat-bob {
+    animation: none;
+  }
 }
 
 /* Auth video background + glass card */
 .auth-page {
   position: relative;
+  width: 100%;
+  max-width: 480px;
   min-height: 100vh;
   min-height: 100dvh;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 12%, rgba(240, 141, 134, 0.2), transparent 34%),
+    radial-gradient(
+      circle at 50% 12%,
+      rgba(240, 141, 134, 0.2),
+      transparent 34%
+    ),
     linear-gradient(180deg, #fff7ed 0%, #eadfd3 100%);
   isolation: isolate;
 }
 
 .auth-background-video {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: 50% 50%;
   pointer-events: none;
   border: 0;
 }
 
 .auth-background-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(45, 32, 24, 0.08) 0%, rgba(255, 244, 230, 0.06) 48%, rgba(55, 36, 24, 0.1) 100%),
-    radial-gradient(circle at 50% 44%, rgba(255, 250, 242, 0.04), rgba(240, 141, 134, 0.04) 58%, rgba(45, 32, 24, 0.08));
+    linear-gradient(
+      180deg,
+      rgba(45, 32, 24, 0.08) 0%,
+      rgba(255, 244, 230, 0.06) 48%,
+      rgba(55, 36, 24, 0.1) 100%
+    ),
+    radial-gradient(
+      circle at 50% 44%,
+      rgba(255, 250, 242, 0.04),
+      rgba(240, 141, 134, 0.04) 58%,
+      rgba(45, 32, 24, 0.08)
+    );
 }
 
 .auth-content {
@@ -224,7 +261,8 @@ body {
   align-items: center;
   justify-content: flex-start;
   gap: 0.75rem;
-  padding: max(1.75rem, env(safe-area-inset-top)) 1.25rem max(1.75rem, env(safe-area-inset-bottom));
+  padding: max(1.75rem, env(safe-area-inset-top)) 1.25rem
+    max(1.75rem, env(safe-area-inset-bottom));
   overflow: hidden;
 }
 
@@ -236,6 +274,23 @@ body {
 
 .auth-brand-text {
   text-shadow: 0 2px 14px rgba(45, 32, 24, 0.16);
+}
+
+.auth-brand-card {
+  width: min(90vw, 390px);
+  padding: 1rem 1.25rem 0.9rem;
+  background: rgba(255, 250, 244, 0.34) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow:
+    0 14px 36px rgba(45, 30, 20, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.auth-brand-card p {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 250, 244, 0.28);
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.55);
 }
 
 .auth-glass-card {
@@ -259,6 +314,7 @@ body {
   top: max(0.75rem, env(safe-area-inset-top));
   z-index: 3;
   margin-top: clamp(1.5rem, 6vh, 4rem);
+  transform: translateY(-5px);
 }
 
 .auth-login-brand h1 {
@@ -319,6 +375,8 @@ body {
 }
 
 .auth-start-login-button {
+  position: relative;
+  top: -40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -332,7 +390,9 @@ body {
   background: rgb(var(--brand-primary));
   border: 1px solid rgba(255, 255, 255, 0.42);
   box-shadow: 0 14px 38px rgba(45, 30, 20, 0.16);
-  transition: transform 140ms ease, filter 140ms ease;
+  transition:
+    transform 140ms ease,
+    filter 140ms ease;
 }
 
 .auth-start-login-button:active {
@@ -439,6 +499,24 @@ body {
   gap: 0.55rem;
   padding-top: max(1rem, env(safe-area-inset-top));
   padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+
+.auth-login-page .auth-content::-webkit-scrollbar {
+  display: none;
+}
+
+.auth-login-page.is-login-open .auth-login-spacer {
+  flex: 0 1 auto;
+  min-height: clamp(0.75rem, 4dvh, 2rem);
+}
+
+.auth-login-page.is-login-open .auth-login-drawer {
+  flex: 0 0 auto;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
 .auth-signup-shell {
@@ -544,6 +622,50 @@ body {
   }
 }
 
+/* 첫 진입 로고 인트로 → 마지막 구간에서 자연스럽게 로그인 화면으로 전환 */
+.splash-logo-page {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(240, 141, 134, 0.14), transparent 38%),
+    rgb(var(--brand-bg));
+}
+
+.splash-logo-intro {
+  animation: splashLogoIntro 1.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform, filter;
+}
+
+@keyframes splashLogoIntro {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.88);
+    filter: blur(7px);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(5px);
+  }
+}
+
 .auth-login-card [class*="Google"] button,
 .auth-login-card [class*="google"] button {
   min-height: 44px;
@@ -564,10 +686,16 @@ body {
 
 /* 탭/라우트 전환 — 은은한 페이드 + 살짝 떠오름 */
 @keyframes pageFadeUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
   /* 종료 상태를 transform:none 으로 둬야 내부 position:fixed 모달이
      이 요소 기준으로 잡히지 않음 (translateY(0) 도 containing block 생성) */
-  to { opacity: 1; transform: none; }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .page-enter {
   /* backwards 사용: 시작 전 from 상태만 적용하고, 끝나면 transform 을 완전히 해제.
@@ -576,7 +704,9 @@ body {
   animation: pageFadeUp 260ms ease-out backwards;
 }
 @media (prefers-reduced-motion: reduce) {
-  .page-enter { animation: none; }
+  .page-enter {
+    animation: none;
+  }
 }
 
 /* recharts 차트 클릭/포커스 시 생기는 검은 아웃라인 제거 */

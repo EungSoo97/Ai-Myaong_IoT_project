@@ -149,16 +149,19 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
   };
 
   return (
-    <AuthVideoLayout ref={stageRef} className="page-enter auth-login-page">
+    <AuthVideoLayout
+      ref={stageRef}
+      className={`page-enter auth-login-page ${showLoginCard ? "is-login-open" : ""}`}
+    >
       {/* 브랜드 */}
-      <div className="auth-brand-text auth-login-brand text-center">
+      <div className="auth-brand-text auth-login-brand auth-glass-card auth-brand-card text-center">
         <h1
           className="font-cute text-3xl font-bold tracking-tight"
           style={{ color: C.brown }}
         >
           Ai<span style={{ color: C.primary }}>:</span>Myaong
         </h1>
-        <p className="mt-1 text-xs font-semibold" style={{ color: C.mute }}>
+        <p className="mt-1 text-xs font-semibold" style={{ color: C.brown }}>
           사료를 전하고 싶다던가 🐾
         </p>
       </div>

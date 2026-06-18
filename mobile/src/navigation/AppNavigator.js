@@ -28,6 +28,7 @@ import {
   ProfileScreen,
 } from "../screens/ProfileScreens";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { CatRemote } from "../components/CatRemote";
 import { colors } from "../theme";
 
 const Stack = createNativeStackNavigator();
@@ -43,7 +44,8 @@ const tabIcons = {
 
 function MainTabs() {
   return (
-    <Tab.Navigator
+    <View style={styles.tabsShell}>
+      <Tab.Navigator
       screenOptions={({ route }) => {
         const Icon = tabIcons[route.name];
         return {
@@ -63,7 +65,7 @@ function MainTabs() {
           tabBarLabelStyle: styles.tabLabel,
         };
       }}
-    >
+      >
       <Tab.Screen
         name="Home"
         component={DashboardScreen}
@@ -89,7 +91,9 @@ function MainTabs() {
         component={ProfileScreen}
         options={{ title: "마이 페이지" }}
       />
-    </Tab.Navigator>
+      </Tab.Navigator>
+      <CatRemote />
+    </View>
   );
 }
 
@@ -127,6 +131,7 @@ export function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
+  tabsShell: { flex: 1 },
   loading: {
     flex: 1,
     alignItems: "center",

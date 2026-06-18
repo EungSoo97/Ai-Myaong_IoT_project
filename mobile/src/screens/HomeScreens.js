@@ -70,22 +70,22 @@ export function DashboardScreen({ navigation }) {
   }, [load]);
 
   const recent = useMemo(() => {
-    const feed = (logs.feed || []).map((item) => ({
-      id: `f-${item.created_at}`,
+    const feed = (logs.feed || []).map((item, index) => ({
+      id: `f-${item.feed_log_id ?? item.id ?? `${item.created_at}-${index}`}`,
       title: "배식 완료",
       description: `사료 ${Math.round(Number(item.amount_g) || 0)}g`,
       time: item.created_at,
       Icon: UtensilsCrossed,
     }));
-    const water = (logs.water || []).map((item) => ({
-      id: `w-${item.created_at}`,
+    const water = (logs.water || []).map((item, index) => ({
+      id: `w-${item.water_log_id ?? item.id ?? `${item.created_at}-${index}`}`,
       title: "급수 완료",
       description: `물 ${Math.round(Number(item.amount_ml) || 0)}ml`,
       time: item.created_at,
       Icon: Droplets,
     }));
-    const vision = events.map((item) => ({
-      id: `v-${item.id}`,
+    const vision = events.map((item, index) => ({
+      id: `v-${item.id ?? `${item.created_at}-${index}`}`,
       title: item.title,
       description: item.message,
       time: item.created_at,
@@ -323,24 +323,24 @@ export function ActivityScreen() {
     load();
   }, [load]);
   const items = useMemo(() => {
-    const feed = (logs.feed || []).map((x) => ({
-      id: `feed-${x.created_at}`,
+    const feed = (logs.feed || []).map((x, index) => ({
+      id: `feed-${x.feed_log_id ?? x.id ?? `${x.created_at}-${index}`}`,
       category: "feed",
       title: "배식",
       desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
       time: x.created_at,
       Icon: UtensilsCrossed,
     }));
-    const water = (logs.water || []).map((x) => ({
-      id: `water-${x.created_at}`,
+    const water = (logs.water || []).map((x, index) => ({
+      id: `water-${x.water_log_id ?? x.id ?? `${x.created_at}-${index}`}`,
       category: "feed",
       title: "급수",
       desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
       time: x.created_at,
       Icon: Droplets,
     }));
-    const vision = events.map((x) => ({
-      id: `vision-${x.id}`,
+    const vision = events.map((x, index) => ({
+      id: `vision-${x.id ?? `${x.created_at}-${index}`}`,
       category: "vision",
       title: x.title,
       desc: x.message,

@@ -77,6 +77,20 @@ export function AuthProvider({ children }) {
     [completeAuth],
   );
 
+  const googleLogin = useCallback(
+    async (profile) =>
+      completeAuth(
+        await api.googleAuth({
+          email: profile.email,
+          name: profile.name,
+          oauth_id: profile.sub,
+          picture: profile.picture,
+          allow_create: false,
+        }),
+      ),
+    [completeAuth],
+  );
+
   const signup = useCallback(
     async (body) => completeAuth(await api.signup(body)),
     [completeAuth],
@@ -103,6 +117,7 @@ export function AuthProvider({ children }) {
       account,
       authenticated: Boolean(token),
       login,
+      googleLogin,
       signup,
       logout,
       removeAccount,
@@ -114,6 +129,7 @@ export function AuthProvider({ children }) {
       token,
       account,
       login,
+      googleLogin,
       signup,
       logout,
       removeAccount,

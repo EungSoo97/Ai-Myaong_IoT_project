@@ -1,5 +1,7 @@
+import React from "react";
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,8 +14,28 @@ import { ChevronLeft } from "lucide-react-native";
 import { colors, shadow } from "../theme";
 
 export function Screen({ children, scroll = true, contentStyle, refreshControl }) {
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!scroll) return undefined;
+    const top = DeviceEventEmitter.addListener("aimyaong:scroll-top", () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    const bottom = DeviceEventEmitter.addListener(
+      "aimyaong:scroll-bottom",
+      () => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      },
+    );
+    return () => {
+      top.remove();
+      bottom.remove();
+    };
+  }, [scroll]);
+
   const content = scroll ? (
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={[styles.screenContent, contentStyle]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}

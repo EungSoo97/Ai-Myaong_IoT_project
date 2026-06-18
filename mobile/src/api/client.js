@@ -71,6 +71,7 @@ export const api = {
   checkUsername: (username) =>
     request(`/api/auth/check-username?username=${encodeURIComponent(username)}`),
   login: (body) => request("/api/auth/login", json("POST", body)),
+  googleAuth: (body) => request("/api/auth/google", json("POST", body)),
   signup: (body) => request("/api/auth/signup", json("POST", body)),
   getMe: () => request("/api/auth/me"),
   updateMe: (body) => request("/api/auth/me", json("PATCH", body)),
