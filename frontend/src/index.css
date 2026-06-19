@@ -205,6 +205,13 @@ body {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 12%,
+      rgba(240, 141, 134, 0.2),
+      transparent 34%
+    ),
+    linear-gradient(180deg, #fff7ed 0%, #eadfd3 100%);
 }
 
 .auth-page {
@@ -218,13 +225,7 @@ body {
   height: 100vh;
   height: 100dvh;
   overflow: clip;
-  background:
-    radial-gradient(
-      circle at 50% 12%,
-      rgba(240, 141, 134, 0.2),
-      transparent 34%
-    ),
-    linear-gradient(180deg, #fff7ed 0%, #eadfd3 100%);
+  background: transparent;
   isolation: isolate;
 }
 
@@ -241,6 +242,15 @@ body {
   pointer-events: none;
   border: 0;
   transform: translateZ(0);
+}
+
+.public-auth-background-video {
+  opacity: 0;
+  transition: opacity 280ms ease;
+}
+
+.public-auth-background-video.is-ready.is-active {
+  opacity: 1;
 }
 
 .auth-background-overlay {
@@ -656,8 +666,41 @@ body {
 }
 
 .splash-logo-intro {
+  display: flex;
+  width: min(82vw, 22rem);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
   animation: splashLogoIntro 1.8s cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: opacity, transform, filter;
+}
+
+.splash-logo-image {
+  display: block;
+  width: min(72vw, 20rem);
+  height: auto;
+  border-radius: 22%;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 32px rgba(75, 54, 33, 0.2));
+}
+
+.splash-logo-text-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 7 / 1;
+  margin-top: -1.75rem;
+  overflow: hidden;
+}
+
+.splash-logo-text {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: translateY(-50%);
 }
 
 @keyframes splashLogoIntro {

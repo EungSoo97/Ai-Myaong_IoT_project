@@ -17,13 +17,17 @@ export function Splash() {
   return (
     <div className="splash-logo-page">
       <div className="splash-logo-intro">
-        <div className="text-center">
-          <h1 className="font-cute text-6xl font-bold text-brand-brown tracking-tight">
-            Ai<span className="text-brand-primary">:</span>Myaong
-          </h1>
-          <p className="mt-3 text-sm text-brand-mute font-semibold">
-            사료를 전하고 싶다던가 🐾
-          </p>
+        <img
+          className="splash-logo-image"
+          src="/myaongLogo.png"
+          alt="Ai:Myaong"
+        />
+        <div className="splash-logo-text-frame">
+          <img
+            className="splash-logo-text"
+            src="/logotext.png"
+            alt="사료를 전하고 싶다던가"
+          />
         </div>
       </div>
     </div>
