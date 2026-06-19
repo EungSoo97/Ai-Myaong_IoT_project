@@ -22,6 +22,7 @@ class User(Base):
     clips = relationship("Clip", back_populates="user")
     settings = relationship("Settings", back_populates="user")
     detection_logs = relationship("DetectionLog", back_populates="user")
+    daily_activity_summaries = relationship("DailyActivitySummary", back_populates="user")
     feed_logs = relationship("FeedLog", back_populates="user")
     water_logs = relationship("WaterLog", back_populates="user")
     health_reports = relationship("PetHealthReport", back_populates="user")

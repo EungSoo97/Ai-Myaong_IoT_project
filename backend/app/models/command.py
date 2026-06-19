@@ -47,6 +47,7 @@ class RobotStatus(BaseModel):
     connected: bool
     battery: int
     mode: str
+    away_mode: bool = False
     last_command: str | None = None
     position: dict[str, int]
     camera: dict[str, int]
