@@ -686,7 +686,7 @@ export function Dashboard() {
           <div className="relative flex items-center gap-1">
             {/* 고양이 캐릭터 (하단 정렬, 크게) */}
             <img
-              src="/AICAT.png"
+              src="/ai-analysis/AICAT.png"
               alt="AI 건강 분석"
               draggable={false}
               className="w-28 h-28 shrink-0 self-end object-contain transition-transform duration-200 ease-out group-active:scale-95 group-active:-rotate-3"

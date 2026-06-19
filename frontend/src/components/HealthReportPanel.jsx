@@ -207,6 +207,8 @@ export function HealthReportPanel({ pet }) {
                         count={cat.items.length}
                         preview={cat.preview}
                         tone={cat.tone}
+                        img={cat.img}
+                        imgClass={cat.imgClass}
                         active={openKeys.has(cat.key)}
                         disabled={cat.items.length === 0}
                         wide={single}
@@ -461,6 +463,7 @@ function buildCategories(advice) {
       key: "reference",
       title: "품종·나이 기준 비교",
       icon: <Scale className="w-[18px] h-[18px]" />,
+      img: "/cat-animation/cat-feed/cat_12_feed.png",
       tone: TONE.blue,
       items: advice.reference_comparison,
       preview: advice.reference_comparison[0]?.metric,
@@ -491,6 +494,7 @@ function buildCategories(advice) {
       key: "findings",
       title: "핵심 관찰",
       icon: <Search className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_search.png",
       tone: TONE.coral,
       items: advice.key_findings,
       preview: advice.key_findings[0]?.title,
@@ -520,6 +524,8 @@ function buildCategories(advice) {
       key: "advice",
       title: "맞춤 조언",
       icon: <Lightbulb className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_advice.png",
+      imgClass: "w-[88px] h-[88px] -bottom-1 -right-4",
       tone: TONE.green,
       items: advice.personalized_advice,
       preview: advice.personalized_advice[0]?.action,
@@ -556,6 +562,8 @@ function buildCategories(advice) {
       key: "watch",
       title: "주의 신호",
       icon: <ShieldAlert className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_danger.png",
+      imgClass: "w-[76px] h-[76px] -bottom-1 -right-1",
       tone: TONE.amber,
       items: advice.watch_points,
       preview: advice.watch_points[0]?.item,
@@ -647,7 +655,7 @@ function Collapsible({ open, children }) {
   );
 }
 
-function CategoryCard({ icon, title, count, preview, tone, active, disabled, wide, onClick }) {
+function CategoryCard({ icon, title, count, preview, tone, active, disabled, wide, img, imgClass = "w-16 h-16 -bottom-1 -right-1", onClick }) {
   const t = tone || TONE.coral;
   const shell = `relative text-left rounded-3xl shadow-soft p-4 touch-active disabled:opacity-50 disabled:active:scale-100 transition-all border-2 border-dashed ${
     active ? `ring-2 ${t.ring} border-transparent` : "border-brand-brown/20"
@@ -693,18 +701,30 @@ function CategoryCard({ icon, title, count, preview, tone, active, disabled, wid
 
   // 기본 → 세로 레이아웃
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`flex flex-col h-full ${shell}`} style={{ backgroundColor: BG_CARD }}>
-      <div className="flex items-center justify-between">
-        {iconChip}
-        {countBadge}
+    <button type="button" onClick={onClick} disabled={disabled} className={`overflow-hidden flex flex-col h-full ${shell}`} style={{ backgroundColor: BG_CARD }}>
+      {/* 카테고리 일러스트 (우하단 스티커) */}
+      {img && (
+        <img
+          src={img}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className={`pointer-events-none absolute object-contain drop-shadow-sm ${imgClass}`}
+        />
+      )}
+      <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-center justify-between">
+          {iconChip}
+          {countBadge}
+        </div>
+        <p className="mt-2.5 text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
+          {title}
+        </p>
+        <p className={`mt-1 flex-1 text-xs leading-relaxed line-clamp-2 ${img ? "pr-12" : ""}`} style={{ color: C.mute }}>
+          {disabled ? "내용 없음" : preview || "탭하여 상세 보기"}
+        </p>
+        {cta && <span className="mt-2">{cta}</span>}
       </div>
-      <p className="mt-2.5 text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
-        {title}
-      </p>
-      <p className="mt-1 flex-1 text-xs leading-relaxed line-clamp-2" style={{ color: C.mute }}>
-        {disabled ? "내용 없음" : preview || "탭하여 상세 보기"}
-      </p>
-      {cta && <span className="mt-2">{cta}</span>}
     </button>
   );
 }
