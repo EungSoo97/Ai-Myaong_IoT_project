@@ -28,6 +28,8 @@ import {
   ShieldAlert,
   Calendar,
   Scale,
+  Dog,
+  Cake,
 } from '../components/icons';
 import {
   AreaChart, Area, XAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -161,6 +163,34 @@ function ActivityArea({ data }) {
         />
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+
+/* 종이질감 장식 아이콘 — 아이콘 실루엣(public/icons/*.svg)을 마스크로 써서
+ * paper.jpg 텍스처를 그 모양 "안에만" 보이게 한다. (painted-on-paper 느낌)
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = "", opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: "url(/paper.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundBlendMode: "multiply",
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        opacity,
+      }}
+    />
   );
 }
 
@@ -525,55 +555,95 @@ export function Dashboard() {
           onClick={() => navigate("/pet/0")}
           className="w-full text-left touch-active"
         >
-          <Card className="paw-watermark p-5">
-            <div className="flex items-center gap-4">
+          {/* 장식 아이콘: Phosphor Icons (MIT) · react-icons 경유 — 출처: src/components/icons.jsx */}
+          <div
+            className="relative overflow-hidden rounded-3xl border border-brand-line/60 bg-brand-card p-4 shadow-soft"
+            style={{ backgroundColor: "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)" }}
+          >
+            {/* 점선 스티치 (얇고 은은하게) */}
+            <span className="pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15" />
+            {/* 배경 장식 (우측, 클릭 비활성) — 종이질감(paper.jpg) 입힌 발바닥·뼈·하트 */}
+            <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.5} className="absolute right-4 top-2 w-9 h-9 rotate-12" />
+            <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.32} className="absolute right-16 top-10 w-6 h-6 -rotate-12" />
+            <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.62} className="absolute right-[80px] top-3 w-5 h-5 -rotate-12" />
+            <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.8} className="absolute right-[100px] top-1 w-[18px] h-[18px]" />
+            <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.5} className="absolute right-10 top-[54px] w-3.5 h-3.5" />
+            <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.12} className="absolute -right-4 -bottom-2 w-20 h-20 rotate-6" />
+
+            {/* 상단: 사진 + 이름/배지 + 화살표 */}
+            <div className="relative z-10 flex items-center gap-4">
               <div className="relative shrink-0">
-                <div className="w-24 h-24 rounded-full bg-brand-cream flex items-center justify-center shadow-soft-inset overflow-hidden">
+                {/* 글로우 오라 (부드러운 코랄 — 누런기 제거) */}
+                <div
+                  className="pointer-events-none absolute -inset-2.5 rounded-full blur-xl"
+                  style={{ background: "rgb(var(--brand-primary) / 0.18)" }}
+                />
+                <div className="relative w-24 h-24 rounded-full bg-brand-bg flex items-center justify-center shadow-soft-inset overflow-hidden ring-1 ring-brand-line/70">
                   {pet.photo ? (
                     <img src={pet.photo} alt={petName} className="w-full h-full object-cover" />
                   ) : (
-                    <PawPrint className="w-11 h-11 text-brand-primary" />
+                    <PawPrint className="w-12 h-12 text-brand-primary" />
                   )}
                 </div>
-                <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-brand-success border-[3px] border-brand-card" />
+                {/* 상태 점 (광택 그린) */}
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full border-[3px] border-brand-card shadow-sm"
+                  style={{ background: "radial-gradient(circle at 35% 30%, #A9DDA0, rgb(var(--brand-success)))" }}
+                />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-brand-mute font-semibold">우리집 {petSpecies}</p>
-                <h2 className="font-display text-[26px] font-bold text-brand-brown leading-tight truncate">
+                <p className="text-[13px] font-bold text-brand-mute">나의 소중한 단짝</p>
+                <h2 className="font-display text-[26px] font-extrabold text-brand-brown leading-tight truncate">
                   {petName}
                 </h2>
                 <div className="mt-2">
-                  <Badge tone={health.tone} className="flex items-center gap-1.5">
-                    <health.Icon className="w-3.5 h-3.5" />
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${
+                      health.tone === "success"
+                        ? "bg-brand-success/20 text-[#2F6A2E]"
+                        : health.tone === "warn"
+                        ? "bg-brand-warning/25 text-[#A06B1A]"
+                        : health.tone === "danger"
+                        ? "bg-brand-primary-soft/50 text-brand-danger"
+                        : "bg-brand-brown/10 text-brand-brown"
+                    }`}
+                  >
+                    <health.Icon className="w-4 h-4" />
                     {health.label}
-                  </Badge>
+                  </span>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-brand-mute shrink-0" />
             </div>
 
-            {/* 펫 지표 스트립 */}
-            <div className="mt-4 grid grid-cols-3 divide-x divide-brand-line/70 rounded-2xl bg-brand-cream/40 py-3.5">
+            {/* 펫 지표 스트립 (밝은 패널 + 아이콘 라벨) */}
+            <div className="relative z-10 mt-4 grid grid-cols-3 divide-x divide-brand-line rounded-2xl bg-brand-cream/50 py-3.5 shadow-soft-inset">
               <div className="px-2 text-center">
-                <p className="text-[11px] font-semibold text-brand-mute">나이</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
+                <p className="flex items-center justify-center gap-1 text-xs font-bold text-brand-brown/60">
+                  <Cake className="w-4 h-4 text-brand-primary-deep" /> 나이
+                </p>
+                <p className="mt-1 text-[17px] font-extrabold text-brand-brown leading-none">
                   {ageLabel || "-"}
                 </p>
               </div>
               <div className="px-2 text-center">
-                <p className="text-[11px] font-semibold text-brand-mute">몸무게</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none">
+                <p className="flex items-center justify-center gap-1 text-xs font-bold text-brand-brown/60">
+                  <Scale className="w-4 h-4 text-brand-primary" /> 몸무게
+                </p>
+                <p className="mt-1 text-[17px] font-extrabold text-brand-brown leading-none">
                   {pet.weightKg ? `${pet.weightKg}kg` : "-"}
                 </p>
               </div>
               <div className="px-2 text-center min-w-0">
-                <p className="text-[11px] font-semibold text-brand-mute">품종</p>
-                <p className="mt-1 text-base font-extrabold text-brand-brown leading-none truncate">
+                <p className="flex items-center justify-center gap-1 text-xs font-bold text-brand-brown/60">
+                  <Dog className="w-4 h-4 text-brand-primary-deep" /> 품종
+                </p>
+                <p className="mt-1 text-[17px] font-extrabold text-brand-brown leading-none truncate">
                   {petBreed || "-"}
                 </p>
               </div>
             </div>
-          </Card>
+          </div>
         </button>
       ) : (
         <Card data-tour="dash-pet" className="paw-watermark px-5 py-6 text-center">
@@ -596,41 +666,60 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 1.5) AI 건강 분석 진입 — 리포트 페이지와 같은 색감 (밝은 카드 + 코랄 오라) */}
+      {/* 1.5) AI 건강 분석 진입 — 고양이 배너 (public/AICAT.png) */}
       <button
         type="button"
         onClick={() => navigate("/health-report/0")}
-        className="mt-4 w-full text-left touch-active"
+        className="group mt-4 block w-full text-left touch-active"
       >
-        <div className="relative overflow-hidden rounded-3xl bg-brand-card border border-brand-line/60 shadow-soft p-4">
-          {/* 코랄 오라 (강하게) */}
-          <div className="pointer-events-none absolute -right-6 -top-12 w-40 h-40 rounded-full bg-brand-primary/35 blur-2xl" />
-          <Sparkles className="pointer-events-none absolute right-3 top-3 w-16 h-16 text-brand-primary/10" />
-          <div className="relative flex items-center gap-3.5">
-            {/* 그라데이션 엠블럼 + 코랄 글로우 */}
-            <span
-              className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgb(var(--ai-grad-from)), rgb(var(--ai-grad-to)))",
-                boxShadow: "0 6px 16px -4px rgb(var(--brand-primary) / 0.55)",
-              }}
-            >
-              <Sparkles className="w-6 h-6" />
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-base font-extrabold text-brand-brown">AI 건강 분석</p>
-                <span className="rounded-full bg-brand-primary/15 px-1.5 py-0.5 text-[10px] font-extrabold text-brand-primary">
+        <div
+          className="relative overflow-hidden rounded-3xl border border-brand-line/50 shadow-soft transition-transform duration-200 ease-out group-active:scale-[0.98]"
+          style={{
+            background:
+              "linear-gradient(90deg, rgb(var(--brand-cream)) 0%, rgb(var(--brand-cream)) 45%, rgb(var(--brand-primary) / 0.16) 100%)",
+          }}
+        >
+          {/* 우측 큰 별 + 작은 반짝이 데코 */}
+          <Sparkles className="pointer-events-none absolute -right-3 top-1/2 -translate-y-1/2 w-24 h-24 text-brand-primary/15" />
+          <Sparkles className="pointer-events-none absolute right-12 top-3 w-4 h-4 text-brand-primary/40" />
+
+          <div className="relative flex items-center gap-1">
+            {/* 고양이 캐릭터 (하단 정렬, 크게) */}
+            <img
+              src="/AICAT.png"
+              alt="AI 건강 분석"
+              draggable={false}
+              className="w-28 h-28 shrink-0 self-end object-contain transition-transform duration-200 ease-out group-active:scale-95 group-active:-rotate-3"
+            />
+
+            {/* 텍스트 */}
+            <div className="flex-1 min-w-0 py-3 pr-2">
+              {/* 말풍선 (꼬리 포함) */}
+              <div
+                className="relative inline-flex items-center gap-1.5 rounded-2xl px-3 py-1.5"
+                style={{ background: "rgb(var(--brand-primary) / 0.2)" }}
+              >
+                <span className="font-display text-lg font-extrabold leading-none text-brand-brown">
+                  AI 건강 분석
+                </span>
+                <span className="rounded-full bg-brand-primary px-2 py-0.5 text-[10px] font-extrabold leading-none text-white">
                   NEW
                 </span>
+                {/* 말풍선 꼬리 (왼쪽 아래 → 고양이 방향) */}
+                <span
+                  className="absolute -bottom-1 left-4 w-3 h-3 rotate-45"
+                  style={{ background: "rgb(var(--brand-primary) / 0.2)" }}
+                />
               </div>
-              <p className="mt-0.5 text-xs font-semibold text-brand-mute truncate">
+              {/* 부제 (한 줄) */}
+              <p className="mt-2.5 text-xs font-bold leading-snug text-brand-brown/75">
                 우리 아이 데이터로 건강 상태를 분석하러 가기
               </p>
             </div>
-            <span className="w-8 h-8 shrink-0 rounded-full bg-brand-primary/12 flex items-center justify-center text-brand-primary">
-              <ChevronRight className="w-5 h-5" />
+
+            {/* 버튼 affordance — '가기' 화살표 (탭 가능 표시 + 살짝 통통) */}
+            <span className="relative z-10 mr-1 flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-full bg-brand-primary/15 text-brand-primary shadow-sm transition-transform duration-200 ease-out group-active:translate-x-0.5">
+              <ChevronRight className="h-5 w-5" />
             </span>
           </div>
         </div>

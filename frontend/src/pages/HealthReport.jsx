@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Sparkles } from '../components/icons';
+import { ChevronLeft, Sparkles, PawPrint } from '../components/icons';
 import { Card } from "../components/ui";
 import { HealthReportPanel } from "../components/HealthReportPanel";
 import { useAccount, speciesLabel } from "../lib/accountRepository";
@@ -18,17 +18,18 @@ export function HealthReport() {
 
   return (
     <div className="px-5 pb-6">
-      <header className="flex items-center gap-2.5 pt-5 pb-3">
+      <header className="flex items-center gap-2 pt-5 pb-3">
         <button
           type="button"
           onClick={() => navigate(-1)}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown leading-tight">
+        <h1 className="flex-1 inline-flex items-center gap-2 font-display text-2xl font-bold text-brand-brown leading-tight">
           AI 건강 분석
+          <PawPrint className="w-6 h-6 text-brand-primary" />
         </h1>
       </header>
 
