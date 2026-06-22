@@ -18,6 +18,7 @@ import {
   Clock,
   X,
   Trash2,
+  ShieldAlert,
 } from '../components/icons';
 import { Card, Badge } from "../components/ui";
 import { api, resolveMediaUrl } from "../api/api";
@@ -104,6 +105,7 @@ export function RobotVision() {
       return false;
     }
   });
+  const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [recording, setRecording] = useState(false);
   const [selectedClip, setSelectedClip] = useState(null);
   const [controlBusy, setControlBusy] = useState(false);
@@ -121,6 +123,13 @@ export function RobotVision() {
   const [forceCssLandscape, setForceCssLandscape] = useState(false);
   const fsRef = useRef(null);
   const visibleEventLog = eventLog.slice(0, 5);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((settings) => setAbnormalDetection(settings.motion_alert !== "N"))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -345,6 +354,18 @@ export function RobotVision() {
     }
   };
 
+  const toggleAbnormalDetection = async () => {
+    const next = !abnormalDetection;
+    const previous = abnormalDetection;
+    setAbnormalDetection(next);
+    try {
+      await api.setVisionEmergency(next);
+    } catch (error) {
+      console.error("[RobotVision] abnormal detection setting failed:", error);
+      setAbnormalDetection(previous);
+    }
+  };
+
   const captureSnapshot = async () => {
     try {
       await api.captureSnapshot();
@@ -510,13 +531,13 @@ export function RobotVision() {
         </Card>
       </section>
 
-      {/* 컨트롤 (외출 / 녹화 / 캡처) */}
+      {/* 컨트롤 (외출 / 이상 감지 / 녹화 / 캡처) */}
       <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">
           제어
         </h3>
         <Card className="px-5 py-5">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={toggleAwayMode}
@@ -529,6 +550,21 @@ export function RobotVision() {
               <Moon className="w-5 h-5" />
               <span className="text-xs font-bold">
                 {awayMode ? "외출 ON" : "외출 모드"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleAbnormalDetection}
+              aria-pressed={abnormalDetection}
+              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
+                abnormalDetection
+                  ? "bg-brand-warning text-white active:bg-brand-warning/80"
+                  : "bg-brand-card text-brand-brown active:bg-brand-cream"
+              }`}
+            >
+              <ShieldAlert className="w-5 h-5" />
+              <span className="text-xs font-bold">
+                {abnormalDetection ? "이상 감지 ON" : "이상 행동 감지"}
               </span>
             </button>
             <button
@@ -605,7 +641,7 @@ export function RobotVision() {
                   className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream transition-colors rounded-2xl"
                 >
                   <span
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : e.warning ? "bg-brand-warning/20 text-[#A06B1A]" : "bg-brand-primary/15 text-brand-primary"}`}
                   >
                     <Icon className="w-5 h-5" />
                   </span>
@@ -619,7 +655,7 @@ export function RobotVision() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge tone={e.danger ? "danger" : "primary"}>
+                    <Badge tone={e.danger ? "danger" : e.warning ? "warn" : "primary"}>
                       {e.clip_id ? "VOD" : "기록"}
                     </Badge>
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
@@ -1060,6 +1096,11 @@ function StreamFrame({
 
 const EVENT_ICON = {
   away_person: UserX,
+  fall_detected: UserX,
+  no_motion: UserX,
+  no_motion_warning: UserX,
+  no_motion_emergency: UserX,
+  seizure_suspected: UserX,
   capture_saved: Camera,
   clip_saved: Video,
 };

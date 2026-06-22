@@ -16,7 +16,8 @@ import {
   Plane,
   ChevronRight,
   ChevronDown,
-  Footprints,
+  Activity,
+  ShieldAlert,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -54,6 +55,11 @@ const TONE = {
 
 const EVENT_ICON = {
   away_person: UserX,
+  fall_detected: UserX,
+  no_motion: UserX,
+  no_motion_warning: UserX,
+  no_motion_emergency: UserX,
+  seizure_suspected: UserX,
   capture_saved: Camera,
   clip_saved: Video,
 };
@@ -82,53 +88,44 @@ const SHORTCUTS = [
     icon: Plane,
     tone: "bg-brand-cream text-brand-brown",
   },
+  {
+    id: "abnormal",
+    label: "이상 행동 감지",
+    icon: ShieldAlert,
+    tone: "bg-brand-warning/20 text-[#A06B1A]",
+  },
 ];
 
-/* 최근 N개월 활동량(발자국) — 현재 달이 오른쪽 끝, "N월" 라벨 */
-function buildMonthlyActivity(count = 12) {
-  const now = new Date();
-  const arr = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const m = d.getMonth() + 1;
-    const seed = d.getFullYear() * 12 + m;
-    const value = 1300 + Math.round(Math.sin(seed) * 250) + (m % 4) * 80;
-    arr.push({ label: `${m}월`, value });
-  }
-  return arr;
-}
-
-/* 펫 활동량(발자국 수) — 일/주/월. 백엔드 붙으면 API 로 교체 */
-const ACTIVITY = {
-  day: [
-    { label: "아침", value: 32 },
-    { label: "낮", value: 58 },
-    { label: "오후", value: 45 },
-    { label: "저녁", value: 70 },
-    { label: "밤", value: 16 },
-  ],
-  week: [
-    { label: "월", value: 240 },
-    { label: "화", value: 310 },
-    { label: "수", value: 280 },
-    { label: "목", value: 330 },
-    { label: "금", value: 300 },
-    { label: "토", value: 380 },
-    { label: "일", value: 420 },
-  ],
-  month: buildMonthlyActivity(12),
-};
 const ACT_PRIMARY = "#F08D86";
-const actTooltip = {
-  contentStyle: {
-    borderRadius: 12,
-    border: "1px solid #EFE3D2",
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#4B3621",
-  },
-  labelStyle: { color: "#9C8A78", fontWeight: 700 },
+const ACTIVITY_STATUS_TONE = {
+  NO_MOTION: "text-brand-mute",
+  LOW: "text-[#A06B1A]",
+  NORMAL: "text-brand-primary",
+  ACTIVE: "text-brand-danger",
+  NO_DATA: "text-brand-mute",
 };
+
+function ActivityTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  return (
+    <div className="rounded-xl border border-brand-line bg-brand-card px-3 py-2 shadow-soft">
+      <p className="text-xs font-bold text-brand-mute">{label}</p>
+      {point?.value == null ? (
+        <p className="mt-1 text-xs font-bold text-brand-brown">데이터 없음</p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs font-bold text-brand-brown">
+            활동량: {point.value}%
+          </p>
+          <p className="text-[11px] font-semibold text-brand-mute">
+            상태: {point.statusLabel}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* 활동량 영역 차트 (일/주/월 공용) */
 function ActivityArea({ data }) {
@@ -153,13 +150,13 @@ function ActivityArea({ data }) {
           tickLine={false}
         />
         <Tooltip
-          {...actTooltip}
-          formatter={(v) => [`${v}회`, "발자국"]}
+          content={<ActivityTooltip />}
           cursor={{ stroke: ACT_PRIMARY, strokeOpacity: 0.3 }}
         />
         <Area
           type="monotone"
           dataKey="value"
+          connectNulls={false}
           stroke={ACT_PRIMARY}
           strokeWidth={2.5}
           fill="url(#actFill)"
@@ -169,6 +166,15 @@ function ActivityArea({ data }) {
         />
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+
+function ActivityCriterion({ color, label }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+      {label}
+    </span>
   );
 }
 
@@ -323,15 +329,48 @@ export function Dashboard() {
 
   // 활동량 통계 (일/주/월)
   const [actPeriod, setActPeriod] = useState("day");
-  const actData = ACTIVITY[actPeriod];
-  const actTotal = actData.reduce((s, d) => s + d.value, 0);
-  const actAvg = Math.round(actTotal / actData.length);
-  const actAvgLabel =
-    actPeriod === "day"
-      ? "시간대 평균"
-      : actPeriod === "week"
-        ? "일 평균"
-        : "월 평균";
+  const [activityStats, setActivityStats] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityCriteriaOpen, setActivityCriteriaOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      setActivityLoading(true);
+      api
+        .getActivityStats(actPeriod)
+        .then((data) => {
+          if (alive) setActivityStats(data);
+        })
+        .catch(() => {
+          if (alive) setActivityStats(null);
+        })
+        .finally(() => {
+          if (alive) setActivityLoading(false);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 60000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [actPeriod]);
+
+  const actData = useMemo(
+    () =>
+      (activityStats?.points || []).map((point) => ({
+        label: point.label,
+        value: point.activity_percent,
+        status: point.status,
+        statusLabel: point.status_label,
+      })),
+    [activityStats],
+  );
+  const actAvg = activityStats?.average_percent;
+  const activityStatus = activityStats?.status || "NO_DATA";
+  const activityStatusLabel = activityStats?.status_label || "데이터 없음";
+  const hasActivityData = actData.some((point) => point.value != null);
 
   // 월간 차트: 진입 시 최신(현재 달, 오른쪽 끝)으로 스크롤
   const monthScrollRef = useRef(null);
@@ -379,6 +418,7 @@ export function Dashboard() {
       return false;
     }
   });
+  const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [busyId, setBusyId] = useState(null);
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
@@ -388,6 +428,7 @@ export function Dashboard() {
       .then((s) => {
         const on = s.away_mode === "Y";
         setAwayMode(on);
+        setAbnormalDetection(s.motion_alert !== "N");
         try {
           localStorage.setItem(AWAY_KEY, on ? "1" : "0");
         } catch {
@@ -428,9 +469,24 @@ export function Dashboard() {
     });
   };
 
+  const toggleAbnormalDetection = async () => {
+    const next = !abnormalDetection;
+    const previous = abnormalDetection;
+    setAbnormalDetection(next);
+    try {
+      await api.setVisionEmergency(next);
+      showToast(next ? "이상 행동 감지를 켰어요" : "이상 행동 감지를 껐어요");
+    } catch (error) {
+      console.error("[Dashboard] abnormal detection setting failed:", error);
+      setAbnormalDetection(previous);
+      showToast("이상 행동 감지 설정을 변경하지 못했어요");
+    }
+  };
+
   // 단축 작업 핸들러 (백엔드 있으면 실연결, 없으면 안내)
   const handleShortcut = async (id) => {
     if (id === "away") return toggleAway();
+    if (id === "abnormal") return toggleAbnormalDetection();
     if (busyId) return;
     setBusyId(id);
     try {
@@ -601,9 +657,11 @@ export function Dashboard() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
-            const active = id === "away" && awayMode;
+            const active =
+              (id === "away" && awayMode) ||
+              (id === "abnormal" && abnormalDetection);
             const isBusy = busyId === id;
             const toneCls = active ? "bg-brand-primary text-white" : tone;
             return (
@@ -624,7 +682,11 @@ export function Dashboard() {
                     ? awayMode
                       ? "외출 모드 ON"
                       : "외출 모드"
-                    : label}
+                    : id === "abnormal"
+                      ? abnormalDetection
+                        ? "이상 감지 ON"
+                        : "이상 행동 감지"
+                      : label}
                 </span>
               </button>
             );
@@ -738,7 +800,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-9 h-9 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
-                <Footprints className="w-5 h-5" />
+                <Activity className="w-5 h-5" />
               </span>
               <div>
                 <p className="font-display text-base font-bold text-brand-brown leading-tight">
@@ -803,23 +865,75 @@ export function Dashboard() {
             </div>
           )}
 
+          {activityLoading && (
+            <p className="mt-2 text-center text-xs font-semibold text-brand-mute">
+              활동량을 불러오는 중이에요.
+            </p>
+          )}
+          {!activityLoading && !hasActivityData && (
+            <p className="mt-2 text-center text-xs font-semibold text-brand-mute">
+              아직 측정된 활동량이 없어요.
+            </p>
+          )}
+
           {/* 요약 */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
               <p className="text-[11px] font-semibold text-brand-mute">
-                총 발자국 🐾
+                평균 활동량
               </p>
               <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
-                {actTotal.toLocaleString()}회
+                {actAvg == null ? "--" : `${actAvg}%`}
               </p>
             </div>
             <div className="rounded-2xl bg-brand-cream px-4 py-3">
               <p className="text-[11px] font-semibold text-brand-mute">
-                {actAvgLabel}
+                대표 상태
               </p>
-              <p className="font-display text-lg font-bold text-brand-brown leading-none mt-1">
-                {actAvg.toLocaleString()}회
+              <p
+                className={`font-display text-base font-bold leading-none mt-1 ${ACTIVITY_STATUS_TONE[activityStatus]}`}
+              >
+                {activityStatusLabel}
               </p>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-brand-line pt-3">
+            <button
+              type="button"
+              onClick={() => setActivityCriteriaOpen((open) => !open)}
+              className="flex w-full items-center justify-between text-left touch-active"
+              aria-expanded={activityCriteriaOpen}
+            >
+              <span className="text-xs font-bold text-brand-brown">
+                활동량 기준
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-brand-mute transition-transform duration-300 ${
+                  activityCriteriaOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            <div
+              className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                activityCriteriaOpen
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <p className="pt-3 text-[11px] leading-relaxed text-brand-mute">
+                  카메라에서 감지한 움직임 점수를 0~100%로 환산한 상대
+                  활동량이에요. 1,500점 이상은 100%로 표시하며 실제 걸음
+                  수와는 달라요.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] font-semibold text-brand-brown">
+                  <ActivityCriterion color="bg-brand-mute" label="0~9% 움직임 없음" />
+                  <ActivityCriterion color="bg-brand-warning" label="10~39% 활동량 낮음" />
+                  <ActivityCriterion color="bg-brand-primary" label="40~69% 활동량 보통" />
+                  <ActivityCriterion color="bg-brand-danger" label="70~100% 활발" />
+                </div>
+              </div>
             </div>
           </div>
         </Card>

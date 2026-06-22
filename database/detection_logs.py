@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
-from datetime import datetime
+from database.time_utils import now_kst_naive
 
 class DetectionLog(Base):
     __tablename__ = "DETECTION_LOGS"
@@ -13,7 +13,7 @@ class DetectionLog(Base):
     pose           = Column(String(50),  nullable=True)
     activity_level = Column(Float,       nullable=True)
     confidence     = Column(Float,       nullable=True)
-    created_at     = Column(DateTime,    default=datetime.utcnow)
+    created_at     = Column(DateTime,    default=now_kst_naive)
 
     user = relationship("User", back_populates="detection_logs")
     pet  = relationship("Pet",  back_populates="detection_logs")
