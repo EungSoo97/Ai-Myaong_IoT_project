@@ -57,7 +57,16 @@ class VisionRecordingRequest(BaseModel):
 
 
 class VisionEventCreate(BaseModel):
-    type: Literal["away_person", "capture_saved", "clip_saved"]
+    type: Literal[
+        "away_person",
+        "capture_saved",
+        "clip_saved",
+        "fall_detected",
+        "no_motion",
+        "no_motion_warning",
+        "no_motion_emergency",
+        "seizure_suspected",
+    ]
     title: str
     message: str
     source: str | None = None
@@ -150,7 +159,15 @@ def _event_type_from_alert(alert_type: str) -> str:
 
 
 def _event_link(event_type: str) -> str:
-    return "/vision" if event_type == "away_person" else "/activity"
+    vision_events = {
+        "away_person",
+        "fall_detected",
+        "no_motion",
+        "no_motion_warning",
+        "no_motion_emergency",
+        "seizure_suspected",
+    }
+    return "/vision" if event_type in vision_events else "/activity"
 
 
 def _single_pet(db: Session, user_id: int | None = None) -> Pet:

@@ -127,7 +127,7 @@ export function Activity() {
     () => (visionEvents || []).map((event) => ({
       ...mapVisionEventForList(event),
       cat: 'vision',
-      icon: event.type === 'away_person' ? UserX : Video,
+      icon: ['away_person', 'fall_detected', 'no_motion', 'no_motion_warning', 'no_motion_emergency', 'seizure_suspected'].includes(event.type) ? UserX : Video,
       desc: event.message,
     })),
     [visionEvents],
@@ -274,7 +274,7 @@ function DetailSheet({ item, onClose }) {
 
         {/* 헤더 */}
         <div className="flex items-center gap-3">
-          <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${isFeed ? 'bg-brand-primary/15 text-brand-primary' : item.danger ? 'bg-brand-danger/15 text-brand-danger' : 'bg-brand-brown/10 text-brand-brown'}`}>
+          <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${isFeed ? 'bg-brand-primary/15 text-brand-primary' : item.danger ? 'bg-brand-danger/15 text-brand-danger' : item.warning ? 'bg-brand-warning/20 text-[#A06B1A]' : 'bg-brand-brown/10 text-brand-brown'}`}>
             <Icon className="w-5 h-5" />
           </span>
           <div className="flex-1 min-w-0">

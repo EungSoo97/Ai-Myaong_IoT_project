@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronDown,
   Footprints,
+  ShieldAlert,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -54,6 +55,11 @@ const TONE = {
 
 const EVENT_ICON = {
   away_person: UserX,
+  fall_detected: UserX,
+  no_motion: UserX,
+  no_motion_warning: UserX,
+  no_motion_emergency: UserX,
+  seizure_suspected: UserX,
   capture_saved: Camera,
   clip_saved: Video,
 };
@@ -81,6 +87,12 @@ const SHORTCUTS = [
     label: "외출 모드",
     icon: Plane,
     tone: "bg-brand-cream text-brand-brown",
+  },
+  {
+    id: "abnormal",
+    label: "이상 행동 감지",
+    icon: ShieldAlert,
+    tone: "bg-brand-warning/20 text-[#A06B1A]",
   },
 ];
 
@@ -379,6 +391,7 @@ export function Dashboard() {
       return false;
     }
   });
+  const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [busyId, setBusyId] = useState(null);
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
@@ -388,6 +401,7 @@ export function Dashboard() {
       .then((s) => {
         const on = s.away_mode === "Y";
         setAwayMode(on);
+        setAbnormalDetection(s.motion_alert !== "N");
         try {
           localStorage.setItem(AWAY_KEY, on ? "1" : "0");
         } catch {
@@ -428,9 +442,17 @@ export function Dashboard() {
     });
   };
 
+  const toggleAbnormalDetection = () => {
+    const next = !abnormalDetection;
+    setAbnormalDetection(next);
+    showToast(next ? "이상 행동 감지를 켰어요" : "이상 행동 감지를 껐어요");
+    api.updateSettings({ motion_alert: next ? "Y" : "N" }).catch(() => {});
+  };
+
   // 단축 작업 핸들러 (백엔드 있으면 실연결, 없으면 안내)
   const handleShortcut = async (id) => {
     if (id === "away") return toggleAway();
+    if (id === "abnormal") return toggleAbnormalDetection();
     if (busyId) return;
     setBusyId(id);
     try {
@@ -601,9 +623,11 @@ export function Dashboard() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
-            const active = id === "away" && awayMode;
+            const active =
+              (id === "away" && awayMode) ||
+              (id === "abnormal" && abnormalDetection);
             const isBusy = busyId === id;
             const toneCls = active ? "bg-brand-primary text-white" : tone;
             return (
@@ -624,7 +648,11 @@ export function Dashboard() {
                     ? awayMode
                       ? "외출 모드 ON"
                       : "외출 모드"
-                    : label}
+                    : id === "abnormal"
+                      ? abnormalDetection
+                        ? "이상 감지 ON"
+                        : "이상 행동 감지"
+                      : label}
                 </span>
               </button>
             );

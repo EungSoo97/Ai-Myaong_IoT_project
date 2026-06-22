@@ -12,6 +12,7 @@ Next step:
 
 import os
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -261,6 +262,267 @@ class ActivityTracker:
         return "NORMAL"
 
 
+class EmergencyTracker:
+    def __init__(self, backend_url, source):
+        self.backend_url = backend_url
+        self.source = source
+        self.enabled = os.getenv("EMERGENCY_ENABLED", "true").strip().lower() == "true"
+        self.cooldown_seconds = float(os.getenv("EMERGENCY_COOLDOWN_SECONDS", "60"))
+        self.missing_grace_seconds = float(os.getenv("EMERGENCY_MISSING_GRACE_SECONDS", "2"))
+
+        self.fall_window_seconds = float(os.getenv("FALL_WINDOW_SECONDS", "0.7"))
+        self.fall_drop_ratio = float(os.getenv("FALL_DROP_RATIO", "0.10"))
+        self.fall_confirm_seconds = float(os.getenv("FALL_CONFIRM_SECONDS", "1.2"))
+        self.fall_still_threshold = float(os.getenv("FALL_STILL_THRESHOLD", "0.006"))
+
+        legacy_no_motion_seconds = os.getenv("EMERGENCY_NO_MOTION_SECONDS", "600")
+        self.no_motion_warning_seconds = float(
+            os.getenv("EMERGENCY_NO_MOTION_WARNING_SECONDS", legacy_no_motion_seconds)
+        )
+        self.no_motion_emergency_seconds = float(
+            os.getenv("EMERGENCY_NO_MOTION_EMERGENCY_SECONDS", "900")
+        )
+        self.no_motion_emergency_seconds = max(
+            self.no_motion_emergency_seconds,
+            self.no_motion_warning_seconds,
+        )
+        self.no_motion_center_threshold = float(os.getenv("EMERGENCY_NO_MOTION_CENTER_THRESHOLD", "0.002"))
+        self.no_motion_roi_threshold = float(os.getenv("EMERGENCY_NO_MOTION_ROI_THRESHOLD", "0.015"))
+
+        self.seizure_window_seconds = float(os.getenv("SEIZURE_WINDOW_SECONDS", "3"))
+        self.seizure_roi_threshold = float(os.getenv("SEIZURE_ROI_MOTION_THRESHOLD", "0.075"))
+        self.seizure_center_threshold = float(os.getenv("SEIZURE_CENTER_MOTION_THRESHOLD", "0.012"))
+        self.seizure_high_ratio = float(os.getenv("SEIZURE_HIGH_MOTION_RATIO", "0.60"))
+
+        self.center_history = deque()
+        self.seizure_history = deque()
+        self.last_center = None
+        self.last_roi = None
+        self.last_seen_at = None
+        self.fall_candidate_at = None
+        self.fall_still_started_at = None
+        self.no_motion_started_at = None
+        self.no_motion_warning_fired = False
+        self.no_motion_emergency_fired = False
+        self.seizure_fired = False
+        self.last_fired = {}
+        self.last_attempt = {}
+        self.last_error_at = 0.0
+        self.latest_alert = None
+        self.last_center_motion = None
+        self.last_roi_motion = None
+
+    def update(self, frame, detections, now):
+        if not self.enabled:
+            return
+
+        pet = select_pet_detection(detections)
+        if pet is None:
+            if self.last_seen_at is None or now - self.last_seen_at > self.missing_grace_seconds:
+                self._reset_observation()
+            return
+        self.last_seen_at = now
+
+        frame_h, frame_w = frame.shape[:2]
+        center = box_center(pet)
+        normalized_center = (center[0] / max(frame_w, 1), center[1] / max(frame_h, 1))
+        center_motion = None
+        if self.last_center is not None:
+            center_motion = (
+                (normalized_center[0] - self.last_center[0]) ** 2
+                + (normalized_center[1] - self.last_center[1]) ** 2
+            ) ** 0.5
+
+        roi_motion = self._roi_motion(frame, pet)
+        self.last_center_motion = center_motion
+        self.last_roi_motion = roi_motion
+        self.center_history.append((now, normalized_center[1]))
+        while self.center_history and now - self.center_history[0][0] > self.fall_window_seconds:
+            self.center_history.popleft()
+
+        self._check_fall(now, normalized_center[1], center_motion)
+        self._check_no_motion(now, center_motion, roi_motion)
+        self._check_seizure(now, center_motion, roi_motion)
+        self.last_center = normalized_center
+
+    def draw(self, frame, now):
+        if not self.latest_alert or now - self.latest_alert["time"] > 5:
+            return
+        label = self.latest_alert["type"].upper()
+        is_warning = self.latest_alert["type"] == "no_motion_warning"
+        color = (0, 170, 230) if is_warning else (0, 0, 170)
+        prefix = "WARNING" if is_warning else "EMERGENCY"
+        cv2.rectangle(frame, (0, 0), (frame.shape[1], 34), color, -1)
+        cv2.putText(
+            frame,
+            f"{prefix}: {label}",
+            (10, 23),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.62,
+            (255, 255, 255),
+            2,
+        )
+
+    def _roi_motion(self, frame, pet):
+        x = max(0, int(pet["x"]))
+        y = max(0, int(pet["y"]))
+        x2 = min(frame.shape[1], x + max(1, int(pet["w"])))
+        y2 = min(frame.shape[0], y + max(1, int(pet["h"])))
+        crop = frame[y:y2, x:x2]
+        if crop.size == 0:
+            self.last_roi = None
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        motion = None
+        if self.last_roi is not None:
+            motion = float(np.mean(cv2.absdiff(gray, self.last_roi))) / 255.0
+        self.last_roi = gray
+        return motion
+
+    def _check_fall(self, now, center_y, center_motion):
+        if len(self.center_history) >= 3:
+            baseline_y = min(y for _, y in self.center_history)
+            if center_y - baseline_y >= self.fall_drop_ratio and self.fall_candidate_at is None:
+                self.fall_candidate_at = now
+                self.fall_still_started_at = None
+
+        if self.fall_candidate_at is None or center_motion is None:
+            return
+        if now - self.fall_candidate_at > self.fall_confirm_seconds + 2:
+            self.fall_candidate_at = None
+            self.fall_still_started_at = None
+            return
+
+        if center_motion <= self.fall_still_threshold:
+            if self.fall_still_started_at is None:
+                self.fall_still_started_at = now
+            elif now - self.fall_still_started_at >= self.fall_confirm_seconds:
+                self._fire(
+                    "fall_detected",
+                    "낙상 감지",
+                    "반려동물이 급격히 아래로 이동한 뒤 움직임이 줄었습니다. 상태를 확인해 주세요.",
+                    now,
+                    confidence=0.85,
+                )
+                self.fall_candidate_at = None
+                self.fall_still_started_at = None
+                self.center_history.clear()
+        elif center_motion > self.fall_still_threshold * 4:
+            self.fall_still_started_at = None
+
+    def _check_no_motion(self, now, center_motion, roi_motion):
+        if center_motion is None or roi_motion is None:
+            return
+        still = (
+            center_motion <= self.no_motion_center_threshold
+            and roi_motion <= self.no_motion_roi_threshold
+        )
+        if not still:
+            self.no_motion_started_at = None
+            self.no_motion_warning_fired = False
+            self.no_motion_emergency_fired = False
+            return
+
+        if self.no_motion_started_at is None:
+            self.no_motion_started_at = now
+            return
+        elapsed = now - self.no_motion_started_at
+        if elapsed >= self.no_motion_warning_seconds and not self.no_motion_warning_fired:
+            fired = self._fire(
+                "no_motion_warning",
+                "장시간 움직임 없음 · 확인 필요",
+                f"반려동물이 약 {int(elapsed // 60)}분 동안 거의 움직이지 않았습니다. 상태를 확인해 주세요.",
+                now,
+                confidence=0.70,
+            )
+            if fired:
+                self.no_motion_warning_fired = True
+
+        if elapsed >= self.no_motion_emergency_seconds and not self.no_motion_emergency_fired:
+            fired = self._fire(
+                "no_motion_emergency",
+                "장시간 미세 움직임 없음 · 긴급 확인",
+                f"반려동물의 움직임과 미세 움직임이 약 {int(elapsed // 60)}분 동안 감지되지 않았습니다. 즉시 상태를 확인해 주세요.",
+                now,
+                confidence=0.88,
+            )
+            if fired:
+                self.no_motion_emergency_fired = True
+
+    def _check_seizure(self, now, center_motion, roi_motion):
+        if center_motion is None or roi_motion is None:
+            return
+        high_internal_motion = (
+            roi_motion >= self.seizure_roi_threshold
+            and center_motion <= self.seizure_center_threshold
+        )
+        self.seizure_history.append((now, high_internal_motion))
+        while self.seizure_history and now - self.seizure_history[0][0] > self.seizure_window_seconds:
+            self.seizure_history.popleft()
+        if len(self.seizure_history) < 6:
+            return
+
+        span = self.seizure_history[-1][0] - self.seizure_history[0][0]
+        high_ratio = sum(1 for _, high in self.seizure_history if high) / len(self.seizure_history)
+        if span >= self.seizure_window_seconds * 0.8 and high_ratio >= self.seizure_high_ratio:
+            if not self.seizure_fired:
+                fired = self._fire(
+                    "seizure_suspected",
+                    "발작 의심 움직임",
+                    "위치 변화는 적지만 몸의 빠른 움직임이 반복 감지되었습니다. 상태를 확인해 주세요.",
+                    now,
+                    confidence=min(0.95, 0.6 + high_ratio * 0.35),
+                )
+                if fired:
+                    self.seizure_fired = True
+        elif high_ratio < 0.2:
+            self.seizure_fired = False
+
+    def _fire(self, event_type, title, message, now, confidence=None):
+        if now - self.last_fired.get(event_type, 0.0) < self.cooldown_seconds:
+            return False
+        if now - self.last_attempt.get(event_type, 0.0) < 5:
+            return False
+        self.last_attempt[event_type] = now
+        try:
+            post_event(
+                self.backend_url,
+                event_type,
+                title,
+                message,
+                self.source,
+                confidence=confidence,
+            )
+        except requests.RequestException as error:
+            if now - self.last_error_at > 5:
+                print(f"[Emergency] Event post failed: {error}", flush=True)
+                self.last_error_at = now
+            return False
+
+        self.last_fired[event_type] = now
+        self.latest_alert = {"type": event_type, "time": now}
+        print(f"[Emergency] type={event_type} confidence={confidence}", flush=True)
+        return True
+
+    def _reset_observation(self):
+        self.center_history.clear()
+        self.seizure_history.clear()
+        self.last_center = None
+        self.last_roi = None
+        self.last_center_motion = None
+        self.last_roi_motion = None
+        self.last_seen_at = None
+        self.fall_candidate_at = None
+        self.fall_still_started_at = None
+        self.no_motion_started_at = None
+        self.no_motion_warning_fired = False
+        self.no_motion_emergency_fired = False
+        self.seizure_fired = False
+
+
 def post_detections(backend_url, source, frame, detections):
     h, w = frame.shape[:2]
     payload = {
@@ -304,7 +566,9 @@ def post_event(backend_url, event_type, title, message, source=None, storage_pat
         "storage_path": str(storage_path) if storage_path is not None else None,
         "confidence": confidence,
     }
-    requests.post(f"{backend_url}/api/vision/events", json=payload, timeout=0.5)
+    response = requests.post(f"{backend_url}/api/vision/events", json=payload, timeout=0.5)
+    response.raise_for_status()
+    return response.json()
 
 
 def save_capture(frame):
@@ -407,6 +671,7 @@ def main():
     last_event_error_at = 0.0
     recorder = ClipRecorder()
     activity_tracker = ActivityTracker(backend_url)
+    emergency_tracker = EmergencyTracker(backend_url, source)
 
     try:
         for frame in frame_source:
@@ -474,6 +739,7 @@ def main():
 
             detections = detect_boxes(model, frame, class_filter)
             activity_tracker.update(frame, detections, now)
+            emergency_tracker.update(raw_frame, detections, now)
             if away_mode:
                 person = next((item for item in detections if item["label"] == "Person"), None)
                 if person and now - last_away_person_event_at >= float(os.getenv("AWAY_PERSON_EVENT_COOLDOWN", "10")):
@@ -500,6 +766,7 @@ def main():
                     last_post_error_at = now
 
             draw_boxes(frame, detections)
+            emergency_tracker.draw(frame, now)
 
             cv2.imshow("Frontend Object Detection Preview", frame)
             key = cv2.waitKey(1) & 0xFF
