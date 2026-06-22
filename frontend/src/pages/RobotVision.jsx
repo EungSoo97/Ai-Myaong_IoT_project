@@ -359,7 +359,7 @@ export function RobotVision() {
     const previous = abnormalDetection;
     setAbnormalDetection(next);
     try {
-      await api.updateSettings({ motion_alert: next ? "Y" : "N" });
+      await api.setVisionEmergency(next);
     } catch (error) {
       console.error("[RobotVision] abnormal detection setting failed:", error);
       setAbnormalDetection(previous);

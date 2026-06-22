@@ -18,6 +18,7 @@ from database.alerts import Alert
 from database.base import SessionLocal
 from database.daily_activity_summaries import DailyActivitySummary
 from database.detection_logs import DetectionLog
+from database.time_utils import now_kst_naive, today_kst
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -57,9 +58,9 @@ def cleanup_old_records() -> dict[str, int]:
 
     db = SessionLocal()
     try:
-        alert_cutoff = datetime.utcnow() - timedelta(days=alert_days)
-        detection_cutoff = datetime.utcnow() - timedelta(days=detection_days)
-        activity_summary_cutoff = datetime.utcnow().date() - timedelta(days=activity_summary_days)
+        alert_cutoff = now_kst_naive() - timedelta(days=alert_days)
+        detection_cutoff = now_kst_naive() - timedelta(days=detection_days)
+        activity_summary_cutoff = today_kst() - timedelta(days=activity_summary_days)
 
         stats["alerts"] = (
             db.query(Alert)

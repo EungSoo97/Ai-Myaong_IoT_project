@@ -266,7 +266,8 @@ class EmergencyTracker:
     def __init__(self, backend_url, source):
         self.backend_url = backend_url
         self.source = source
-        self.enabled = os.getenv("EMERGENCY_ENABLED", "true").strip().lower() == "true"
+        self.environment_enabled = os.getenv("EMERGENCY_ENABLED", "true").strip().lower() == "true"
+        self.enabled = self.environment_enabled
         self.cooldown_seconds = float(os.getenv("EMERGENCY_COOLDOWN_SECONDS", "60"))
         self.missing_grace_seconds = float(os.getenv("EMERGENCY_MISSING_GRACE_SECONDS", "2"))
 
@@ -311,6 +312,15 @@ class EmergencyTracker:
         self.latest_alert = None
         self.last_center_motion = None
         self.last_roi_motion = None
+
+    def set_remote_enabled(self, enabled):
+        next_enabled = self.environment_enabled and bool(enabled)
+        if self.enabled == next_enabled:
+            return
+        self.enabled = next_enabled
+        self._reset_observation()
+        self.latest_alert = None
+        print(f"[Emergency] detection={'ON' if self.enabled else 'OFF'}", flush=True)
 
     def update(self, frame, detections, now):
         if not self.enabled:
@@ -705,6 +715,9 @@ def main():
                         last_capture_requested_at = capture_requested_at
                     recording_requested = bool(control.get("recording"))
                     away_mode = bool(control.get("away_mode"))
+                    emergency_tracker.set_remote_enabled(
+                        bool(control.get("emergency_enabled", True))
+                    )
                 except requests.RequestException as error:
                     if now - last_control_error_at > 5:
                         print(f"[Vision] Control poll failed: {error}")
