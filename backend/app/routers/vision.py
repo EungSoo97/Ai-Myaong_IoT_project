@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import timedelta
 import json
 from pathlib import Path
 import mimetypes
@@ -29,10 +29,27 @@ from database.alerts import Alert
 from database.base import get_db
 from database.daily_activity_summaries import DailyActivitySummary
 from database.pets import Pet
+from database.settings import Settings
+from database.time_utils import kst_iso, now_kst_naive, today_kst
 from database.user import User
 
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
+
+ACTIVITY_SCORE_MAX = max(1.0, float(os.getenv("ACTIVITY_SCORE_MAX", "1500")))
+ACTIVITY_TIME_SLOTS = (
+    ("DAWN", "새벽"),
+    ("MORNING", "오전"),
+    ("AFTERNOON", "오후"),
+    ("NIGHT", "밤"),
+)
+ACTIVITY_STATUS_LABELS = {
+    "NO_MOTION": "움직임 없음",
+    "LOW": "활동량 낮음",
+    "NORMAL": "활동량 보통",
+    "ACTIVE": "활발",
+    "NO_DATA": "데이터 없음",
+}
 
 
 class DetectionBox(BaseModel):
@@ -56,8 +73,21 @@ class VisionRecordingRequest(BaseModel):
     on: bool
 
 
+class VisionEmergencyRequest(BaseModel):
+    on: bool
+
+
 class VisionEventCreate(BaseModel):
-    type: Literal["away_person", "capture_saved", "clip_saved"]
+    type: Literal[
+        "away_person",
+        "capture_saved",
+        "clip_saved",
+        "fall_detected",
+        "no_motion",
+        "no_motion_warning",
+        "no_motion_emergency",
+        "seizure_suspected",
+    ]
     title: str
     message: str
     source: str | None = None
@@ -96,6 +126,7 @@ _control_state: dict = {
     "capture_requested_at": 0.0,
     "recording": False,
     "recording_updated_at": 0.0,
+    "emergency_enabled": False,
     "active_user_id": None,
 }
 
@@ -112,8 +143,10 @@ def _current_user(authorization: str | None, db: Session) -> User:
     return user
 
 
-def _remember_active_user(user: User) -> None:
+def _remember_active_user(user: User, db: Session) -> None:
     _control_state["active_user_id"] = user.user_id
+    settings = db.query(Settings).filter(Settings.user_id == user.user_id).first()
+    _control_state["emergency_enabled"] = settings is None or settings.motion_alert != "N"
 
 def _resolve_media_path(raw_path: str) -> Path:
     if not raw_path:
@@ -150,7 +183,71 @@ def _event_type_from_alert(alert_type: str) -> str:
 
 
 def _event_link(event_type: str) -> str:
-    return "/vision" if event_type == "away_person" else "/activity"
+    vision_events = {
+        "away_person",
+        "fall_detected",
+        "no_motion",
+        "no_motion_warning",
+        "no_motion_emergency",
+        "seizure_suspected",
+    }
+    return "/vision" if event_type in vision_events else "/activity"
+
+
+def _activity_time_slot(hour: int) -> str:
+    if hour < 6:
+        return "DAWN"
+    if hour < 12:
+        return "MORNING"
+    if hour < 18:
+        return "AFTERNOON"
+    return "NIGHT"
+
+
+def _activity_percent(score: float | None) -> int | None:
+    if score is None:
+        return None
+    return min(100, max(0, round((float(score) / ACTIVITY_SCORE_MAX) * 100)))
+
+
+def _activity_status(percent: int | None) -> str:
+    if percent is None:
+        return "NO_DATA"
+    if percent < 10:
+        return "NO_MOTION"
+    if percent < 40:
+        return "LOW"
+    if percent < 70:
+        return "NORMAL"
+    return "ACTIVE"
+
+
+def _activity_point(label: str, rows: list[DailyActivitySummary]) -> dict:
+    detected_minutes = sum(row.detected_minutes or 0 for row in rows)
+    if not rows or detected_minutes <= 0:
+        return {
+            "label": label,
+            "activity_percent": None,
+            "avg_activity_level": None,
+            "status": "NO_DATA",
+            "status_label": ACTIVITY_STATUS_LABELS["NO_DATA"],
+            "detected_minutes": 0,
+        }
+
+    weighted_score = sum(
+        float(row.avg_activity_level or 0) * (row.detected_minutes or 0)
+        for row in rows
+    ) / detected_minutes
+    percent = _activity_percent(weighted_score)
+    status = _activity_status(percent)
+    return {
+        "label": label,
+        "activity_percent": percent,
+        "avg_activity_level": round(weighted_score, 2),
+        "status": status,
+        "status_label": ACTIVITY_STATUS_LABELS[status],
+        "detected_minutes": detected_minutes,
+    }
 
 
 def _single_pet(db: Session, user_id: int | None = None) -> Pet:
@@ -170,11 +267,7 @@ def _alert_to_vision_event(alert: Alert) -> dict:
         data = {"desc": alert.message or ""}
 
     event_type = _event_type_from_alert(alert.alert_type)
-    created_at = alert.created_at
-    if created_at:
-        created_at_text = created_at.replace(tzinfo=timezone.utc).isoformat()
-    else:
-        created_at_text = datetime.now(timezone.utc).isoformat()
+    created_at_text = kst_iso(alert.created_at or now_kst_naive())
 
     return {
         "id": alert.alert_id,
@@ -222,7 +315,7 @@ def latest_detections():
 @router.post("/capture")
 def request_capture(authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
-    _remember_active_user(user)
+    _remember_active_user(user, db)
     _control_state["capture_request_id"] += 1
     _control_state["capture_requested_at"] = time()
     return {
@@ -234,10 +327,29 @@ def request_capture(authorization: str = Header(None), db: Session = Depends(get
 @router.post("/recording")
 def set_recording(payload: VisionRecordingRequest, authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
-    _remember_active_user(user)
+    _remember_active_user(user, db)
     _control_state["recording"] = payload.on
     _control_state["recording_updated_at"] = time()
     return {"ok": True, "recording": _control_state["recording"]}
+
+
+@router.post("/emergency")
+def set_emergency_detection(
+    payload: VisionEmergencyRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    settings = db.query(Settings).filter(Settings.user_id == user.user_id).first()
+    if not settings:
+        settings = Settings(user_id=user.user_id)
+        db.add(settings)
+
+    settings.motion_alert = "Y" if payload.on else "N"
+    db.commit()
+    _control_state["active_user_id"] = user.user_id
+    _control_state["emergency_enabled"] = payload.on
+    return {"ok": True, "emergency_enabled": payload.on}
 
 
 @router.get("/control")
@@ -278,7 +390,9 @@ def create_event(payload: VisionEventCreate, db: Session = Depends(get_db)):
 @router.post("/activity")
 def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
     pet = _active_pet(db)
-    summary_date = date.today()
+    now_kst = now_kst_naive()
+    summary_date = now_kst.date()
+    time_slot = _activity_time_slot(now_kst.hour)
     detected_minutes = max(1, int((payload.detected_seconds + 59) // 60))
 
     row = (
@@ -286,6 +400,7 @@ def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
         .filter(
             DailyActivitySummary.pet_id == pet.pet_id,
             DailyActivitySummary.summary_date == summary_date,
+            DailyActivitySummary.time_slot == time_slot,
         )
         .first()
     )
@@ -298,14 +413,15 @@ def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
             (previous_score * previous_minutes) + (payload.activity_score * detected_minutes)
         ) / max(total_minutes, 1)
         row.detected_minutes = total_minutes
-        row.status = payload.status
+        row.status = _activity_status(_activity_percent(row.avg_activity_level))
     else:
         row = DailyActivitySummary(
             user_id=pet.user_id,
             pet_id=pet.pet_id,
             summary_date=summary_date,
+            time_slot=time_slot,
             avg_activity_level=payload.activity_score,
-            status=payload.status,
+            status=_activity_status(_activity_percent(payload.activity_score)),
             detected_minutes=detected_minutes,
         )
         db.add(row)
@@ -318,16 +434,83 @@ def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
         "user_id": row.user_id,
         "pet_id": row.pet_id,
         "summary_date": row.summary_date.isoformat(),
+        "time_slot": row.time_slot,
         "avg_activity_level": row.avg_activity_level,
         "status": row.status,
         "detected_minutes": row.detected_minutes,
     }
 
 
+@router.get("/activity/stats")
+def activity_stats(
+    period: Literal["day", "week", "month"] = Query("day"),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    _remember_active_user(user, db)
+    pet = _single_pet(db, user.user_id)
+    end_date = today_kst()
+    days = 1 if period == "day" else 7 if period == "week" else 30
+    start_date = end_date - timedelta(days=days - 1)
+    rows = (
+        db.query(DailyActivitySummary)
+        .filter(
+            DailyActivitySummary.user_id == user.user_id,
+            DailyActivitySummary.pet_id == pet.pet_id,
+            DailyActivitySummary.summary_date >= start_date,
+            DailyActivitySummary.summary_date <= end_date,
+        )
+        .order_by(DailyActivitySummary.summary_date.asc())
+        .all()
+    )
+
+    if period == "day":
+        points = [
+            _activity_point(
+                label,
+                [row for row in rows if row.time_slot == slot],
+            )
+            for slot, label in ACTIVITY_TIME_SLOTS
+        ]
+    else:
+        weekday_labels = ("월", "화", "수", "목", "금", "토", "일")
+        points = []
+        for offset in range(days):
+            target_date = start_date + timedelta(days=offset)
+            label = (
+                weekday_labels[target_date.weekday()]
+                if period == "week"
+                else f"{target_date.month}/{target_date.day}"
+            )
+            points.append(
+                _activity_point(
+                    label,
+                    [row for row in rows if row.summary_date == target_date],
+                )
+            )
+
+    measured = [point for point in points if point["activity_percent"] is not None]
+    average_percent = (
+        round(sum(point["activity_percent"] for point in measured) / len(measured))
+        if measured
+        else None
+    )
+    status = _activity_status(average_percent)
+    return {
+        "period": period,
+        "score_max": ACTIVITY_SCORE_MAX,
+        "average_percent": average_percent,
+        "status": status,
+        "status_label": ACTIVITY_STATUS_LABELS[status],
+        "points": points,
+    }
+
+
 @router.get("/events/recent")
 def recent_events(limit: int = 20, authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
-    _remember_active_user(user)
+    _remember_active_user(user, db)
     limit = max(1, min(limit, 100))
     rows = (
         db.query(Alert)

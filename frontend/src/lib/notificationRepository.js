@@ -47,6 +47,22 @@ function setCache(list) {
   window.dispatchEvent(new Event('notifications-changed'))
 }
 
+function normalizeAlertType(type) {
+  if (type === 'vision.away_person') return 'intruder'
+  if (
+    [
+      'vision.fall_detected',
+      'vision.no_motion',
+      'vision.no_motion_warning',
+      'vision.no_motion_emergency',
+      'vision.seizure_suspected',
+    ].includes(type)
+  ) {
+    return 'abnormal'
+  }
+  return type
+}
+
 export function getNotifications() {
   return cache
 }
@@ -62,7 +78,7 @@ function fromAlert(a) {
   return {
     id: `a${a.alert_id}`,
     serverId: a.alert_id,
-    type: a.alert_type,
+    type: normalizeAlertType(a.alert_type),
     title: extra.title || '',
     desc: extra.desc || (typeof a.message === 'string' && a.message[0] !== '{' ? a.message : ''),
     link: extra.link || '',
@@ -127,7 +143,11 @@ export function useNotifications() {
     const refresh = () => setList(getNotifications())
     window.addEventListener('notifications-changed', refresh)
     hydrateNotifications() // DB 에서 최신 알림 로드
-    return () => window.removeEventListener('notifications-changed', refresh)
+    const timer = window.setInterval(hydrateNotifications, 3000)
+    return () => {
+      window.removeEventListener('notifications-changed', refresh)
+      window.clearInterval(timer)
+    }
   }, [])
 
   return list

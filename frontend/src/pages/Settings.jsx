@@ -138,6 +138,16 @@ export function Settings() {
     api.updateSettings(patch).catch(() => {});
   };
 
+  const updateMotionAlert = async (value) => {
+    const previous = motionAlert;
+    setMotionAlert(value);
+    try {
+      await api.setVisionEmergency(value);
+    } catch {
+      setMotionAlert(previous);
+    }
+  };
+
   // 알림 제어 상태를 localStorage 에 미러 → notificationRepository 가 발송 전 확인 (꺼진 알림 차단)
   useEffect(() => {
     try {
@@ -621,7 +631,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={motionAlert}
-                onChange={(v) => { setMotionAlert(v); saveSettings({ motion_alert: v ? "Y" : "N" }); }}
+                onChange={updateMotionAlert}
                 label="이상 행동"
               />
             }

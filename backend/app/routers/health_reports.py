@@ -17,6 +17,7 @@ from app.services.llm_service import generate_pet_health_advice
 from database.base import get_db
 from database.pet_health_reports import PetHealthReport
 from database.pets import Pet
+from database.time_utils import as_kst_aware
 
 
 router = APIRouter(prefix="/api/pets", tags=["health-reports"])
@@ -88,7 +89,7 @@ def _to_list_item(report: PetHealthReport) -> HealthReportListItem:
         period=_period_from_report(report),
         llm_result=report.llm_result,
         risk_level=report.risk_level,
-        created_at=report.created_at,
+        created_at=as_kst_aware(report.created_at),
     )
 
 
@@ -107,7 +108,7 @@ def _to_detail_response(report: PetHealthReport) -> HealthReportDetailResponse:
         input_summary=input_summary,
         llm_result=report.llm_result,
         risk_level=report.risk_level,
-        created_at=report.created_at,
+        created_at=as_kst_aware(report.created_at),
     )
 
 
@@ -148,7 +149,7 @@ def create_health_report(
         input_summary=summary_data,
         llm_result=report.llm_result,
         risk_level=report.risk_level,
-        created_at=report.created_at,
+        created_at=as_kst_aware(report.created_at),
     )
 
 

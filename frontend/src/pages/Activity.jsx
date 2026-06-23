@@ -165,7 +165,7 @@ export function Activity() {
     () => (visionEvents || []).map((event) => ({
       ...mapVisionEventForList(event),
       cat: 'vision',
-      icon: event.type === 'away_person' ? UserX : Video,
+      icon: ['away_person', 'fall_detected', 'no_motion', 'no_motion_warning', 'no_motion_emergency', 'seizure_suspected'].includes(event.type) ? UserX : Video,
       desc: event.message,
     })),
     [visionEvents],
@@ -258,7 +258,7 @@ export function Activity() {
                   onClick={() => setSelected(e)}
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left bg-brand-card active:bg-brand-cream/60 transition-colors"
                 >
-                  <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : e.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
+                  <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : e.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : e.warning ? 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
                     <Icon className="w-5 h-5" />
                   </span>
                   <div className="flex-1 min-w-0">
@@ -266,7 +266,7 @@ export function Activity() {
                     <p className="text-xs text-brand-mute truncate">{e.desc}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge tone={isFeed ? 'primary' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
+                    <Badge tone={isFeed ? 'primary' : e.danger ? 'danger' : e.warning ? 'warn' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
                     <ChevronRight className="w-4 h-4 text-brand-mute" />
                   </div>
@@ -329,7 +329,7 @@ function DetailSheet({ item, onClose }) {
 
           {/* 헤더 */}
           <div className="flex items-center gap-3">
-            <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : item.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
+            <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : item.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : item.warning ? 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
               <Icon className="w-5 h-5" />
             </span>
             <div className="flex-1 min-w-0">

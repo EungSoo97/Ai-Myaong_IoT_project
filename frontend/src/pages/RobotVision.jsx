@@ -18,12 +18,58 @@ import {
   Clock,
   X,
   Trash2,
+  ShieldAlert,
 } from '../components/icons';
 import { Card, Badge } from "../components/ui";
 import { api, resolveMediaUrl } from "../api/api";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { getWebSocketUrl } from "../lib/backendUrls";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
+
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지 공통) / 정보·칩: 따뜻한 탄
+const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
+const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = "" }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  );
+}
+
+/* 버튼 안쪽 은은한 스티치 — 켜짐(컬러 배경)이면 흰색, 꺼짐이면 갈색 점선 */
+function BtnStitch({ active }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[5px] rounded-[16px] border border-dashed ${active ? "border-white/30" : "border-brand-brown/20"}`} />
+  );
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = "", opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: "url(/paper.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundBlendMode: "multiply",
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        opacity,
+      }}
+    />
+  );
+}
 
 /* 이벤트 로그 — clip_id 로 백엔드 클립(CLIPS) 참조 (활동 기록과 동일 구조) */
 const EVENT_LOG = [
@@ -104,6 +150,7 @@ export function RobotVision() {
       return false;
     }
   });
+  const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [recording, setRecording] = useState(false);
   const [selectedClip, setSelectedClip] = useState(null);
   const [controlBusy, setControlBusy] = useState(false);
@@ -112,15 +159,24 @@ export function RobotVision() {
   const [detections, setDetections] = useState(null);
   const [eventLog, setEventLog] = useState([]);
   const [captureNotice, setCaptureNotice] = useState(false);
+  const [captureFlash, setCaptureFlash] = useState(false); // 캡처 버튼 짧은 반응(찰칵)
   const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const controlBusyRef = useRef(false);
   const pendingCommandCountRef = useRef(0);
   const captureNoticeTimerRef = useRef(null);
+  const captureFlashTimerRef = useRef(null);
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false);
   const fsRef = useRef(null);
   const visibleEventLog = eventLog.slice(0, 5);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((settings) => setAbnormalDetection(settings.motion_alert !== "N"))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -187,6 +243,9 @@ export function RobotVision() {
     return () => {
       if (captureNoticeTimerRef.current) {
         window.clearTimeout(captureNoticeTimerRef.current);
+      }
+      if (captureFlashTimerRef.current) {
+        window.clearTimeout(captureFlashTimerRef.current);
       }
     };
   }, []);
@@ -345,6 +404,18 @@ export function RobotVision() {
     }
   };
 
+  const toggleAbnormalDetection = async () => {
+    const next = !abnormalDetection;
+    const previous = abnormalDetection;
+    setAbnormalDetection(next);
+    try {
+      await api.setVisionEmergency(next);
+    } catch (error) {
+      console.error("[RobotVision] abnormal detection setting failed:", error);
+      setAbnormalDetection(previous);
+    }
+  };
+
   const captureSnapshot = async () => {
     try {
       await api.captureSnapshot();
@@ -354,7 +425,15 @@ export function RobotVision() {
       }
       captureNoticeTimerRef.current = window.setTimeout(() => {
         setCaptureNotice(false);
-      }, 2500);
+      }, 3000);
+      // 버튼은 짧게 '찰칵' 반응만 (다른 버튼 활성색과 동일한 코랄)
+      setCaptureFlash(true);
+      if (captureFlashTimerRef.current) {
+        window.clearTimeout(captureFlashTimerRef.current);
+      }
+      captureFlashTimerRef.current = window.setTimeout(() => {
+        setCaptureFlash(false);
+      }, 700);
     } catch (error) {
       console.error("[RobotVision] capture command failed:", error);
     }
@@ -480,8 +559,10 @@ export function RobotVision() {
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">
           조종 패드
         </h3>
-        <Card className="px-4 py-6">
-          <div className="flex items-start justify-between gap-2">
+        <div className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-6" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <div className="relative z-10 flex items-start justify-between gap-2">
             <div className="flex flex-col items-center gap-2">
               <DPad
                 label="이동"
@@ -507,25 +588,30 @@ export function RobotVision() {
               </span>
             </div>
           </div>
-        </Card>
+        </div>
       </section>
 
-      {/* 컨트롤 (외출 / 녹화 / 캡처) */}
+      {/* 컨트롤 (외출 / 이상 감지 / 녹화 / 캡처) */}
       <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">
           제어
         </h3>
-        <Card className="px-5 py-5">
-          <div className="grid grid-cols-3 gap-3">
+        <div className="relative overflow-hidden rounded-3xl shadow-soft px-5 py-5" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute right-4 top-3 w-8 h-8 rotate-12" />
+          <div className="relative z-10">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={toggleAwayMode}
-              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 awayMode
-                  ? "bg-brand-primary text-white active:bg-brand-primary/80"
-                  : "bg-brand-card text-brand-brown active:bg-brand-cream"
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
               }`}
+              style={awayMode ? undefined : { backgroundColor: BG_INFO }}
             >
+              <BtnStitch active={awayMode} />
               <Moon className="w-5 h-5" />
               <span className="text-xs font-bold">
                 {awayMode ? "외출 ON" : "외출 모드"}
@@ -533,13 +619,32 @@ export function RobotVision() {
             </button>
             <button
               type="button"
-              onClick={toggleRecording}
-              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
-                recording
-                  ? "bg-brand-danger text-white active:bg-brand-danger/80"
-                  : "bg-brand-card text-brand-brown active:bg-brand-cream"
+              onClick={toggleAbnormalDetection}
+              aria-pressed={abnormalDetection}
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                abnormalDetection
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
               }`}
+              style={abnormalDetection ? undefined : { backgroundColor: BG_INFO }}
             >
+              <BtnStitch active={abnormalDetection} />
+              <ShieldAlert className="w-5 h-5" />
+              <span className="text-xs font-bold">
+                {abnormalDetection ? "이상 감지 ON" : "이상 행동 감지"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleRecording}
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                recording
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
+              }`}
+              style={recording ? undefined : { backgroundColor: BG_INFO }}
+            >
+              <BtnStitch active={recording} />
               <Video className="w-5 h-5" />
               <span className="text-xs font-bold">
                 {recording ? "녹화 중" : "녹화"}
@@ -548,10 +653,19 @@ export function RobotVision() {
             <button
               type="button"
               onClick={captureSnapshot}
-              className="flex flex-col items-center gap-1 px-4 py-3 rounded-3xl bg-brand-card text-brand-brown shadow-soft active:bg-brand-cream transition-colors min-w-[88px]"
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                captureFlash
+                  ? "bg-brand-primary text-white border-white/30"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
+              }`}
+              style={captureFlash ? undefined : { backgroundColor: BG_INFO }}
             >
-              <Camera className="w-5 h-5" />
-              <span className="text-xs font-bold">캡처</span>
+              <BtnStitch active={captureFlash} />
+              {captureFlash && (
+                <span className="capture-flash pointer-events-none absolute inset-0 z-20 bg-white" />
+              )}
+              <Camera className={`w-5 h-5 ${captureFlash ? "capture-pop" : ""}`} />
+              <span className="text-xs font-bold">{captureFlash ? "찰칵!" : "캡처"}</span>
             </button>
           </div>
           <p className="mt-4 text-center text-xs text-brand-mute">
@@ -559,7 +673,8 @@ export function RobotVision() {
             <span className="font-bold text-brand-primary">전체화면</span>에서
             활성화됩니다.
           </p>
-        </Card>
+          </div>
+        </div>
       </section>
 
       {/* 이벤트 로그 */}
@@ -586,10 +701,16 @@ export function RobotVision() {
             </button>
           </div>
         </div>
-        <Card className="divide-y divide-brand-line">
+        <div className="relative rounded-3xl shadow-soft" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <div className="relative z-10 m-1.5 rounded-[18px] overflow-hidden divide-y divide-brand-line/70">
           {visibleEventLog.length === 0 && (
-            <div className="px-4 py-5 text-center text-sm font-semibold text-brand-mute">
-              아직 기록된 비전 이벤트가 없어요.
+            <div className="px-4 py-6 flex flex-col items-center text-center">
+              <span className="w-12 h-12 rounded-full flex items-center justify-center mb-2 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+                <Video className="w-6 h-6 text-brand-primary/70" />
+              </span>
+              <p className="text-sm font-semibold text-brand-mute">아직 기록된 비전 이벤트가 없어요 🐾</p>
             </div>
           )}
           {visibleEventLog.map((e) => {
@@ -605,7 +726,7 @@ export function RobotVision() {
                   className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream transition-colors rounded-2xl"
                 >
                   <span
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${e.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : e.warning ? "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
                   >
                     <Icon className="w-5 h-5" />
                   </span>
@@ -619,7 +740,7 @@ export function RobotVision() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge tone={e.danger ? "danger" : "primary"}>
+                    <Badge tone={e.danger ? "danger" : e.warning ? "warn" : "primary"}>
                       {e.clip_id ? "VOD" : "기록"}
                     </Badge>
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
@@ -629,7 +750,8 @@ export function RobotVision() {
                 <button
                   type="button"
                   onClick={(event) => deleteVisionEvent(e, event)}
-                  className="w-9 h-9 rounded-2xl bg-brand-cream text-brand-mute flex items-center justify-center shrink-0 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                  className="w-9 h-9 rounded-2xl text-brand-mute flex items-center justify-center shrink-0 border border-dashed border-brand-brown/15 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                  style={{ backgroundColor: BG_INFO }}
                   aria-label="로그 삭제"
                   title="로그 삭제"
                 >
@@ -638,7 +760,8 @@ export function RobotVision() {
               </div>
             );
           })}
-        </Card>
+          </div>
+        </div>
       </section>
 
       {/* 클립 뷰어 (활동 기록 상세와 동일 형식) */}
@@ -852,15 +975,20 @@ function ClipModal({ clip, onClose }) {
       />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
-        style={{ transform: show ? "translateY(0)" : "translateY(100%)" }}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-b-3xl px-5 pt-3 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: BG_CARD,
+          transform: show ? "translateY(0)" : "translateY(100%)",
+          paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))",
+        }}
       >
+        <Stitch className="!inset-[8px] !rounded-[22px]" />
         <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
 
         {/* 헤더 */}
         <div className="flex items-center gap-3">
           <span
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${clip.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${clip.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
           >
             <Icon className="w-5 h-5" />
           </span>
@@ -874,7 +1002,8 @@ function ClipModal({ clip, onClose }) {
             type="button"
             onClick={dismiss}
             aria-label="닫기"
-            className="text-brand-mute touch-active"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20"
+            style={{ backgroundColor: BG_INFO }}
           >
             <X className="w-5 h-5" />
           </button>
@@ -956,9 +1085,9 @@ function ClipModal({ clip, onClose }) {
 
         {/* 메타 */}
         <div className="mt-3 grid grid-cols-2 gap-2.5">
-          <div className="rounded-2xl bg-brand-cream p-3.5">
+          <div className="rounded-2xl p-3.5 border border-dashed border-brand-brown/15" style={{ backgroundColor: BG_INFO }}>
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-              <Clock className="w-4 h-4" /> 탐지 시각
+              <span className="text-brand-primary-deep"><Clock className="w-4 h-4" /></span> 탐지 시각
             </p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none">
               {clip.time}
@@ -968,11 +1097,12 @@ function ClipModal({ clip, onClose }) {
             type="button"
             onClick={openLocalPath}
             disabled={!clip.storage_path}
-            className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+            className="rounded-2xl p-3.5 text-left border border-dashed border-brand-brown/15 disabled:cursor-default active:bg-brand-line/40"
+            style={{ backgroundColor: BG_INFO }}
             title={clip.storage_path || clip.location}
           >
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-              <MapPin className="w-4 h-4" /> 위치
+              <span className="text-brand-primary-deep"><MapPin className="w-4 h-4" /></span> 위치
             </p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">
               {clip.location}
@@ -1060,6 +1190,11 @@ function StreamFrame({
 
 const EVENT_ICON = {
   away_person: UserX,
+  fall_detected: UserX,
+  no_motion: UserX,
+  no_motion_warning: UserX,
+  no_motion_emergency: UserX,
+  seizure_suspected: UserX,
   capture_saved: Camera,
   clip_saved: Video,
 };

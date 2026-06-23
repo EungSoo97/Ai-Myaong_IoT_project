@@ -15,7 +15,7 @@ export function Stitch({ className = '' }) {
 
 /* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
  * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
-function PaperIcon({ shape, color, className = '', opacity = 1 }) {
+export function PaperIcon({ shape, color, className = '', opacity = 1 }) {
   return (
     <span
       aria-hidden

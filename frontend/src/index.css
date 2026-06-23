@@ -85,6 +85,24 @@
   opacity: 0;
 }
 
+/* 카메라 캡처 피드백 — 흰 플래시 1회 + 아이콘 팝 */
+@keyframes captureFlash {
+  0% { opacity: 0; }
+  10% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+.capture-flash {
+  animation: captureFlash 650ms ease-out forwards;
+}
+@keyframes capturePop {
+  0% { transform: scale(0.5); }
+  55% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.capture-pop {
+  animation: capturePop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
