@@ -27,7 +27,7 @@ export function HealthReport() {
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="flex-1 inline-flex items-center gap-2 font-display text-2xl font-bold text-brand-brown leading-tight">
+        <h1 className="flex-1 inline-flex items-center gap-2 font-cute text-2xl font-bold text-brand-brown leading-tight">
           AI 건강 분석
           <PawPrint className="w-6 h-6 text-brand-primary" />
         </h1>

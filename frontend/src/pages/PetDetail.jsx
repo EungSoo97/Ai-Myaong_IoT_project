@@ -181,7 +181,7 @@ export function PetDetail() {
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown leading-tight">
+        <h1 className="flex-1 font-cute text-2xl font-bold text-brand-brown leading-tight">
           반려동물 정보
         </h1>
         {pet && (
@@ -327,7 +327,7 @@ function PetBody({ pet }) {
 
         <div className="relative flex flex-col items-center text-center">
           <div className="relative">
-            <div className="pointer-events-none absolute -inset-2 rounded-full blur-xl" style={{ background: "rgb(var(--brand-primary) / 0.16)" }} />
+            <div className="aura-glow pointer-events-none absolute -inset-2 rounded-full blur-xl" style={{ background: "rgb(var(--brand-primary) / 0.16)" }} />
             <div
               className="relative w-28 h-28 rounded-full overflow-hidden flex items-center justify-center shadow-soft-inset ring-1 ring-brand-line/70"
               style={{ backgroundColor: BG_INFO }}

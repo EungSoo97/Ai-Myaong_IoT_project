@@ -47,18 +47,18 @@ export function BottomTabBar() {
                           alt={label}
                           draggable={false}
                           className={`w-7 h-7 object-contain transition-transform duration-200 ease-out group-active:scale-90 group-active:-rotate-6 ${
-                            isActive ? 'scale-110' : 'opacity-60'
+                            isActive ? 'scale-110' : 'opacity-80'
                           }`}
                         />
                       ) : (
                         <TabIcon
                           className={`w-6 h-6 transition-transform duration-200 ease-out group-active:scale-90 ${
-                            isActive ? 'text-brand-primary scale-110' : 'text-brand-mute'
+                            isActive ? 'text-brand-primary scale-110' : 'text-[rgb(var(--brand-tab-ink))]'
                           }`}
                         />
                       )}
                     </span>
-                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}>
+                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-brand-primary' : 'text-[rgb(var(--brand-tab-ink))]'}`}>
                       {label}
                     </span>
                   </>

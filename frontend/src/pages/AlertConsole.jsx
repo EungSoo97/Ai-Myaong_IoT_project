@@ -100,7 +100,7 @@ export function AlertConsole() {
           <ShieldAlert className="w-5 h-5" />
         </span>
         <div>
-          <h1 className="font-display text-xl font-bold leading-tight">관제 센터</h1>
+          <h1 className="font-cute text-xl font-bold leading-tight">관제 센터</h1>
           <p className="text-xs text-brand-mute">실시간 알림 · 상세 관제</p>
         </div>
       </header>

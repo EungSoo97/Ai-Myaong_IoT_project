@@ -46,7 +46,7 @@ import { mapVisionEventForList } from "../lib/visionEventMapper";
 
 const TONE = {
   primary: "bg-brand-primary/15 text-brand-primary",
-  warn: "bg-brand-warning/20 text-[#A06B1A]",
+  warn: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]",
   danger: "bg-brand-danger/15 text-brand-danger",
   brown: "bg-brand-brown/10 text-brand-brown",
 };
@@ -507,7 +507,12 @@ export function Dashboard() {
   return (
     <div className="px-5 pb-6">
       <PageHeader
-        title={`안녕하세요, ${nickname}님! 🐾`}
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            안녕하세요, {nickname}님!
+            <PawPrint className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+          </span>
+        }
         subtitle="오늘도 우리 아이를 살펴봐요"
         right={
           <div className="flex items-center gap-2">
@@ -575,7 +580,7 @@ export function Dashboard() {
               <div className="relative shrink-0">
                 {/* 글로우 오라 (부드러운 코랄 — 누런기 제거) */}
                 <div
-                  className="pointer-events-none absolute -inset-2.5 rounded-full blur-xl"
+                  className="aura-glow pointer-events-none absolute -inset-2.5 rounded-full blur-xl"
                   style={{ background: "rgb(var(--brand-primary) / 0.18)" }}
                 />
                 <div className="relative w-24 h-24 rounded-full bg-brand-bg flex items-center justify-center shadow-soft-inset overflow-hidden ring-1 ring-brand-line/70">
@@ -600,9 +605,9 @@ export function Dashboard() {
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${
                       health.tone === "success"
-                        ? "bg-brand-success/20 text-[#2F6A2E]"
+                        ? "bg-brand-success/20 text-[rgb(var(--brand-success-ink))]"
                         : health.tone === "warn"
-                        ? "bg-brand-warning/25 text-[#A06B1A]"
+                        ? "bg-brand-warning/25 text-[rgb(var(--brand-warning-ink))]"
                         : health.tone === "danger"
                         ? "bg-brand-primary-soft/50 text-brand-danger"
                         : "bg-brand-brown/10 text-brand-brown"
@@ -666,7 +671,7 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 1.5) AI 건강 분석 진입 — 고양이 배너 (public/AICAT.png) */}
+      {/* 1.5) AI 건강 분석 진입 — 고양이 배너 (public/ai-analysis/AICAT.png) */}
       <button
         type="button"
         onClick={() => (pet ? navigate("/health-report/0") : showToast("🐾 반려동물을 먼저 등록해 주세요"))}

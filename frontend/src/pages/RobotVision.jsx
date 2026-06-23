@@ -379,11 +379,11 @@ export function RobotVision() {
           type="button"
           onClick={() => navigate("/")}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown">
+        <h1 className="flex-1 font-cute text-2xl font-bold text-brand-brown">
           로봇 비전
         </h1>
         <Badge tone={isConnected ? "success" : "danger"}>

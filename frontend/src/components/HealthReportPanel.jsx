@@ -36,8 +36,8 @@ const C = {
 const TONE = {
   blue: { icon: "bg-brand-water/15 text-brand-water", bar: "bg-brand-water", badge: "bg-brand-water/15 text-brand-water", soft: "bg-brand-water/[0.06]", ring: "ring-brand-water", text: "text-brand-water" },
   coral: { icon: "bg-brand-primary/15 text-brand-primary", bar: "bg-brand-primary", badge: "bg-brand-primary/15 text-brand-primary", soft: "bg-brand-primary/[0.06]", ring: "ring-brand-primary", text: "text-brand-primary" },
-  green: { icon: "bg-brand-success/20 text-[#2F6A2E]", bar: "bg-brand-success", badge: "bg-brand-success/20 text-[#2F6A2E]", soft: "bg-brand-success/[0.08]", ring: "ring-brand-success", text: "text-[#2F6A2E]" },
-  amber: { icon: "bg-brand-warning/20 text-[#8B641C]", bar: "bg-brand-warning", badge: "bg-brand-warning/25 text-[#8B641C]", soft: "bg-brand-warning/[0.10]", ring: "ring-brand-warning", text: "text-[#8B641C]" },
+  green: { icon: "bg-brand-success/20 text-[rgb(var(--brand-success-ink))]", bar: "bg-brand-success", badge: "bg-brand-success/20 text-[rgb(var(--brand-success-ink))]", soft: "bg-brand-success/[0.08]", ring: "ring-brand-success", text: "text-[rgb(var(--brand-success-ink))]" },
+  amber: { icon: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]", bar: "bg-brand-warning", badge: "bg-brand-warning/25 text-[rgb(var(--brand-warning-ink))]", soft: "bg-brand-warning/[0.10]", ring: "ring-brand-warning", text: "text-[rgb(var(--brand-warning-ink))]" },
   gray: { icon: "bg-brand-brown/10 text-brand-brown", bar: "bg-brand-mute", badge: "bg-brand-brown/10 text-brand-brown", soft: "bg-brand-cream/60", ring: "ring-brand-mute", text: "text-brand-mute" },
 };
 
@@ -260,7 +260,7 @@ export function HealthReportPanel({ pet }) {
 
           {advice.disclaimer && (
             <p
-              className="rounded-2xl border border-dashed border-brand-brown/20 px-4 py-3 text-[11px] font-semibold leading-relaxed text-[#8B641C]"
+              className="rounded-2xl border border-dashed border-brand-brown/20 px-4 py-3 text-[11px] font-semibold leading-relaxed text-[rgb(var(--brand-warning-ink))]"
               style={{ backgroundColor: BG_INFO }}
             >
               {advice.disclaimer}
@@ -276,8 +276,8 @@ export function HealthReportPanel({ pet }) {
 /* ───────────────────────── 개요 카드 ───────────────────────── */
 
 const RISK_DISPLAY = {
-  low: { word: "양호", Icon: Check, pill: "bg-brand-success/15 text-[#2F6A2E]", aura: "bg-brand-success/40" },
-  medium: { word: "주의", Icon: AlertTriangle, pill: "bg-brand-warning/20 text-[#8B641C]", aura: "bg-brand-warning/40" },
+  low: { word: "양호", Icon: Check, pill: "bg-brand-success/15 text-[rgb(var(--brand-success-ink))]", aura: "bg-brand-success/40" },
+  medium: { word: "주의", Icon: AlertTriangle, pill: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]", aura: "bg-brand-warning/40" },
   high: { word: "경고", Icon: ShieldAlert, pill: "bg-brand-danger/15 text-brand-danger", aura: "bg-brand-danger/45" },
   unknown: { word: "확인 필요", Icon: Info, pill: "bg-brand-brown/10 text-brand-brown", aura: "bg-brand-line" },
 };
@@ -289,7 +289,7 @@ function SummaryCard({ pet, report, advice, metrics, period, onRegenerate, loadi
     <div className="relative overflow-hidden rounded-[28px] shadow-soft-lg" style={{ backgroundColor: BG_CARD }}>
       <Stitch className="!inset-[8px] !rounded-[22px]" />
       {/* 위험도 톤 오라 (은은한 컬러 글로우) */}
-      <div className={`pointer-events-none absolute -right-10 -top-12 w-44 h-44 rounded-full ${r.aura} blur-3xl opacity-50`} />
+      <div className={`aura-glow pointer-events-none absolute -right-10 -top-12 w-44 h-44 rounded-full ${r.aura} blur-3xl opacity-50`} />
       {/* 종이질감 발바닥/뼈 장식 */}
       <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute right-5 bottom-5 w-16 h-16 rotate-6" />
       <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute left-7 top-28 w-8 h-8 -rotate-12" />
@@ -535,7 +535,7 @@ function buildCategories(advice) {
             <ThemedItem key={i} tone={TONE.green}>
               <div className="flex items-start gap-2.5">
                 <span className="mt-0.5 w-6 h-6 shrink-0 rounded-full bg-brand-success/20 flex items-center justify-center">
-                  <Check className="w-3.5 h-3.5 text-[#2F6A2E]" strokeWidth={3} />
+                  <Check className="w-3.5 h-3.5 text-[rgb(var(--brand-success-ink))]" strokeWidth={3} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
@@ -547,7 +547,7 @@ function buildCategories(advice) {
                     </p>
                   )}
                   {item.check_after && (
-                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand-success/10 px-2.5 py-1 text-[11px] font-bold" style={{ color: "#2F6A2E" }}>
+                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand-success/10 px-2.5 py-1 text-[11px] font-bold" style={{ color: "rgb(var(--brand-success-ink))" }}>
                       <Clock className="w-3 h-3" /> {item.check_after}
                     </p>
                   )}
@@ -572,7 +572,7 @@ function buildCategories(advice) {
           {advice.watch_points.map((item, i) => (
             <ThemedItem key={i} tone={TONE.amber}>
               <div className="flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 shrink-0 text-[#8B641C]" />
+                <ShieldAlert className="w-4 h-4 shrink-0 text-[rgb(var(--brand-warning-ink))]" />
                 <p className="text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
                   {item.item || "주의 항목"}
                 </p>
@@ -583,7 +583,7 @@ function buildCategories(advice) {
                 </p>
               )}
               {item.when_to_consult_vet && (
-                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-brand-warning/15 px-2.5 py-1.5 text-[11px] font-bold leading-relaxed" style={{ color: "#8B641C" }}>
+                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-brand-warning/15 px-2.5 py-1.5 text-[11px] font-bold leading-relaxed" style={{ color: "rgb(var(--brand-warning-ink))" }}>
                   <Stethoscope className="w-3.5 h-3.5 mt-px shrink-0" /> {item.when_to_consult_vet}
                 </p>
               )}
@@ -788,7 +788,7 @@ function EmptyState({ loading, onCreate }) {
 function SectionHeader({ icon, title, tone = "primary" }) {
   const chip =
     tone === "warning" ?
-      "bg-brand-warning/20 text-[#8B641C]"
+      "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]"
     : "bg-brand-primary/12 text-brand-primary";
   return (
     <div className="flex items-center gap-2 mb-2.5">
