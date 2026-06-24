@@ -1,18 +1,55 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft } from '../components/icons'
+import { ChevronLeft, UtensilsCrossed, Droplets, Clock, Sun, Calendar } from '../components/icons'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { Card } from '../components/ui'
 import { api } from '../api/api'
 
 const COLORS = {
-  food: '#F08D86',
-  water: '#5BA4D9',
+  food: '#E68278', // 차분한 코랄 (브랜드 토큰과 동일 톤)
+  water: '#6396B0', // 채도 낮춘 블루
   brown: '#4B3621',
   mute: '#9C8A78',
   line: '#EFE3D2',
+}
+
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
+const BG_CARD = 'color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)'
+const BG_INFO = 'color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)'
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = '' }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  )
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = '', opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: 'url(/paper.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundBlendMode: 'multiply',
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+        opacity,
+      }}
+    />
+  )
 }
 
 /* ───── DB 기록(feed_logs / water_logs) → 일/주/월 집계 ───── */
@@ -87,9 +124,9 @@ function buildStats(logs) {
 }
 
 const PERIODS = [
-  { id: 'day', label: '일간' },
-  { id: 'week', label: '주간' },
-  { id: 'month', label: '월간' },
+  { id: 'day', label: '일간', icon: Sun },
+  { id: 'week', label: '주간', icon: Calendar },
+  { id: 'month', label: '월간', icon: Calendar },
 ]
 
 export function Feeding() {
@@ -128,13 +165,13 @@ export function Feeding() {
           type="button"
           onClick={() => navigate(-1)}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">급여 통계</h1>
-          <p className="text-sm text-brand-mute truncate">일 · 주 · 월 급여량 통계</p>
+          <h1 className="font-cute text-2xl font-bold text-brand-brown leading-tight">급여 통계</h1>
+          <p className="text-sm text-brand-mute truncate">일 · 주 · 월 급여량 통계 🐾</p>
         </div>
       </header>
 
@@ -143,16 +180,19 @@ export function Feeding() {
         <PeriodTabs value={period} onChange={setPeriod} />
       </div>
 
-      {/* 요약 카드 (2×2: 기간 총량 + 마지막 시각, 사료/물 대칭) */}
+      {/* 요약 카드 (2×2: 기간 총량 + 마지막 시각, 사료/물 대칭) — 기간 총량을 강조 */}
       <div className="grid grid-cols-2 gap-2.5">
-        <SummaryCard label={`${periodKo} 사료`} value={`${periodTotal.food}g`} dot={COLORS.food} />
-        <SummaryCard label={`${periodKo} 급수`} value={`${periodTotal.water}ml`} dot={COLORS.water} />
-        <SummaryCard label="마지막 사료" value={summary.lastFeed} small dot={COLORS.food} />
-        <SummaryCard label="마지막 급수" value={summary.lastWater} small dot={COLORS.water} />
+        <SummaryCard label={`${periodKo} 사료`} value={`${periodTotal.food}g`} tone={COLORS.food} icon={<UtensilsCrossed className="w-4 h-4" />} emphasis />
+        <SummaryCard label={`${periodKo} 급수`} value={`${periodTotal.water}ml`} tone={COLORS.water} icon={<Droplets className="w-4 h-4" />} emphasis />
+        <SummaryCard label="마지막 사료" value={summary.lastFeed} small tone={COLORS.food} icon={<Clock className="w-4 h-4" />} />
+        <SummaryCard label="마지막 급수" value={summary.lastWater} small tone={COLORS.water} icon={<Clock className="w-4 h-4" />} />
       </div>
 
       {/* 차트 (사료 + 급수 한눈에) */}
-      <Card className="mt-3 p-4">
+      <div className="relative overflow-hidden rounded-3xl shadow-soft mt-3 p-4" style={{ backgroundColor: BG_CARD }}>
+        <Stitch />
+        <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+        <div className="relative z-10">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs text-brand-mute font-semibold">
             {period === 'day' && '오늘 시간대별'}
@@ -188,7 +228,8 @@ export function Feeding() {
           </div>
         )}
         </div>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -268,7 +309,8 @@ function MonthlyPanChart({ all, visible = 6 }) {
             <button
               type="button"
               onClick={() => setOffset(0)}
-              className="ml-1 px-2 py-0.5 rounded-full bg-brand-cream text-brand-brown font-bold touch-active"
+              className="ml-1 px-2 py-0.5 rounded-full border border-dashed border-brand-brown/25 text-brand-brown font-bold touch-active"
+              style={{ backgroundColor: BG_INFO }}
             >
               현재로
             </button>
@@ -285,13 +327,15 @@ function PeriodTabs({ value, onChange }) {
     <div className="inline-flex bg-brand-cream rounded-full p-1 shadow-soft-inset">
       {PERIODS.map((opt) => {
         const active = value === opt.id
+        const OIcon = opt.icon
         return (
           <button
             key={opt.id}
             type="button"
             onClick={() => onChange(opt.id)}
-            className={`px-5 py-1.5 text-sm font-bold rounded-full transition-colors ${active ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-mute'}`}
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold rounded-full transition-colors ${active ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-mute'}`}
           >
+            <OIcon className="w-4 h-4" />
             {opt.label}
           </button>
         )
@@ -300,15 +344,34 @@ function PeriodTabs({ value, onChange }) {
   )
 }
 
-function SummaryCard({ label, value, small, dot }) {
+function SummaryCard({ label, value, small, tone, icon, emphasis }) {
   return (
-    <Card className="px-3 py-3.5 text-center">
-      <p className="text-[11px] text-brand-mute font-semibold truncate flex items-center justify-center gap-1">
-        {dot && <span className="w-2 h-2 rounded-full" style={{ background: dot }} />}
-        {label}
-      </p>
-      <p className={`font-display font-bold text-brand-brown mt-1 leading-none ${small ? 'text-base' : 'text-xl'}`}>{value}</p>
-    </Card>
+    <div
+      className="relative overflow-hidden rounded-3xl shadow-soft px-3.5 py-3.5"
+      style={{ backgroundColor: emphasis ? BG_CARD : BG_INFO }}
+    >
+      <Stitch />
+      {emphasis && (
+        <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-2 -bottom-2 w-12 h-12 rotate-6" />
+      )}
+      <div className="relative z-10">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span
+            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border border-dashed"
+            style={{ background: `${tone}26`, color: tone, borderColor: `${tone}66` }}
+          >
+            {icon}
+          </span>
+          <p className="text-[11px] text-brand-brown/70 font-bold truncate">{label}</p>
+        </div>
+        <p
+          className={`font-display font-extrabold leading-none ${small ? 'text-base text-brand-brown' : 'text-2xl'}`}
+          style={small ? undefined : { color: tone }}
+        >
+          {value}
+        </p>
+      </div>
+    </div>
   )
 }
 

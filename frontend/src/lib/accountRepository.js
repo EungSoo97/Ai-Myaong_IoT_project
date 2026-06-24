@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { api } from '../api/api'
+import { fromApiPet } from './petMap'
 
 /* ───────────────────────────────────────────────────────────
  * 계정/펫 데이터 접근 계층 (Repository)
@@ -46,8 +48,82 @@ export function clearAccount() {
   } catch { /* ignore */ }
 }
 
+/* 로컬에 남은 모든 앱 데이터 초기화 (탈퇴 시 완전 정리)
+ * local/session 양쪽의 'aimyaong:*' 키를 전부 제거 → 재가입 시 이전 계정 흔적 없음
+ * (계정/펫, 외출모드, 알림설정, 온보딩 여부, 토큰/세션 유저 등 모두 포함) */
+export function clearAllLocalData() {
+  try {
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      const keys = []
+      for (let i = 0; i < storage.length; i++) {
+        const k = storage.key(i)
+        if (k && k.startsWith('aimyaong:')) keys.push(k)
+      }
+      keys.forEach((k) => storage.removeItem(k))
+    }
+    window.dispatchEvent(new Event('account-changed'))
+  } catch (e) {
+    console.warn('[accountRepository] 전체 초기화 실패', e)
+  }
+}
+
 export function getCurrentUser() {
   return getAccount()?.user ?? null
+}
+
+/* ───────────────────────────────────────────────────────────
+ * 서버(DB)를 source of truth 로 사용.
+ * 토큰으로 GET /api/auth/me 를 호출해 받은 유저·펫을 화면용 형태로 매핑하고,
+ * localStorage 는 그 결과를 담는 "렌더 캐시"로만 둔다(항상 서버로 덮어씀).
+ * ─────────────────────────────────────────────────────────── */
+
+// 백엔드 UserResponse → 계정(account) 형태
+function mapUserToAccount(u) {
+  return {
+    provider: u?.oauth_provider ? String(u.oauth_provider).toLowerCase() : 'local',
+    user: {
+      userId: u?.username || '',
+      email: u?.email || '',
+      nickname: u?.nickname || '',
+      photo: u?.profile_photo_path || '',
+      profile_photo_path: u?.profile_photo_path || '',
+    },
+    pets: (u?.pets || []).map((p) => fromApiPet(p)),
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function readToken() {
+  try {
+    return sessionStorage.getItem('aimyaong:token')
+  } catch {
+    return null
+  }
+}
+
+let _inflight = null
+let _lastFetch = 0
+
+/* 서버에서 계정을 최신화해 캐시에 반영. 토큰 없으면 no-op.
+ * 동시/연속 호출은 in-flight 공유 + 짧은 TTL 로 중복 요청을 막는다. */
+export async function refreshFromServer({ force = false } = {}) {
+  if (!readToken()) return null
+  if (!force && _inflight) return _inflight
+  if (!force && Date.now() - _lastFetch < 1500) return getAccount()
+  _inflight = (async () => {
+    try {
+      const u = await api.getMe()
+      const acc = mapUserToAccount(u)
+      saveAccount(acc) // account-changed 발행 → 구독 화면 갱신
+      _lastFetch = Date.now()
+      return acc
+    } catch {
+      return getAccount() // 실패 시 기존 캐시 유지(오프라인/일시 오류)
+    } finally {
+      _inflight = null
+    }
+  })()
+  return _inflight
 }
 
 /* 유저 정보 수정 — 내일: PATCH /api/me 로 교체 */
@@ -181,6 +257,8 @@ export function useAccount() {
     const onStorage = (e) => { if (e.key === KEY) refresh() }
     window.addEventListener('storage', onStorage)
     window.addEventListener('account-changed', refresh)
+    // 마운트 시 서버(DB)에서 최신화 → saveAccount → account-changed → refresh
+    refreshFromServer()
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('account-changed', refresh)

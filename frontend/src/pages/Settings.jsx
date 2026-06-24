@@ -8,17 +8,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-  Search,
   Lock,
-  Signal,
   Cpu,
   Check,
   X,
+  Moon,
 } from '../components/icons';
 import {
-  Card,
-  CreamCard,
-  PageHeader,
   ToggleSwitch,
   Badge,
   PrimaryButton,
@@ -35,6 +31,59 @@ const DEFAULT_ESP32_SETUP_URL =
   import.meta.env.VITE_ESP32_SETUP_URL || "http://192.168.4.1";
 const DEFAULT_ESP32_MQTT_HOST =
   import.meta.env.VITE_ESP32_MQTT_HOST || "10.1.82.103";
+
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
+const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
+const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
+// 은은한 갈색 강조 — 크림 베이스에 갈색을 아주 살짝(약 5%)만 섞어 깔끔하게 (통일감 유지)
+const BG_HILITE = "color-mix(in srgb, rgb(var(--brand-cream)) 95%, rgb(var(--brand-brown)) 5%)";
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = "" }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  );
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = "", opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: "url(/paper.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundBlendMode: "multiply",
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        opacity,
+      }}
+    />
+  );
+}
+
+/* 펠트 카드 컨테이너 — BG_CARD + 점선 스티치 (콘텐츠는 z-10) */
+function FeltCard({ className = "", innerClassName = "", decorations = null, bg = BG_CARD, accent = false, children }) {
+  return (
+    <div className={`relative overflow-hidden rounded-3xl shadow-soft ${className}`} style={{ backgroundColor: bg }}>
+      <Stitch />
+      {/* 왼쪽 갈색 액센트 바 (강조 카드) */}
+      {accent && <span className="pointer-events-none absolute left-0 top-4 bottom-4 w-[3px] rounded-full bg-brand-brown/40" />}
+      {decorations}
+      <div className={`relative z-10 ${innerClassName}`}>{children}</div>
+    </div>
+  );
+}
 
 export function Settings() {
   const navigate = useNavigate();
@@ -352,12 +401,12 @@ export function Settings() {
           type="button"
           onClick={() => navigate("/")}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">
+          <h1 className="font-cute text-2xl font-bold text-brand-brown leading-tight">
             설정
           </h1>
           <p className="text-sm text-brand-mute truncate">
@@ -371,10 +420,20 @@ export function Settings() {
           네트워크
         </h3>
 
-        {/* 현재 연결 상태 */}
-        <Card className="px-4 py-4 flex items-center gap-3">
+        {/* 현재 연결 상태 — 네트워크의 핵심 상태라 은은한 갈색으로 강조 */}
+        <FeltCard
+          bg={BG_HILITE}
+          accent
+          innerClassName="px-4 py-4 flex items-center gap-3 pl-5"
+          decorations={
+            <>
+              <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+              <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.45} className="absolute right-5 top-3 w-3.5 h-3.5" />
+            </>
+          }
+        >
           <span
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${wifiStatus?.stationConnected ? "bg-brand-success/15 text-brand-success" : "bg-brand-warning/20 text-[#A06B1A]"}`}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${wifiStatus?.stationConnected ? "bg-brand-success/15 text-brand-success border-brand-success/30" : "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]"}`}
           >
             <Wifi className="w-5 h-5" />
           </span>
@@ -394,7 +453,7 @@ export function Settings() {
           <Badge tone={wifiStatus?.stationConnected ? "success" : "warn"}>
             {wifiStatus?.stationConnected ? "연결됨" : "설정 모드"}
           </Badge>
-        </Card>
+        </FeltCard>
 
         {/* 사용 가능한 Wi-Fi (폰 스타일 목록) */}
         <div className="mt-4 flex items-center justify-between px-1 mb-2">
@@ -414,8 +473,8 @@ export function Settings() {
           </button>
         </div>
 
-        <CreamCard
-          className={`divide-y divide-brand-line ${
+        <FeltCard
+          innerClassName={`divide-y divide-brand-line/70 ${
             networks.length > 5 ? "max-h-[296px] overflow-y-auto" : ""
           }`}
         >
@@ -462,7 +521,7 @@ export function Settings() {
               );
             })
           )}
-        </CreamCard>
+        </FeltCard>
 
         {/* 고급 설정 (접기) */}
         <button
@@ -476,7 +535,7 @@ export function Settings() {
           />
         </button>
         {showAdvanced && (
-          <Card className="mt-2 p-4">
+          <FeltCard className="mt-2" innerClassName="p-4">
             <label className="block text-[11px] font-bold text-brand-mute pl-1">
               ESP32 설정 주소
             </label>
@@ -532,7 +591,7 @@ export function Settings() {
             >
               ESP32 단독 연결
             </GhostButton>
-          </Card>
+          </FeltCard>
         )}
 
 
@@ -547,8 +606,14 @@ export function Settings() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
           알림 제어
         </h3>
-        <CreamCard className="divide-y divide-brand-line">
+        <FeltCard
+          innerClassName="divide-y divide-brand-line/70"
+          decorations={
+            <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          }
+        >
           <Row
+            highlight
             icon={<Bell className="w-5 h-5" />}
             title="푸시 알림"
             desc="모든 푸시 알림 전역 On/Off"
@@ -596,20 +661,30 @@ export function Settings() {
             }
             disabled={!pushOn}
           />
-        </CreamCard>
+        </FeltCard>
       </section>
 
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
           화면 테마
         </h3>
-        <CreamCard className="px-4 py-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-brand-brown">테마</p>
-            <p className="text-xs text-brand-mute">라이트 · 다크</p>
+        <FeltCard
+          innerClassName="px-4 py-4 flex items-center justify-between gap-3"
+          decorations={
+            <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.4} className="absolute right-24 top-4 w-3.5 h-3.5" />
+          }
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed border-brand-brown/20 text-brand-primary" style={{ backgroundColor: BG_INFO }}>
+              <Moon className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">테마</p>
+              <p className="text-xs text-brand-mute">라이트 · 다크</p>
+            </div>
           </div>
           <ThemeToggle />
-        </CreamCard>
+        </FeltCard>
       </section>
 
       <section className="mt-6">
@@ -619,9 +694,14 @@ export function Settings() {
 
         {/* 로봇 시리얼 번호 (기기 등록) */}
         {serial ? (
-          <Card className="px-4 py-4">
+          <FeltCard
+            innerClassName="px-4 py-4"
+            decorations={
+              <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-14 h-14 rotate-6" />
+            }
+          >
             <div className="flex items-center gap-3">
-              <span className="w-11 h-11 rounded-2xl bg-brand-success/15 text-brand-success flex items-center justify-center shrink-0">
+              <span className="w-11 h-11 rounded-2xl bg-brand-success/15 text-brand-success flex items-center justify-center shrink-0 border border-dashed border-brand-success/30">
                 <Cpu className="w-5 h-5" />
               </span>
               <div className="flex-1 min-w-0">
@@ -635,14 +715,15 @@ export function Settings() {
               <button
                 type="button"
                 onClick={unregisterSerial}
-                className="text-xs font-bold text-brand-mute px-3 py-1.5 rounded-full bg-brand-cream touch-active shrink-0"
+                className="text-xs font-bold text-brand-brown px-3 py-1.5 rounded-full border border-dashed border-brand-brown/25 touch-active shrink-0"
+                style={{ backgroundColor: BG_INFO }}
               >
                 해제
               </button>
             </div>
-          </Card>
+          </FeltCard>
         ) : (
-          <Card className="px-4 py-4">
+          <FeltCard innerClassName="px-4 py-4">
             <label className="flex items-center gap-1.5 text-xs font-bold text-brand-mute pl-0.5">
               <Cpu className="w-4 h-4 text-brand-primary" /> 로봇 시리얼 번호
             </label>
@@ -665,29 +746,33 @@ export function Settings() {
             <p className="mt-2 text-[11px] text-brand-mute pl-0.5">
               기기 밑면 또는 포장 박스의 시리얼 번호를 입력해 주세요.
             </p>
-          </Card>
+          </FeltCard>
         )}
 
         <div className="grid grid-cols-2 gap-3 mt-3">
           <button
             type="button"
             disabled={!serial}
-            className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active disabled:opacity-50"
+            className="relative overflow-hidden flex flex-col items-center gap-2 py-5 rounded-3xl shadow-soft touch-active disabled:opacity-50"
+            style={{ backgroundColor: BG_CARD }}
           >
-            <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+            <Stitch />
+            <span className="relative z-10 w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
               <RotateCw className="w-5 h-5" />
             </span>
-            <span className="text-sm font-bold text-brand-brown">재부팅</span>
+            <span className="relative z-10 text-sm font-bold text-brand-brown">재부팅</span>
           </button>
           <button
             type="button"
             disabled={!serial}
-            className="flex flex-col items-center gap-2 py-5 rounded-3xl bg-brand-card shadow-soft touch-active disabled:opacity-50"
+            className="relative overflow-hidden flex flex-col items-center gap-2 py-5 rounded-3xl shadow-soft touch-active disabled:opacity-50"
+            style={{ backgroundColor: BG_CARD }}
           >
-            <span className="w-11 h-11 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center">
+            <Stitch />
+            <span className="relative z-10 w-11 h-11 rounded-2xl bg-brand-danger/15 text-brand-danger flex items-center justify-center border border-dashed border-brand-danger/30">
               <Power className="w-5 h-5" />
             </span>
-            <span className="text-sm font-bold text-brand-brown">전원 Off</span>
+            <span className="relative z-10 text-sm font-bold text-brand-brown">전원 Off</span>
           </button>
         </div>
         {!serial && (
@@ -698,13 +783,13 @@ export function Settings() {
       </section>
 
       <section className="mt-6">
-        <Card className="divide-y divide-brand-line">
+        <FeltCard innerClassName="divide-y divide-brand-line/70">
           <LinkRow
             icon={<Info className="w-5 h-5 text-brand-mute" />}
             title="앱 정보 · 버전 1.0.0"
             onClick={() => setShowAppInfo(true)}
           />
-        </Card>
+        </FeltCard>
       </section>
 
       {/* Wi-Fi 연결 바텀 시트 */}
@@ -736,14 +821,14 @@ function signalLevel(rssi) {
 
 function SignalIcon({ level }) {
   return (
-    <span className="w-9 h-9 rounded-2xl bg-brand-cream flex items-end justify-center gap-0.5 p-2 shrink-0">
+    <span className="w-9 h-9 rounded-2xl flex items-end justify-center gap-0.5 p-2 shrink-0 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className="w-1 rounded-full"
           style={{
             height: `${6 + i * 5}px`,
-            background: i < level ? "#F08D86" : "#E7D8C2",
+            background: i < level ? "rgb(var(--brand-primary))" : "rgb(var(--brand-line))",
           }}
         />
       ))}
@@ -841,13 +926,19 @@ function WifiSheet({
   );
 }
 
-function Row({ icon, title, desc, right, disabled }) {
+function Row({ icon, title, desc, right, disabled, highlight }) {
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3.5 ${disabled ? "opacity-50" : ""}`}
+      className={`flex items-center gap-3 px-4 py-3.5 ${disabled ? "opacity-50" : ""} ${
+        highlight ? "border-l-[3px] border-brand-brown/30" : ""
+      }`}
+      style={highlight ? { backgroundColor: BG_HILITE } : undefined}
     >
       {icon && (
-        <span className="w-10 h-10 rounded-2xl bg-brand-card text-brand-primary flex items-center justify-center shrink-0 shadow-soft">
+        <span
+          className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed border-brand-brown/20 text-brand-primary shadow-soft"
+          style={{ backgroundColor: BG_INFO }}
+        >
           {icon}
         </span>
       )}
@@ -894,7 +985,7 @@ function AppInfoSheet({ onClose }) {
       >
         <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
         <div className="flex items-center gap-3 mb-4">
-          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+          <span className="w-11 h-11 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center border border-dashed border-brand-primary/30">
             <Info className="w-5 h-5" />
           </span>
           <div className="flex-1 min-w-0">
@@ -905,21 +996,27 @@ function AppInfoSheet({ onClose }) {
             type="button"
             onClick={dismiss}
             aria-label="닫기"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20"
+            style={{ backgroundColor: BG_INFO }}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="rounded-2xl bg-brand-card border border-brand-line divide-y divide-brand-line">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-sm text-brand-mute shrink-0">{k}</span>
-              <span className="text-sm font-bold text-brand-brown text-right break-all">{v}</span>
-            </div>
-          ))}
+        <div className="relative overflow-hidden rounded-3xl shadow-soft" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.12} className="absolute right-4 top-3 w-6 h-6 -rotate-12" />
+          <div className="relative z-10 divide-y divide-brand-line/70">
+            {rows.map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="text-sm text-brand-mute shrink-0">{k}</span>
+                <span className="text-sm font-bold text-brand-brown text-right break-all">{v}</span>
+              </div>
+            ))}
+          </div>
         </div>
         <p className="mt-4 text-center text-[11px] text-brand-mute">
-          © 2026 AiMyaong · 반려동물 IoT 케어
+          © 2026 AiMyaong · 반려동물 IoT 케어 🐾
         </p>
       </div>
     </div>
@@ -929,7 +1026,7 @@ function AppInfoSheet({ onClose }) {
 function LinkRow({ icon, title, onClick }) {
   return (
     <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3.5 touch-active text-left">
-      <span className="w-10 h-10 rounded-2xl bg-brand-cream flex items-center justify-center shrink-0">
+      <span className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
         {icon}
       </span>
       <p className="flex-1 text-sm font-bold text-brand-brown">{title}</p>
