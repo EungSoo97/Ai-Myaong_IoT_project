@@ -9,7 +9,6 @@ import {
   PiVideoCameraDuotone, PiVideoCameraFill,
   PiBowlFoodDuotone, PiBowlFoodFill,
   PiGearSixDuotone, PiGearSixFill,
-  PiCatDuotone, PiCatFill,
 } from 'react-icons/pi'
 
 const TABS = [
@@ -17,20 +16,21 @@ const TABS = [
   { to: '/vision', label: '로봇 비전', Icon: PiVideoCameraDuotone, IconActive: PiVideoCameraFill, tour: 'vision' },
   { to: '/dispenser', label: '디스펜서', Icon: PiBowlFoodDuotone, IconActive: PiBowlFoodFill, tour: 'dispenser' },
   { to: '/settings', label: '설정', Icon: PiGearSixDuotone, IconActive: PiGearSixFill },
-  { to: '/mypage', label: '마이 페이지', Icon: PiCatDuotone, IconActive: PiCatFill },
+  // 마이 페이지는 커스텀 이미지(public/mypage.png) 사용
+  { to: '/mypage', label: '마이 페이지', img: '/mypage.png' },
 ]
 
 export function BottomTabBar() {
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-50 bg-brand-card/95 backdrop-blur-md border-t border-brand-line pb-safe">
       <ul className="flex justify-around items-stretch px-2 pt-1.5">
-        {TABS.map(({ to, label, Icon, IconActive, end, tour }) => (
+        {TABS.map(({ to, label, Icon, IconActive, img, end, tour }) => (
           <li key={to} className="flex-1">
             <NavLink
               to={to}
               end={end}
               data-tour={tour}
-              className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-2xl no-select touch-active"
+              className="group flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-2xl no-select touch-active"
             >
               {({ isActive }) => {
                 const TabIcon = isActive ? IconActive : Icon
@@ -41,13 +41,24 @@ export function BottomTabBar() {
                         isActive ? 'bg-brand-primary/15' : 'bg-transparent'
                       }`}
                     >
-                      <TabIcon
-                        className={`w-6 h-6 transition-transform ${
-                          isActive ? 'text-brand-primary scale-110' : 'text-brand-mute'
-                        }`}
-                      />
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={label}
+                          draggable={false}
+                          className={`w-7 h-7 object-contain transition-transform duration-200 ease-out group-active:scale-90 group-active:-rotate-6 ${
+                            isActive ? 'scale-110' : 'opacity-80'
+                          }`}
+                        />
+                      ) : (
+                        <TabIcon
+                          className={`w-6 h-6 transition-transform duration-200 ease-out group-active:scale-90 ${
+                            isActive ? 'text-brand-primary scale-110' : 'text-[rgb(var(--brand-tab-ink))]'
+                          }`}
+                        />
+                      )}
                     </span>
-                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-brand-primary' : 'text-brand-mute'}`}>
+                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-brand-primary' : 'text-[rgb(var(--brand-tab-ink))]'}`}>
                       {label}
                     </span>
                   </>
