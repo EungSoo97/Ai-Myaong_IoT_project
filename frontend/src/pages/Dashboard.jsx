@@ -17,7 +17,6 @@ import {
   Plane,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   Footprints,
   Activity,
   Sparkles,
@@ -232,7 +231,6 @@ export function Dashboard() {
   const unread = unreadCount(notifications);
   const [visionEvents, setVisionEvents] = useState([]);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
-  const [showScrollTop, setShowScrollTop] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유
 
   // 최근 활동 = DB(배식/급수 기록)에서 최근순으로
@@ -466,18 +464,6 @@ export function Dashboard() {
   };
 
   // 스크롤 투 탑 버튼
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 300);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   // 외출 모드 (백엔드 전까지 프론트 localStorage 로 유지)
   const AWAY_KEY = "aimyaong:awayMode";
   const [awayMode, setAwayMode] = useState(() => {
@@ -1092,19 +1078,6 @@ export function Dashboard() {
         />
       )}
 
-      {/* 스크롤 투 탑 버튼 — 모바일 프레임(max-w-[480px]) 기준 우측 정렬 */}
-      {showScrollTop && (
-        <div className="fixed bottom-20 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 pointer-events-none">
-          <button
-            type="button"
-            onClick={scrollToTop}
-            className="pointer-events-auto absolute bottom-0 right-5 w-12 h-12 rounded-full bg-brand-bg/90 backdrop-blur-md text-brand-brown shadow-soft-lg flex items-center justify-center touch-active hover:bg-brand-bg transition-all border border-brand-line/50"
-            aria-label="맨 위로"
-          >
-            <ChevronUp className="w-6 h-6" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }

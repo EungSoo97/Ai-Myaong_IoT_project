@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Maximize2,
@@ -21,9 +21,11 @@ import {
   ShieldAlert,
 } from '../components/icons';
 import { Card, Badge } from "../components/ui";
+import { LogDatePicker } from "../components/LogDatePicker";
 import { api, resolveMediaUrl } from "../api/api";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { getWebSocketUrl } from "../lib/backendUrls";
+import { filterLogsByDate, groupLogsByDate } from "../lib/logGrouping";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
 
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지 공통) / 정보·칩: 따뜻한 탄
@@ -153,6 +155,7 @@ export function RobotVision() {
   const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [recording, setRecording] = useState(false);
   const [selectedClip, setSelectedClip] = useState(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
   const [streamInfo, setStreamInfo] = useState({ url: "", mode: "loading" });
   const [streamError, setStreamError] = useState("");
@@ -694,7 +697,7 @@ export function RobotVision() {
             </span>
             <button
               type="button"
-              onClick={() => navigate("/activity")}
+              onClick={() => setShowAllEvents(true)}
               className="text-xs text-brand-mute font-semibold flex items-center touch-active"
             >
               전체보기 <ChevronRight className="w-3.5 h-3.5" />
@@ -715,6 +718,7 @@ export function RobotVision() {
           )}
           {visibleEventLog.map((e) => {
             const Icon = e.icon || EVENT_ICON[e.eventType] || Video;
+            const hasEventMedia = !!(e.storage_path || e.clip_id);
             return (
               <div
                 key={e.id}
@@ -736,12 +740,12 @@ export function RobotVision() {
                     </p>
                     <p className="text-xs text-brand-mute truncate">
                       {e.location}
-                      {e.clip_id ? "" : " · 영상 없음"}
+                      {hasEventMedia ? "" : " · 영상 없음"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge tone={e.danger ? "danger" : e.warning ? "warn" : "primary"}>
-                      {e.clip_id ? "VOD" : "기록"}
+                      {hasEventMedia ? "VOD" : "기록"}
                     </Badge>
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
                     <ChevronRight className="w-4 h-4 text-brand-mute" />
@@ -767,6 +771,17 @@ export function RobotVision() {
       {/* 클립 뷰어 (활동 기록 상세와 동일 형식) */}
       {selectedClip && (
         <ClipModal clip={selectedClip} onClose={() => setSelectedClip(null)} />
+      )}
+      {showAllEvents && (
+        <EventLogSheet
+          items={eventLog}
+          onClose={() => setShowAllEvents(false)}
+          onDelete={deleteVisionEvent}
+          onSelect={(event) => {
+            setShowAllEvents(false);
+            setSelectedClip(event);
+          }}
+        />
       )}
 
       {/* 전체화면 스테이지 - 가로 모드 풀스크린 */}
@@ -913,13 +928,160 @@ function FullscreenView({
 
 /* 클립 뷰어 — 바텀시트 + 실제 영상 재생 (활동 기록 상세와 동일 형식).
  * 백엔드가 클립을 저장/서빙하면 자동 재생, 미구현 시 placeholder 폴백. */
+function EventLogSheet({ items, onClose, onDelete, onSelect }) {
+  const [show, setShow] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const filteredItems = useMemo(() => filterLogsByDate(items, selectedDate), [items, selectedDate]);
+  const groups = useMemo(() => groupLogsByDate(filteredItems), [filteredItems]);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShow(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const dismiss = () => {
+    setShow(false);
+    setTimeout(onClose, 280);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center"
+      onClick={dismiss}
+    >
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: "rgba(45,37,32,0.45)", opacity: show ? 1 : 0 }}
+      />
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-hidden rounded-t-3xl sm:rounded-b-3xl px-5 pt-3 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: BG_CARD,
+          transform: show ? "translateY(0)" : "translateY(100%)",
+          paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))",
+        }}
+      >
+        <Stitch className="!inset-[8px] !rounded-[22px]" />
+        <div className="relative z-10">
+          <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed bg-brand-primary/15 text-brand-primary border-brand-primary/30">
+              <Video className="w-5 h-5" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">
+                이벤트 로그 전체보기
+              </h3>
+              <p className="text-xs text-brand-mute">
+                날짜별로 최근 비전 이벤트를 확인해요.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label="닫기"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20"
+              style={{ backgroundColor: BG_INFO }}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <LogDatePicker
+            items={items}
+            open={calendarOpen}
+            selectedDate={selectedDate}
+            onToggle={() => setCalendarOpen((open) => !open)}
+            onSelectDate={(dateKey) => {
+              setSelectedDate(dateKey);
+              setCalendarOpen(false);
+            }}
+            onClearDate={() => setSelectedDate("")}
+            className="mt-4"
+          />
+
+          <div className="mt-4 max-h-[62dvh] overflow-y-auto no-scrollbar rounded-[18px] overflow-hidden">
+            {groups.length === 0 && (
+              <div className="px-4 py-10 flex flex-col items-center text-center bg-brand-card">
+                <span className="w-14 h-14 rounded-full flex items-center justify-center mb-3 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+                  <Video className="w-7 h-7 text-brand-primary/70" />
+                </span>
+                <p className="text-sm font-semibold text-brand-mute">
+                  아직 기록된 이벤트가 없어요.
+                </p>
+              </div>
+            )}
+            {groups.map((group) => (
+              <div key={group.label}>
+                <div className="sticky top-0 z-10 px-4 py-2 bg-brand-cream/95 backdrop-blur text-[11px] font-bold text-brand-mute border-y border-brand-line/70 first:border-t-0">
+                  {group.label}
+                </div>
+                <div className="divide-y divide-brand-line/70">
+                  {group.items.map((event) => {
+                    const Icon = event.icon || EVENT_ICON[event.eventType] || Video;
+                    const hasMedia = !!(event.storage_path || event.clip_id);
+                    return (
+                      <div
+                        key={event.id}
+                        className="w-full flex items-center gap-2 px-4 py-3.5 bg-brand-card"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onSelect(event)}
+                          className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream/60 transition-colors rounded-2xl"
+                        >
+                          <span
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${event.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : event.warning ? "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
+                          >
+                            <Icon className="w-5 h-5" />
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-brand-brown truncate">
+                              {event.type}
+                            </p>
+                            <p className="text-xs text-brand-mute truncate">
+                              {event.location}
+                              {hasMedia ? "" : " · 미디어 없음"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Badge tone={event.danger ? "danger" : event.warning ? "warn" : "primary"}>
+                              {hasMedia ? "VOD" : "기록"}
+                            </Badge>
+                            <span className="text-[11px] text-brand-mute">{event.time}</span>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(domEvent) => onDelete(event, domEvent)}
+                          className="w-9 h-9 rounded-2xl text-brand-mute flex items-center justify-center shrink-0 border border-dashed border-brand-brown/15 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                          style={{ backgroundColor: BG_INFO }}
+                          aria-label="로그 삭제"
+                          title="로그 삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClipModal({ clip, onClose }) {
   const [show, setShow] = useState(false);
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaFailed, setMediaFailed] = useState(false);
   const Icon = clip.icon || Video;
   const isCapture = clip.eventType === "capture_saved";
-  const isClip = clip.eventType === "clip_saved" || !!clip.clip_id;
   const isAwayPerson = clip.eventType === "away_person";
   const hasMedia = !!(clip.storage_path || clip.clip_id);
 
@@ -956,7 +1118,7 @@ function ClipModal({ clip, onClose }) {
     setTimeout(onClose, 280);
   };
   const showImage = isCapture && mediaUrl && !mediaFailed;
-  const showVideo = isClip && mediaUrl && !mediaFailed;
+  const showVideo = !isCapture && mediaUrl && !mediaFailed;
   const openLocalPath = () => {
     if (!clip.storage_path) return;
     api.revealVisionMedia(clip.storage_path).catch((error) => {
@@ -1022,8 +1184,7 @@ function ClipModal({ clip, onClose }) {
         )}
 
         {/* 영상 */}
-        {!isAwayPerson && (
-          <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
+        <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
             {hasMedia ? (
               <>
                 {showImage ? (
@@ -1080,8 +1241,7 @@ function ClipModal({ clip, onClose }) {
                 저장된 미디어가 없는 이벤트예요
               </div>
             )}
-          </div>
-        )}
+        </div>
 
         {/* 메타 */}
         <div className="mt-3 grid grid-cols-2 gap-2.5">
