@@ -15,12 +15,18 @@ import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import { useVideoPlayer, VideoView } from "expo-video";
 import {
+  ArrowRight,
   Cat,
   ChevronLeft,
+  Check,
   Dog,
+  Eye,
+  EyeOff,
+  KeyRound,
   Lock,
   LogIn,
   Mail,
+  Search,
   User,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
@@ -319,20 +325,13 @@ export function LoginScreen({ navigation }) {
 
               <View style={styles.loginActions}>
                 <Pressable
-                  onPress={() =>
-                    Alert.alert("아이디 찾기", "아이디 찾기 기능을 준비 중입니다.")
-                  }
+                  onPress={() => navigation.navigate("FindId")}
                 >
                   <Text style={styles.smallLink}>아이디 찾기</Text>
                 </Pressable>
                 <Text style={styles.divider}>·</Text>
                 <Pressable
-                  onPress={() =>
-                    Alert.alert(
-                      "비밀번호 찾기",
-                      "비밀번호 찾기 기능을 준비 중입니다.",
-                    )
-                  }
+                  onPress={() => navigation.navigate("FindPassword")}
                 >
                   <Text style={styles.smallLink}>비밀번호 찾기</Text>
                 </Pressable>
@@ -607,6 +606,377 @@ export function SignupScreen({ navigation }) {
   );
 }
 
+function fullUserId(email) {
+  return (
+    email
+      .split("@")[0]
+      ?.replace(/[^a-zA-Z0-9]/g, "") || "myaong"
+  );
+}
+
+function maskUserId(id) {
+  const head = id.slice(0, 2);
+  return `${head}${"*".repeat(Math.max(id.length - 2, 3))}`;
+}
+
+function makeCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function isStrongPassword(value) {
+  return (
+    value.length >= 8 &&
+    /[A-Za-z]/.test(value) &&
+    /\d/.test(value) &&
+    /[^A-Za-z0-9]/.test(value)
+  );
+}
+
+function AuthHelperHeader({ title, subtitle, navigation }) {
+  return (
+    <View style={styles.signupHeader}>
+      <Pressable style={styles.backInline} onPress={() => navigation.goBack()}>
+        <ChevronLeft color={colors.text} />
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.signupTitle}>{title}</Text>
+        <Text style={styles.brandSub}>{subtitle}</Text>
+      </View>
+    </View>
+  );
+}
+
+function VerificationFields({
+  email,
+  setEmail,
+  code,
+  setCode,
+  sentCode,
+  setSentCode,
+  verified,
+  setVerified,
+  setError,
+}) {
+  const send = () => {
+    if (!email.includes("@")) {
+      setError("올바른 이메일을 입력해 주세요.");
+      return;
+    }
+    const next = makeCode();
+    setSentCode(next);
+    setVerified(false);
+    setCode("");
+    setError("");
+    Alert.alert("인증번호", `개발용 인증번호는 ${next} 입니다.`);
+  };
+
+  const verify = () => {
+    if (!sentCode) {
+      setError("먼저 인증번호를 받아 주세요.");
+      return;
+    }
+    if (code.trim() !== sentCode) {
+      setError("인증번호가 일치하지 않습니다.");
+      return;
+    }
+    setVerified(true);
+    setError("");
+    Alert.alert("확인", "이메일 인증이 완료되었습니다.");
+  };
+
+  return (
+    <>
+      <Field
+        style={styles.gap}
+        label="이메일"
+        value={email}
+        onChangeText={(value) => {
+          setEmail(value);
+          setVerified(false);
+        }}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        icon={<Mail size={18} color={colors.muted} />}
+        placeholder="name@example.com"
+      />
+      <Button
+        title={sentCode ? "인증번호 다시 받기" : "인증번호 받기"}
+        variant="secondary"
+        onPress={send}
+        style={styles.checkButton}
+      />
+      {sentCode ? (
+        <View style={styles.verifyRow}>
+          <Field
+            style={{ flex: 1 }}
+            label="인증번호"
+            value={code}
+            onChangeText={setCode}
+            keyboardType="number-pad"
+            placeholder="6자리"
+            editable={!verified}
+          />
+          <Button
+            title={verified ? "완료" : "확인"}
+            variant={verified ? "secondary" : "primary"}
+            onPress={verify}
+            disabled={verified}
+            style={styles.verifyButton}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+export function FindIdScreen({ navigation }) {
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [sentCode, setSentCode] = useState("");
+  const [verified, setVerified] = useState(false);
+  const [result, setResult] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    if (!verified) {
+      setError("이메일 인증을 완료해 주세요.");
+      return;
+    }
+    const full = fullUserId(email);
+    setResult({ full, masked: maskUserId(full) });
+    setError("");
+  };
+
+  return (
+    <Screen>
+      <AuthHelperHeader
+        title="아이디 찾기"
+        subtitle="가입한 이메일로 아이디를 찾아요"
+        navigation={navigation}
+      />
+      <Card style={styles.form}>
+        <View style={styles.helperIcon}>
+          <Search size={25} color={colors.primary} />
+        </View>
+        {result ? (
+          <>
+            <Text style={styles.helperTitle}>이런 아이디로 가입되어 있어요</Text>
+            <Pressable
+              onPress={() => setRevealed((value) => !value)}
+              style={styles.resultBox}
+            >
+              <Text style={styles.resultText}>
+                {revealed ? result.full : result.masked}
+              </Text>
+              {revealed ? (
+                <EyeOff size={19} color={colors.muted} />
+              ) : (
+                <Eye size={19} color={colors.muted} />
+              )}
+            </Pressable>
+            <Button
+              title="로그인하러 가기"
+              icon={<LogIn size={18} color="#fff" />}
+              onPress={() => navigation.navigate("Login")}
+              style={styles.submit}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.helperText}>
+              가입 시 등록한 이메일을 인증하면 아이디를 알려드려요.
+            </Text>
+            <VerificationFields
+              email={email}
+              setEmail={setEmail}
+              code={code}
+              setCode={setCode}
+              sentCode={sentCode}
+              setSentCode={setSentCode}
+              verified={verified}
+              setVerified={setVerified}
+              setError={setError}
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Button
+              title="아이디 찾기"
+              icon={<Search size={18} color="#fff" />}
+              onPress={submit}
+              style={styles.submit}
+            />
+          </>
+        )}
+      </Card>
+    </Screen>
+  );
+}
+
+export function FindPasswordScreen({ navigation }) {
+  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [sentCode, setSentCode] = useState("");
+  const [verified, setVerified] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    if (!userId.trim()) {
+      setError("아이디를 입력해 주세요.");
+      return;
+    }
+    if (!verified) {
+      setError("이메일 인증을 완료해 주세요.");
+      return;
+    }
+    setError("");
+    navigation.navigate("ResetPassword", {
+      userId: userId.trim(),
+      email,
+    });
+  };
+
+  return (
+    <Screen>
+      <AuthHelperHeader
+        title="비밀번호 찾기"
+        subtitle="아이디와 이메일로 본인 확인을 해요"
+        navigation={navigation}
+      />
+      <Card style={styles.form}>
+        <View style={styles.helperIcon}>
+          <KeyRound size={25} color={colors.primary} />
+        </View>
+        <Text style={styles.helperText}>
+          아이디 입력 후 이메일을 인증하면 비밀번호를 새로 설정할 수 있어요.
+        </Text>
+        <Field
+          style={styles.gap}
+          label="아이디"
+          value={userId}
+          onChangeText={setUserId}
+          autoCapitalize="none"
+          icon={<User size={18} color={colors.muted} />}
+          placeholder="로그인 아이디"
+        />
+        <VerificationFields
+          email={email}
+          setEmail={setEmail}
+          code={code}
+          setCode={setCode}
+          sentCode={sentCode}
+          setSentCode={setSentCode}
+          verified={verified}
+          setVerified={setVerified}
+          setError={setError}
+        />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Button
+          title="비밀번호 재설정하기"
+          icon={<ArrowRight size={18} color="#fff" />}
+          onPress={submit}
+          style={styles.submit}
+        />
+      </Card>
+    </Screen>
+  );
+}
+
+export function ResetPasswordScreen({ navigation }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    if (!isStrongPassword(password)) {
+      setError("비밀번호는 8자 이상이며 영문·숫자·특수문자를 포함해야 합니다.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    setError("");
+    setDone(true);
+  };
+
+  return (
+    <Screen>
+      <AuthHelperHeader
+        title="비밀번호 재설정"
+        subtitle={done ? "변경이 완료되었어요" : "새 비밀번호를 설정해요"}
+        navigation={navigation}
+      />
+      <Card style={styles.form}>
+        <View style={styles.helperIcon}>
+          {done ? (
+            <Check size={27} color={colors.success} />
+          ) : (
+            <KeyRound size={25} color={colors.primary} />
+          )}
+        </View>
+        {done ? (
+          <>
+            <Text style={styles.helperTitle}>비밀번호가 변경되었어요</Text>
+            <Text style={styles.helperText}>
+              새 비밀번호로 다시 로그인해 주세요.
+            </Text>
+            <Button
+              title="로그인하러 가기"
+              icon={<LogIn size={18} color="#fff" />}
+              onPress={() => navigation.navigate("Login")}
+              style={styles.submit}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.helperText}>
+              새로 사용할 비밀번호를 입력해 주세요.
+            </Text>
+            <Field
+              style={styles.gap}
+              label="새 비밀번호"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              icon={<Lock size={18} color={colors.muted} />}
+              placeholder="8자 이상, 영문·숫자·특수문자"
+            />
+            <Field
+              style={styles.gap}
+              label="새 비밀번호 확인"
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+              placeholder="비밀번호 재입력"
+            />
+            {confirm ? (
+              <Text
+                style={[
+                  styles.matchText,
+                  password === confirm ? styles.matchOk : styles.matchBad,
+                ]}
+              >
+                {password === confirm
+                  ? "비밀번호가 일치해요"
+                  : "비밀번호가 일치하지 않아요"}
+              </Text>
+            ) : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Button
+              title="비밀번호 변경하기"
+              icon={<Check size={18} color="#fff" />}
+              onPress={submit}
+              style={styles.submit}
+            />
+          </>
+        )}
+      </Card>
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
   splashBackground: {
     flex: 1,
@@ -792,6 +1162,68 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   checkButton: { marginTop: 10, minHeight: 44 },
+  helperIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.cream,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginBottom: 14,
+  },
+  helperTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  helperText: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  verifyRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    marginTop: 15,
+  },
+  verifyButton: {
+    width: 84,
+    minHeight: 54,
+    borderRadius: 18,
+  },
+  resultBox: {
+    minHeight: 58,
+    marginTop: 12,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.input,
+    borderWidth: 1.5,
+    borderColor: colors.line,
+  },
+  resultText: {
+    color: colors.primaryDark,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  matchText: {
+    marginTop: 8,
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  matchOk: { color: colors.success },
+  matchBad: { color: colors.danger },
   sectionTitle: {
     color: colors.text,
     fontWeight: "800",
