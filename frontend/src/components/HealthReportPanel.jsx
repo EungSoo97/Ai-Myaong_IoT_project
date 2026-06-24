@@ -36,10 +36,48 @@ const C = {
 const TONE = {
   blue: { icon: "bg-brand-water/15 text-brand-water", bar: "bg-brand-water", badge: "bg-brand-water/15 text-brand-water", soft: "bg-brand-water/[0.06]", ring: "ring-brand-water", text: "text-brand-water" },
   coral: { icon: "bg-brand-primary/15 text-brand-primary", bar: "bg-brand-primary", badge: "bg-brand-primary/15 text-brand-primary", soft: "bg-brand-primary/[0.06]", ring: "ring-brand-primary", text: "text-brand-primary" },
-  green: { icon: "bg-brand-success/20 text-[#2F6A2E]", bar: "bg-brand-success", badge: "bg-brand-success/20 text-[#2F6A2E]", soft: "bg-brand-success/[0.08]", ring: "ring-brand-success", text: "text-[#2F6A2E]" },
-  amber: { icon: "bg-brand-warning/20 text-[#8B641C]", bar: "bg-brand-warning", badge: "bg-brand-warning/25 text-[#8B641C]", soft: "bg-brand-warning/[0.10]", ring: "ring-brand-warning", text: "text-[#8B641C]" },
+  green: { icon: "bg-brand-success/20 text-[rgb(var(--brand-success-ink))]", bar: "bg-brand-success", badge: "bg-brand-success/20 text-[rgb(var(--brand-success-ink))]", soft: "bg-brand-success/[0.08]", ring: "ring-brand-success", text: "text-[rgb(var(--brand-success-ink))]" },
+  amber: { icon: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]", bar: "bg-brand-warning", badge: "bg-brand-warning/25 text-[rgb(var(--brand-warning-ink))]", soft: "bg-brand-warning/[0.10]", ring: "ring-brand-warning", text: "text-[rgb(var(--brand-warning-ink))]" },
   gray: { icon: "bg-brand-brown/10 text-brand-brown", bar: "bg-brand-mute", badge: "bg-brand-brown/10 text-brand-brown", soft: "bg-brand-cream/60", ring: "ring-brand-mute", text: "text-brand-mute" },
 };
+
+// 카드 배경: 흰색 80% + 크림 20% (지정) / 정보·칩 배경: 따뜻한 탄
+const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
+const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = "" }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border-2 border-dashed border-brand-brown/20 ${className}`} />
+  );
+}
+
+/* 종이질감 장식 아이콘 — 아이콘 실루엣(public/icons/*.svg)을 마스크로 써서 paper.jpg 텍스처를
+ * 그 모양 안에만 보이게 한다. 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = "", opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: "url(/paper.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundBlendMode: "multiply",
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        opacity,
+      }}
+    />
+  );
+}
 
 /**
  * AI 생활(건강) 리포트 패널.
@@ -169,6 +207,8 @@ export function HealthReportPanel({ pet }) {
                         count={cat.items.length}
                         preview={cat.preview}
                         tone={cat.tone}
+                        img={cat.img}
+                        imgClass={cat.imgClass}
                         active={openKeys.has(cat.key)}
                         disabled={cat.items.length === 0}
                         wide={single}
@@ -183,7 +223,7 @@ export function HealthReportPanel({ pet }) {
                       <Collapsible key={cat.key} open={openKeys.has(cat.key)}>
                         <div
                           id={`hr-detail-${cat.key}`}
-                          className={`relative mt-2.5 scroll-mt-4 rounded-3xl border border-brand-line/60 shadow-soft ${cat.tone.soft}`}
+                          className={`relative mt-2.5 scroll-mt-4 rounded-3xl border-2 border-dashed border-brand-brown/15 shadow-soft ${cat.tone.soft}`}
                         >
                           {/* 어느 카드(왼/오)의 상세인지 가리키는 포인터 */}
                           <span
@@ -192,7 +232,7 @@ export function HealthReportPanel({ pet }) {
                           />
                           <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-1">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className={`w-8 h-8 shrink-0 rounded-2xl flex items-center justify-center ${cat.tone.icon}`}>
+                              <span className={`w-8 h-8 shrink-0 rounded-full border border-dashed border-brand-brown/20 flex items-center justify-center ${cat.tone.icon}`}>
                                 {cat.icon}
                               </span>
                               <h4 className="text-[15px] font-extrabold truncate" style={{ color: C.brown }}>
@@ -219,7 +259,10 @@ export function HealthReportPanel({ pet }) {
           </div>
 
           {advice.disclaimer && (
-            <p className="rounded-2xl px-4 py-3 bg-brand-warning/15 text-[11px] font-semibold leading-relaxed text-[#8B641C]">
+            <p
+              className="rounded-2xl border border-dashed border-brand-brown/20 px-4 py-3 text-[11px] font-semibold leading-relaxed text-[rgb(var(--brand-warning-ink))]"
+              style={{ backgroundColor: BG_INFO }}
+            >
               {advice.disclaimer}
             </p>
           )}
@@ -233,8 +276,8 @@ export function HealthReportPanel({ pet }) {
 /* ───────────────────────── 개요 카드 ───────────────────────── */
 
 const RISK_DISPLAY = {
-  low: { word: "양호", Icon: Check, pill: "bg-brand-success/15 text-[#2F6A2E]", aura: "bg-brand-success/40" },
-  medium: { word: "주의", Icon: AlertTriangle, pill: "bg-brand-warning/20 text-[#8B641C]", aura: "bg-brand-warning/40" },
+  low: { word: "양호", Icon: Check, pill: "bg-brand-success/15 text-[rgb(var(--brand-success-ink))]", aura: "bg-brand-success/40" },
+  medium: { word: "주의", Icon: AlertTriangle, pill: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]", aura: "bg-brand-warning/40" },
   high: { word: "경고", Icon: ShieldAlert, pill: "bg-brand-danger/15 text-brand-danger", aura: "bg-brand-danger/45" },
   unknown: { word: "확인 필요", Icon: Info, pill: "bg-brand-brown/10 text-brand-brown", aura: "bg-brand-line" },
 };
@@ -243,11 +286,15 @@ function SummaryCard({ pet, report, advice, metrics, period, onRegenerate, loadi
   const r = RISK_DISPLAY[report?.risk_level] || RISK_DISPLAY.unknown;
   const meta = [pet?.name, "최근 7일 요약"].filter(Boolean).join(" · ");
   return (
-    <div className="relative overflow-hidden rounded-[28px] bg-brand-card border border-brand-line/60 shadow-soft-lg p-6">
+    <div className="relative overflow-hidden rounded-[28px] shadow-soft-lg" style={{ backgroundColor: BG_CARD }}>
+      <Stitch className="!inset-[8px] !rounded-[22px]" />
       {/* 위험도 톤 오라 (은은한 컬러 글로우) */}
-      <div className={`pointer-events-none absolute -right-10 -top-12 w-44 h-44 rounded-full ${r.aura} blur-3xl opacity-60`} />
+      <div className={`aura-glow pointer-events-none absolute -right-10 -top-12 w-44 h-44 rounded-full ${r.aura} blur-3xl opacity-50`} />
+      {/* 종이질감 발바닥/뼈 장식 */}
+      <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute right-5 bottom-5 w-16 h-16 rotate-6" />
+      <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute left-7 top-28 w-8 h-8 -rotate-12" />
 
-      <div className="relative">
+      <div className="relative p-6">
         {/* 헤더: 라벨 + 기간 */}
         <div className="flex items-center justify-between">
           <div className="inline-flex items-center gap-1.5">
@@ -265,8 +312,8 @@ function SummaryCard({ pet, report, advice, metrics, period, onRegenerate, loadi
           )}
         </div>
 
-        {/* 상태 칩 */}
-        <div className={`mt-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-extrabold ${r.pill}`}>
+        {/* 상태 칩 (스티치) */}
+        <div className={`mt-4 inline-flex items-center gap-1.5 rounded-full border border-dashed border-brand-brown/25 px-3 py-1.5 text-xs font-extrabold ${r.pill}`}>
           <r.Icon className="w-3.5 h-3.5" strokeWidth={2.6} />
           {r.word}
         </div>
@@ -279,25 +326,25 @@ function SummaryCard({ pet, report, advice, metrics, period, onRegenerate, loadi
           <p className="mt-2.5 text-[11px] font-semibold text-brand-mute">{meta}</p>
         )}
 
-        {/* 지표 스트립 (구분선) */}
+        {/* 지표 스트립 (점선 패널 + 귀여운 아이콘) */}
         {metrics && (
-          <div className="mt-5 grid grid-cols-3 divide-x divide-brand-line/70 rounded-2xl bg-brand-cream/40 py-3.5">
-            <Stat label="급식" value={formatAmount(metrics.avg_food_g_per_day, "g")} change={metrics.food_change_percent} trend={metrics.food_trend} />
-            <Stat label="급수" value={formatAmount(metrics.avg_water_ml_per_day, "ml")} change={metrics.water_change_percent} trend={metrics.water_trend} />
-            <Stat label="활동" value={formatAmount(metrics.avg_activity_level, "")} change={metrics.activity_change_percent} trend={metrics.activity_trend} />
+          <div className="relative mt-5 rounded-2xl py-4" style={{ backgroundColor: BG_INFO }}>
+            <Stitch className="!inset-[5px] !rounded-[15px]" />
+            <div className="relative grid grid-cols-3">
+              <Stat icon={<UtensilsCrossed className="w-5 h-5 text-brand-primary" />} label="급식" value={formatAmount(metrics.avg_food_g_per_day, "g")} change={metrics.food_change_percent} trend={metrics.food_trend} />
+              <Stat icon={<Droplets className="w-5 h-5 text-brand-water" />} label="급수" value={formatAmount(metrics.avg_water_ml_per_day, "ml")} change={metrics.water_change_percent} trend={metrics.water_trend} />
+              <Stat icon={<Activity className="w-5 h-5 text-brand-primary-deep" />} label="활동" value={formatAmount(metrics.avg_activity_level, "")} change={metrics.activity_change_percent} trend={metrics.activity_trend} />
+            </div>
           </div>
         )}
 
-        {/* 좌우로 긴 새 리포트 생성 버튼 (심플 그라데이션) */}
+        {/* 새 리포트 생성 (탄 스티치 버튼) */}
         <button
           type="button"
           onClick={onRegenerate}
           disabled={loading}
-          className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand-line/60 px-4 py-3.5 text-sm font-bold text-brand-brown shadow-soft touch-active disabled:opacity-60"
-          style={{
-            background:
-              "linear-gradient(135deg, rgb(var(--brand-card)), rgb(var(--brand-cream)))",
-          }}
+          className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-dashed border-brand-brown/25 px-4 py-3.5 text-sm font-bold text-brand-brown shadow-soft touch-active disabled:opacity-60"
+          style={{ backgroundColor: BG_INFO }}
         >
           <RefreshCw className="w-4 h-4" />
           새 리포트 생성
@@ -307,15 +354,18 @@ function SummaryCard({ pet, report, advice, metrics, period, onRegenerate, loadi
   );
 }
 
-function Stat({ label, value, change, trend }) {
+function Stat({ icon, label, value, change, trend }) {
   const showTrend = trend && trend !== "stable" && change != null;
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   return (
     <div className="px-2 text-center">
-      <p className="text-[11px] font-semibold" style={{ color: C.mute }}>{label}</p>
+      <p className="flex items-center justify-center gap-1.5 text-[11px] font-bold" style={{ color: C.mute }}>
+        {icon}
+        {label}
+      </p>
       <p className="mt-1 text-lg font-extrabold leading-none" style={{ color: C.brown }}>{value}</p>
       {showTrend && (
-        <p className="mt-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold" style={{ color: C.mute }}>
+        <p className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-bold" style={{ color: C.mute }}>
           <TrendIcon className="w-3 h-3" />
           {Math.abs(change)}%
         </p>
@@ -334,11 +384,11 @@ function TrendRow({ icon, label, avg, trend, change }) {
   const t = TREND[trend] || TREND.stable;
   return (
     <div
-      className="flex items-center justify-between rounded-2xl px-3.5 py-3"
-      style={{ background: C.cream }}
+      className="flex items-center justify-between rounded-2xl border border-dashed border-brand-brown/15 px-3.5 py-3"
+      style={{ backgroundColor: BG_INFO }}
     >
       <div className="flex items-center gap-2.5 min-w-0">
-        <span className="w-9 h-9 shrink-0 rounded-2xl bg-brand-primary/12 text-brand-primary flex items-center justify-center">
+        <span className="w-9 h-9 shrink-0 rounded-full border border-dashed border-brand-brown/20 bg-brand-primary/12 text-brand-primary flex items-center justify-center">
           {icon}
         </span>
         <div className="min-w-0">
@@ -368,7 +418,9 @@ function TrendRow({ icon, label, avg, trend, change }) {
 
 function TrendCard({ metrics, quality }) {
   return (
-    <Card className="p-4">
+    <div className="relative rounded-3xl shadow-soft p-4" style={{ backgroundColor: BG_CARD }}>
+      <Stitch />
+      <div className="relative">
       <SectionHeader icon={<TrendingUp className="w-4 h-4" />} title="이번 주 변화" />
       <div className="space-y-2">
         <TrendRow
@@ -398,7 +450,8 @@ function TrendCard({ metrics, quality }) {
           데이터 품질: 급식 {quality.feed_days}일 · 급수 {quality.water_days}일 · 활동 {quality.activity_days}일
         </p>
       )}
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -410,6 +463,7 @@ function buildCategories(advice) {
       key: "reference",
       title: "품종·나이 기준 비교",
       icon: <Scale className="w-[18px] h-[18px]" />,
+      img: "/cat-animation/cat-feed/cat_12_feed.png",
       tone: TONE.blue,
       items: advice.reference_comparison,
       preview: advice.reference_comparison[0]?.metric,
@@ -440,6 +494,7 @@ function buildCategories(advice) {
       key: "findings",
       title: "핵심 관찰",
       icon: <Search className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_search.png",
       tone: TONE.coral,
       items: advice.key_findings,
       preview: advice.key_findings[0]?.title,
@@ -469,6 +524,8 @@ function buildCategories(advice) {
       key: "advice",
       title: "맞춤 조언",
       icon: <Lightbulb className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_advice.png",
+      imgClass: "w-[88px] h-[88px] -bottom-1 -right-4",
       tone: TONE.green,
       items: advice.personalized_advice,
       preview: advice.personalized_advice[0]?.action,
@@ -478,7 +535,7 @@ function buildCategories(advice) {
             <ThemedItem key={i} tone={TONE.green}>
               <div className="flex items-start gap-2.5">
                 <span className="mt-0.5 w-6 h-6 shrink-0 rounded-full bg-brand-success/20 flex items-center justify-center">
-                  <Check className="w-3.5 h-3.5 text-[#2F6A2E]" strokeWidth={3} />
+                  <Check className="w-3.5 h-3.5 text-[rgb(var(--brand-success-ink))]" strokeWidth={3} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
@@ -490,7 +547,7 @@ function buildCategories(advice) {
                     </p>
                   )}
                   {item.check_after && (
-                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand-success/10 px-2.5 py-1 text-[11px] font-bold" style={{ color: "#2F6A2E" }}>
+                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand-success/10 px-2.5 py-1 text-[11px] font-bold" style={{ color: "rgb(var(--brand-success-ink))" }}>
                       <Clock className="w-3 h-3" /> {item.check_after}
                     </p>
                   )}
@@ -505,6 +562,8 @@ function buildCategories(advice) {
       key: "watch",
       title: "주의 신호",
       icon: <ShieldAlert className="w-[18px] h-[18px]" />,
+      img: "/ai-analysis/cat_danger.png",
+      imgClass: "w-[76px] h-[76px] -bottom-1 -right-1",
       tone: TONE.amber,
       items: advice.watch_points,
       preview: advice.watch_points[0]?.item,
@@ -513,7 +572,7 @@ function buildCategories(advice) {
           {advice.watch_points.map((item, i) => (
             <ThemedItem key={i} tone={TONE.amber}>
               <div className="flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 shrink-0 text-[#8B641C]" />
+                <ShieldAlert className="w-4 h-4 shrink-0 text-[rgb(var(--brand-warning-ink))]" />
                 <p className="text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
                   {item.item || "주의 항목"}
                 </p>
@@ -524,7 +583,7 @@ function buildCategories(advice) {
                 </p>
               )}
               {item.when_to_consult_vet && (
-                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-brand-warning/15 px-2.5 py-1.5 text-[11px] font-bold leading-relaxed" style={{ color: "#8B641C" }}>
+                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-brand-warning/15 px-2.5 py-1.5 text-[11px] font-bold leading-relaxed" style={{ color: "rgb(var(--brand-warning-ink))" }}>
                   <Stethoscope className="w-3.5 h-3.5 mt-px shrink-0" /> {item.when_to_consult_vet}
                 </p>
               )}
@@ -596,14 +655,14 @@ function Collapsible({ open, children }) {
   );
 }
 
-function CategoryCard({ icon, title, count, preview, tone, active, disabled, wide, onClick }) {
+function CategoryCard({ icon, title, count, preview, tone, active, disabled, wide, img, imgClass = "w-16 h-16 -bottom-1 -right-1", onClick }) {
   const t = tone || TONE.coral;
-  const shell = `text-left rounded-3xl bg-brand-card shadow-soft p-4 touch-active disabled:opacity-50 disabled:active:scale-100 transition-all ${
-    active ? `ring-2 ${t.ring} border-transparent` : "border border-brand-line/60"
+  const shell = `relative text-left rounded-3xl shadow-soft p-4 touch-active disabled:opacity-50 disabled:active:scale-100 transition-all border-2 border-dashed ${
+    active ? `ring-2 ${t.ring} border-transparent` : "border-brand-brown/20"
   } ${wide ? "col-span-2" : ""}`;
 
   const iconChip = (
-    <span className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center ${t.icon}`}>
+    <span className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center border border-dashed border-brand-brown/20 ${t.icon}`}>
       {icon}
     </span>
   );
@@ -622,7 +681,7 @@ function CategoryCard({ icon, title, count, preview, tone, active, disabled, wid
   // 풀폭(마지막 홀수 카드) → 가로 레이아웃
   if (wide) {
     return (
-      <button type="button" onClick={onClick} disabled={disabled} className={`flex items-center gap-3 ${shell}`}>
+      <button type="button" onClick={onClick} disabled={disabled} className={`flex items-center gap-3 ${shell}`} style={{ backgroundColor: BG_CARD }}>
         {iconChip}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
@@ -642,18 +701,30 @@ function CategoryCard({ icon, title, count, preview, tone, active, disabled, wid
 
   // 기본 → 세로 레이아웃
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`flex flex-col h-full ${shell}`}>
-      <div className="flex items-center justify-between">
-        {iconChip}
-        {countBadge}
+    <button type="button" onClick={onClick} disabled={disabled} className={`overflow-hidden flex flex-col h-full ${shell}`} style={{ backgroundColor: BG_CARD }}>
+      {/* 카테고리 일러스트 (우하단 스티커) */}
+      {img && (
+        <img
+          src={img}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className={`pointer-events-none absolute object-contain drop-shadow-sm ${imgClass}`}
+        />
+      )}
+      <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-center justify-between">
+          {iconChip}
+          {countBadge}
+        </div>
+        <p className="mt-2.5 text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
+          {title}
+        </p>
+        <p className={`mt-1 flex-1 text-xs leading-relaxed line-clamp-2 ${img ? "pr-12" : ""}`} style={{ color: C.mute }}>
+          {disabled ? "내용 없음" : preview || "탭하여 상세 보기"}
+        </p>
+        {cta && <span className="mt-2">{cta}</span>}
       </div>
-      <p className="mt-2.5 text-[15px] font-extrabold leading-snug" style={{ color: C.brown }}>
-        {title}
-      </p>
-      <p className="mt-1 flex-1 text-xs leading-relaxed line-clamp-2" style={{ color: C.mute }}>
-        {disabled ? "내용 없음" : preview || "탭하여 상세 보기"}
-      </p>
-      {cta && <span className="mt-2">{cta}</span>}
     </button>
   );
 }
@@ -717,7 +788,7 @@ function EmptyState({ loading, onCreate }) {
 function SectionHeader({ icon, title, tone = "primary" }) {
   const chip =
     tone === "warning" ?
-      "bg-brand-warning/20 text-[#8B641C]"
+      "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]"
     : "bg-brand-primary/12 text-brand-primary";
   return (
     <div className="flex items-center gap-2 mb-2.5">
