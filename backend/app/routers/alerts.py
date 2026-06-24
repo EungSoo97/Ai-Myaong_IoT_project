@@ -26,6 +26,7 @@ from app.core.security import decode_access_token
 from database.alerts import Alert
 from database.base import get_db
 from database.pets import Pet
+from database.time_utils import kst_iso
 from database.user import User
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -69,7 +70,7 @@ def _to_response(a: Alert) -> AlertResponse:
         alert_type=a.alert_type,
         message=a.message,
         is_confirmed=a.is_confirmed or "N",
-        created_at=(a.created_at.isoformat() + "Z") if a.created_at else None,
+        created_at=kst_iso(a.created_at),
     )
 
 

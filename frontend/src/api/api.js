@@ -86,6 +86,8 @@ export const api = {
     }
   },
   getLatestDetections: () => request("/api/vision/detections/latest"),
+  getActivityStats: (period = "day") =>
+    request(`/api/vision/activity/stats?period=${encodeURIComponent(period)}`),
   getVisionEvents: (limit = 20) =>
     request(`/api/vision/events/recent?limit=${encodeURIComponent(limit)}`),
   getVisionMediaUrl: (path) =>
@@ -99,6 +101,11 @@ export const api = {
     request("/api/vision/capture", { method: "POST" }),
   setVisionRecording: (on) =>
     request("/api/vision/recording", {
+      method: "POST",
+      body: JSON.stringify({ on }),
+    }),
+  setVisionEmergency: (on) =>
+    request("/api/vision/emergency", {
       method: "POST",
       body: JSON.stringify({ on }),
     }),

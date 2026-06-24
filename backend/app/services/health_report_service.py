@@ -10,6 +10,7 @@ from database.detection_logs import DetectionLog
 from database.feed_logs import FeedLog
 from database.pets import Pet
 from database.settings import Settings
+from database.time_utils import today_kst
 from database.water_logs import WaterLog
 
 
@@ -201,7 +202,7 @@ def build_pet_health_summary(db: Session, user_id: int, pet_id: int, days: int =
     if not pet:
         raise ValueError("Pet not found")
 
-    period_end = date.today()
+    period_end = today_kst()
     period_start = period_end - timedelta(days=days - 1)
     start_dt = datetime.combine(period_start, time.min)
     end_dt = datetime.combine(period_end + timedelta(days=1), time.min)
