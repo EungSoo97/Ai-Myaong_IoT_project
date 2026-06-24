@@ -39,7 +39,7 @@ import {
   saveAccount,
 } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, timeAgo } from "../lib/notificationRepository";
+import { useNotifications, unreadCount, timeAgo } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
@@ -183,7 +183,7 @@ export function Dashboard() {
   const { isConnected } = useWebSocket(getWebSocketUrl());
   const account = useAccount();
   const notifications = useNotifications();
-  const unread = notifications.length;
+  const unread = unreadCount(notifications);
   const [visionEvents, setVisionEvents] = useState([]);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
   const feed = useFeedSettings(); // 디스펜서에서 설정한 1회 제공량 공유

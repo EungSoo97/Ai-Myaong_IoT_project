@@ -6,7 +6,7 @@ import {
 } from '../components/icons'
 import { Card } from '../components/ui'
 import {
-  useNotifications, removeNotification, clearNotifications, timeAgo,
+  useNotifications, removeNotification, clearNotifications, markAllRead, timeAgo,
 } from '../lib/notificationRepository'
 
 /* type → 아이콘 + 색상 */
@@ -24,6 +24,10 @@ const DEFAULT_META = { icon: Bell, cls: 'bg-brand-brown/10 text-brand-brown' }
 export function Notifications() {
   const navigate = useNavigate()
   const list = useNotifications()
+
+  useEffect(() => {
+    markAllRead()
+  }, [])
 
   const [clearing, setClearing] = useState(false) // 전체 삭제 도미노 진행 중
   const STAGGER = 70 // 항목 간 시차(ms)
