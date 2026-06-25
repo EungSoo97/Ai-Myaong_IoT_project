@@ -8,7 +8,10 @@ import { House } from "phosphor-react-native/src/icons/House";
 import { VideoCamera } from "phosphor-react-native/src/icons/VideoCamera";
 import { useAuth } from "../context/AuthContext";
 import {
+  FindIdScreen,
+  FindPasswordScreen,
   LoginScreen,
+  ResetPasswordScreen,
   SignupScreen,
   SplashScreen,
 } from "../screens/AuthScreens";
@@ -124,6 +127,9 @@ export function AppNavigator() {
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="FindId" component={FindIdScreen} />
+          <Stack.Screen name="FindPassword" component={FindPasswordScreen} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

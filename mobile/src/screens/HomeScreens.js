@@ -12,7 +12,6 @@ import {
   Bell,
   ChevronRight,
   Droplets,
-  HeartPulse,
   PawPrint,
   Plane,
   RefreshCw,
@@ -27,6 +26,8 @@ import { Card, Empty, Header, Pill, Screen } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { petAgeLabel } from "../lib/pets";
 import { colors } from "../theme";
+
+const aiCatImage = require("../../assets/ai-analysis/AICAT.png");
 
 const timeAgo = (iso) => {
   const diff = Date.now() - new Date(iso).getTime();
@@ -213,6 +214,50 @@ export function DashboardScreen({ navigation }) {
         </Pressable>
       )}
 
+      <Pressable
+        onPress={() =>
+          pet
+            ? navigation.navigate("HealthReport", { pet })
+            : Alert.alert("안내", "반려동물을 먼저 등록해 주세요.")
+        }
+        style={({ pressed }) => [
+          styles.aiBannerPress,
+          pressed && styles.quickPressed,
+        ]}
+      >
+        <View style={styles.aiBanner}>
+          <Sparkles
+            size={86}
+            color={colors.primary}
+            style={styles.aiBannerStarLarge}
+          />
+          <Sparkles
+            size={18}
+            color={colors.primary}
+            style={styles.aiBannerStarSmall}
+          />
+          <Image
+            source={aiCatImage}
+            style={styles.aiCat}
+            resizeMode="contain"
+          />
+          <View style={styles.aiBannerText}>
+            <View style={styles.aiBubble}>
+              <Text style={styles.aiTitle}>AI 건강 분석</Text>
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>NEW</Text>
+              </View>
+            </View>
+            <Text style={styles.aiSubtitle}>
+              우리 아이 데이터로 건강 상태를 분석하러 가기
+            </Text>
+          </View>
+          <View style={styles.aiArrow}>
+            <ChevronRight size={27} color={colors.primary} />
+          </View>
+        </View>
+      </Pressable>
+
       <Text style={styles.sectionTitle}>빠른 실행</Text>
       <View style={styles.quickRow}>
         <Pressable
@@ -254,25 +299,6 @@ export function DashboardScreen({ navigation }) {
           </Text>
         </Pressable>
       </View>
-
-      <Pressable
-        onPress={() =>
-          pet
-            ? navigation.navigate("HealthReport", { pet })
-            : Alert.alert("안내", "반려동물을 먼저 등록해 주세요.")
-        }
-      >
-        <Card style={styles.health}>
-          <View style={styles.healthIcon}>
-            <HeartPulse size={24} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>AI 건강 리포트</Text>
-            <Text style={styles.caption}>최근 생활 데이터를 분석해요</Text>
-          </View>
-          <Sparkles size={20} color={colors.warning} />
-        </Card>
-      </Pressable>
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>최근 활동</Text>
@@ -524,6 +550,86 @@ const styles = StyleSheet.create({
   petPhoto: { width: "100%", height: "100%" },
   petName: { color: colors.text, fontSize: 23, fontWeight: "900" },
   badges: { flexDirection: "row", gap: 6, marginTop: 9 },
+  aiBannerPress: { marginTop: 16 },
+  aiBanner: {
+    minHeight: 128,
+    borderRadius: 30,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: "#FDEEDC",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 12,
+    shadowColor: "#6C4F34",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 3,
+  },
+  aiBannerStarLarge: {
+    position: "absolute",
+    right: 8,
+    top: 20,
+    opacity: 0.16,
+  },
+  aiBannerStarSmall: {
+    position: "absolute",
+    right: 70,
+    top: 21,
+    opacity: 0.45,
+  },
+  aiCat: {
+    width: 120,
+    height: 120,
+    alignSelf: "flex-end",
+    marginLeft: 2,
+    marginRight: -2,
+  },
+  aiBannerText: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 18,
+  },
+  aiBubble: {
+    alignSelf: "flex-start",
+    minHeight: 45,
+    borderRadius: 24,
+    paddingLeft: 18,
+    paddingRight: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.primary + "28",
+  },
+  aiTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  newBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.primary,
+  },
+  newBadgeText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  aiSubtitle: {
+    color: colors.text,
+    opacity: 0.75,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 19,
+    marginTop: 11,
+  },
+  aiArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary + "18",
+  },
   sectionTitle: {
     color: colors.text,
     fontSize: 17,
@@ -554,20 +660,6 @@ const styles = StyleSheet.create({
   quickPrimaryText: { color: "#fff", fontWeight: "900", marginTop: 14 },
   quickPrimarySub: { color: "#fff", opacity: 0.8, marginTop: 3 },
   quickSecondaryText: { color: colors.text, fontWeight: "900", marginTop: 14 },
-  health: {
-    marginTop: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  healthIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 17,
-    backgroundColor: colors.primary + "18",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
