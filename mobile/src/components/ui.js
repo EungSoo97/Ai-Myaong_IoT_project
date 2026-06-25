@@ -72,6 +72,38 @@ export function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
+export function Stitch({ style }) {
+  return <View pointerEvents="none" style={[styles.stitch, style]} />;
+}
+
+export function FeltCard({
+  children,
+  style,
+  contentStyle,
+  accent,
+  decorations,
+  highlight,
+}) {
+  return (
+    <View
+      style={[
+        styles.feltCard,
+        highlight && styles.feltCardHighlight,
+        style,
+      ]}
+    >
+      <Stitch />
+      {accent ? <View pointerEvents="none" style={styles.feltAccent} /> : null}
+      {decorations || null}
+      <View style={[styles.feltContent, contentStyle]}>{children}</View>
+    </View>
+  );
+}
+
+export function FeltMark({ children, style }) {
+  return <View style={[styles.feltMark, style]}>{children}</View>;
+}
+
 export function Label({ children, style }) {
   return <Text style={[styles.label, style]}>{children}</Text>;
 }
@@ -209,6 +241,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line + "99",
     ...shadow,
+  },
+  feltCard: {
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "#FFFBF5",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: colors.line + "99",
+    ...shadow,
+  },
+  feltCardHighlight: {
+    backgroundColor: "#F8EBD8",
+  },
+  feltContent: {
+    position: "relative",
+    zIndex: 1,
+  },
+  stitch: {
+    position: "absolute",
+    top: 7,
+    right: 7,
+    bottom: 7,
+    left: 7,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#7A563326",
+    zIndex: 0,
+  },
+  feltAccent: {
+    position: "absolute",
+    left: 0,
+    top: 16,
+    bottom: 16,
+    width: 3,
+    borderRadius: 999,
+    backgroundColor: "#7A563366",
+    zIndex: 1,
+  },
+  feltMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F4E1C8",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#7A563333",
   },
   label: {
     color: colors.muted,
