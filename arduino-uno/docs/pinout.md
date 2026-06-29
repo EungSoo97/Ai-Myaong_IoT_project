@@ -25,6 +25,7 @@ TB6612FNG wiring:
 - Upload `AiMyaongRobot`, open Arduino Serial Monitor at `115200`, set line ending to newline, and send `MOTOR_TEST`.
 - `MOTOR_TEST` runs left motor, right motor, then both motors briefly.
 - Send `LEFT_MOTOR_TEST` or `RIGHT_MOTOR_TEST` to test only one side.
+- Send `LEFT_BACKWARD_TEST` or `RIGHT_BACKWARD_TEST` to test each side in reverse.
 - Send `PINOUT` to print the expected TB6612FNG and pan/tilt wiring.
 - Send `MOTOR_DIAG` to run left forward/backward, then right forward/backward with serial phase messages.
 - If `MOTOR_TEST` prints `ACK MOTOR_TEST` but motors do not move, check motor power, `STBY` wiring to D8, PWM wiring, shared GND, and whether the motors were damaged by 12V.
