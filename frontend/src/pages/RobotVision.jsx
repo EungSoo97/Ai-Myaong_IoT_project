@@ -31,6 +31,8 @@ import { mapVisionEventForList } from "../lib/visionEventMapper";
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지 공통) / 정보·칩: 따뜻한 탄
 const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
 const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
+const VISION_FLIP_HORIZONTAL =
+  String(import.meta.env.VITE_VISION_FLIP_HORIZONTAL || "").toLowerCase() === "true";
 
 /* 안쪽 점선 바느질 테두리 (펠트 느낌) */
 function Stitch({ className = "" }) {
@@ -1321,6 +1323,7 @@ function StreamFrame({
             onError={() => setImageError(true)}
             onLoad={() => { setImageError(false); setLoaded(true) }}
             className="w-full h-full object-contain bg-black brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90"
+            style={VISION_FLIP_HORIZONTAL ? { transform: "scaleX(-1)" } : undefined}
           />
           {/* 심플·모던: 상하 은은한 그라데이션으로 차분하게 + 배지 가독성 */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />

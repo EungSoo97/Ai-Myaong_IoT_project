@@ -44,6 +44,13 @@ DEFAULT_CLASS_LABELS = {
 DB_API_TIMEOUT = max(0.5, float(os.getenv("VISION_DB_API_TIMEOUT", "3")))
 
 
+def env_bool(name, default=False):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def resolve_capture_source():
     source = os.getenv("MJPEG_STREAM_URL") or os.getenv("CAMERA_SOURCE") or "0"
     source = source.strip()
@@ -845,12 +852,14 @@ def main():
     source = resolve_capture_source()
     backend_url = resolve_backend_url()
     class_filter = resolve_class_filter()
+    flip_horizontal = env_bool("VISION_FLIP_HORIZONTAL", False)
     model = YOLO(resolve_model_path())
     frame_source = open_frame_source(source)
 
     print(f"[Vision] Source: {source}")
     print(f"[Vision] Backend: {backend_url}")
     print(f"[Vision] Classes: {sorted(class_filter)}")
+    print(f"[Vision] Flip horizontal: {flip_horizontal}")
     print("[Vision] Press Q or ESC to exit.")
 
     last_post_error_at = 0.0
@@ -880,6 +889,8 @@ def main():
 
     try:
         for frame in frame_source:
+            if flip_horizontal:
+                frame = cv2.flip(frame, 1)
             raw_frame = frame.copy()
             now = time.time()
             emergency_clip_recorder.add_frame(raw_frame, now)
