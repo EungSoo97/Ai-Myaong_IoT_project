@@ -83,6 +83,25 @@ class DeviceSimulator:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    def update_sensor(
+        self,
+        *,
+        distance_cm: int | None = None,
+        rear_obstacle: bool | None = None,
+        threshold_cm: int | None = None,
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        if distance_cm is not None:
+            self.sensor["distance"] = distance_cm
+            self.sensor["rear_distance_cm"] = distance_cm
+        if rear_obstacle is not None:
+            self.sensor["rear_obstacle"] = rear_obstacle
+        if threshold_cm is not None:
+            self.sensor["rear_obstacle_threshold_cm"] = threshold_cm
+        if source:
+            self.sensor["source"] = source
+        return self.status()
+
     def _drain_battery(self) -> None:
         self.battery = max(0, self.battery - 1)
 

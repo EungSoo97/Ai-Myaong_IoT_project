@@ -13,7 +13,17 @@ constexpr uint8_t MOTOR_STANDBY_PIN = 8;    // STBY
 // Kick briefly at full PWM, then run lower to reduce current draw.
 constexpr uint8_t MOTOR_RUN_SPEED = 120;
 constexpr uint8_t MOTOR_START_SPEED = 160;
+constexpr uint8_t MOTOR_BACKWARD_LEFT_RUN_SPEED = 150;
+constexpr uint8_t MOTOR_BACKWARD_LEFT_START_SPEED = 190;
+constexpr uint8_t MOTOR_BACKWARD_RIGHT_RUN_SPEED = 180;
+constexpr uint8_t MOTOR_BACKWARD_RIGHT_START_SPEED = 230;
+constexpr uint8_t MOTOR_TURN_LEFT_RUN_SPEED = 180;
+constexpr uint8_t MOTOR_TURN_LEFT_START_SPEED = 230;
+constexpr uint8_t MOTOR_TURN_RIGHT_RUN_SPEED = 220;
+constexpr uint8_t MOTOR_TURN_RIGHT_START_SPEED = 255;
 constexpr uint8_t MOTOR_START_KICK_MS = 50;
+constexpr uint8_t MOTOR_HIGH_TORQUE_KICK_MS = 90;
+constexpr uint8_t MOTOR_TURN_KICK_MS = 120;
 constexpr unsigned long MOTOR_COMMAND_TIMEOUT_MS = 700;
 
 namespace {
@@ -91,18 +101,55 @@ inline void printMotorPinout() {
   Serial.println("  STBY -> D8");
   Serial.println("Pan servo -> D9");
   Serial.println("Tilt servo -> D10");
+  Serial.println("Rear ultrasonic TRIG -> D11");
+  Serial.println("Rear ultrasonic ECHO -> D12");
 }
 
-inline void driveWithKick(int leftDirection, int rightDirection) {
+inline void driveWithKick(
+  int leftDirection,
+  int rightDirection,
+  uint8_t leftStartSpeed,
+  uint8_t leftRunSpeed,
+  uint8_t rightStartSpeed,
+  uint8_t rightRunSpeed,
+  uint8_t kickMs
+);
+
+inline void driveWithKick(
+  int leftDirection,
+  int rightDirection,
+  uint8_t startSpeed = MOTOR_START_SPEED,
+  uint8_t runSpeed = MOTOR_RUN_SPEED
+) {
+  driveWithKick(
+    leftDirection,
+    rightDirection,
+    startSpeed,
+    runSpeed,
+    startSpeed,
+    runSpeed,
+    MOTOR_START_KICK_MS
+  );
+}
+
+inline void driveWithKick(
+  int leftDirection,
+  int rightDirection,
+  uint8_t leftStartSpeed,
+  uint8_t leftRunSpeed,
+  uint8_t rightStartSpeed,
+  uint8_t rightRunSpeed,
+  uint8_t kickMs
+) {
   if (leftDirection != 0 || rightDirection != 0) {
     markMotorCommandActive();
   }
 
-  driveLeft(leftDirection, MOTOR_START_SPEED);
-  driveRight(rightDirection, MOTOR_START_SPEED);
-  delay(MOTOR_START_KICK_MS);
-  driveLeft(leftDirection, MOTOR_RUN_SPEED);
-  driveRight(rightDirection, MOTOR_RUN_SPEED);
+  driveLeft(leftDirection, leftStartSpeed);
+  driveRight(rightDirection, rightStartSpeed);
+  delay(kickMs);
+  driveLeft(leftDirection, leftRunSpeed);
+  driveRight(rightDirection, rightRunSpeed);
 }
 
 inline void moveForward() {
@@ -110,15 +157,39 @@ inline void moveForward() {
 }
 
 inline void moveBackward() {
-  driveWithKick(-1, -1);
+  driveWithKick(
+    -1,
+    -1,
+    MOTOR_BACKWARD_LEFT_START_SPEED,
+    MOTOR_BACKWARD_LEFT_RUN_SPEED,
+    MOTOR_BACKWARD_RIGHT_START_SPEED,
+    MOTOR_BACKWARD_RIGHT_RUN_SPEED,
+    MOTOR_HIGH_TORQUE_KICK_MS
+  );
 }
 
 inline void turnLeft() {
-  driveWithKick(-1, 1);
+  driveWithKick(
+    0,
+    1,
+    0,
+    0,
+    MOTOR_TURN_LEFT_START_SPEED,
+    MOTOR_TURN_LEFT_RUN_SPEED,
+    MOTOR_TURN_KICK_MS
+  );
 }
 
 inline void turnRight() {
-  driveWithKick(1, -1);
+  driveWithKick(
+    1,
+    0,
+    MOTOR_TURN_RIGHT_START_SPEED,
+    MOTOR_TURN_RIGHT_RUN_SPEED,
+    0,
+    0,
+    MOTOR_TURN_KICK_MS
+  );
 }
 
 inline void testLeftMotor() {
@@ -129,6 +200,18 @@ inline void testLeftMotor() {
 
 inline void testRightMotor() {
   driveRight(1, MOTOR_START_SPEED);
+  delay(800);
+  driveRight(0);
+}
+
+inline void testLeftMotorBackward() {
+  driveLeft(-1, MOTOR_BACKWARD_LEFT_START_SPEED);
+  delay(800);
+  driveLeft(0);
+}
+
+inline void testRightMotorBackward() {
+  driveRight(-1, MOTOR_BACKWARD_RIGHT_START_SPEED);
   delay(800);
   driveRight(0);
 }

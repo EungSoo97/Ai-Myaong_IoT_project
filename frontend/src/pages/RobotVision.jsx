@@ -135,6 +135,8 @@ const MOVE_COMMANDS = {
   right: "RIGHT",
 };
 
+const MOVE_HOLD_REPEAT_MS = 300;
+
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
   down: "CAM_DOWN",
@@ -1501,23 +1503,45 @@ function DBtn({
   onClick,
   onRelease = null,
   holdToPress = false,
+  repeatMs = MOVE_HOLD_REPEAT_MS,
   bg,
   aria,
   rotate = "",
   tone = "dark",
 }) {
   const activePointerRef = useRef(null);
+  const holdTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) {
+        window.clearInterval(holdTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      window.clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
 
   const startPress = (event) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     activePointerRef.current = event.pointerId;
     onClick();
+    clearHoldTimer();
+    if (holdToPress) {
+      holdTimerRef.current = window.setInterval(onClick, repeatMs);
+    }
   };
 
   const endPress = (event) => {
     if (activePointerRef.current !== event.pointerId) return;
     activePointerRef.current = null;
+    clearHoldTimer();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     if (holdToPress && onRelease) {
       onRelease();
