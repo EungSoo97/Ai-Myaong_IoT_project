@@ -76,8 +76,16 @@ def startup() -> None:
     mqtt_client.start()
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
     # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
-    from app.services.feed_scheduler import start_feed_scheduler
-    start_feed_scheduler(app.state.feed_service)
+    # ⚠️ 여러 기계(PC 백엔드 + 라즈베리파이)가 같은 DB에 붙으면 스케줄러가 중복 실행되어
+    #    한 번 예약에 N번 배식/기록된다. → 스케줄러는 '한 곳'에서만 돌려야 한다.
+    #    스케줄러를 끌 기계의 .env 에  RUN_FEED_SCHEDULER=false  를 넣으면 그 기계는 실행 안 함.
+    import os
+    if os.getenv("RUN_FEED_SCHEDULER", "true").strip().lower() not in ("false", "0", "no"):
+        from app.services.feed_scheduler import start_feed_scheduler
+        start_feed_scheduler(app.state.feed_service)
+        print("[feed-scheduler] 시작됨 (이 기계에서 자동 배식 스케줄 실행)", flush=True)
+    else:
+        print("[feed-scheduler] RUN_FEED_SCHEDULER=false → 이 기계에서는 스케줄러 비활성", flush=True)
 
 
 @app.on_event("shutdown")

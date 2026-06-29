@@ -18,6 +18,7 @@ from database.alerts import Alert
 from database.base import SessionLocal
 from database.daily_activity_summaries import DailyActivitySummary
 from database.detection_logs import DetectionLog
+from database.emergency_clips import EmergencyClip
 from database.time_utils import now_kst_naive, today_kst
 
 
@@ -25,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MEDIA_DIRS = [
     PROJECT_ROOT / "desktop" / "opencv" / "captures",
     PROJECT_ROOT / "desktop" / "opencv" / "clips",
+    PROJECT_ROOT / "desktop" / "opencv" / "emergency_clips",
 ]
 
 
@@ -45,6 +47,7 @@ def cleanup_old_records() -> dict[str, int]:
 
     stats = {
         "alerts": 0,
+        "emergency_clips": 0,
         "detection_logs": 0,
         "daily_activity_summaries": 0,
         "media_files": 0,
@@ -62,6 +65,12 @@ def cleanup_old_records() -> dict[str, int]:
         detection_cutoff = now_kst_naive() - timedelta(days=detection_days)
         activity_summary_cutoff = today_kst() - timedelta(days=activity_summary_days)
 
+        expired_alert_ids = db.query(Alert.alert_id).filter(Alert.created_at < alert_cutoff)
+        stats["emergency_clips"] = (
+            db.query(EmergencyClip)
+            .filter(EmergencyClip.alert_id.in_(expired_alert_ids))
+            .delete(synchronize_session=False)
+        )
         stats["alerts"] = (
             db.query(Alert)
             .filter(Alert.created_at < alert_cutoff)
@@ -86,7 +95,8 @@ def cleanup_old_records() -> dict[str, int]:
 
     print(
         "[Retention] cleanup complete: "
-        f"alerts={stats['alerts']} detection_logs={stats['detection_logs']} "
+        f"alerts={stats['alerts']} emergency_clips={stats['emergency_clips']} "
+        f"detection_logs={stats['detection_logs']} "
         f"daily_activity_summaries={stats['daily_activity_summaries']} "
         f"media_files={stats['media_files']}",
         flush=True,

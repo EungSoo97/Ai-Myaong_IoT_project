@@ -10,6 +10,7 @@ settings.feed_schedule / water_schedule 에 저장된 일정(JSON)을 매 분 �
 """
 
 import json
+import socket
 import threading
 import time
 
@@ -90,8 +91,35 @@ def _run_once(feed_service, hhmm):
         db.close()
 
 
+_scheduler_thread = None  # 같은 프로세스 내 중복 시작 방지
+_lock_socket = None       # 프로세스 간 단일 실행 락 (소켓 점유 = 락 보유)
+_SCHED_LOCK_PORT = 8771   # 스케줄러 싱글톤 락 전용 포트 (서비스 포트 아님)
+
+
+def _acquire_singleton_lock() -> bool:
+    """프로세스 간 단일 스케줄러 보장.
+    고정 포트에 bind 성공한 1개 프로세스만 스케줄러를 돌린다.
+    (uvicorn --reload 가 만드는 여러 프로세스 중복 실행 차단. 프로세스 종료 시 OS가 포트 자동 해제)."""
+    global _lock_socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", _SCHED_LOCK_PORT))
+        s.listen(1)
+        _lock_socket = s  # 프로세스 살아있는 동안 점유 유지
+        return True
+    except OSError:
+        s.close()
+        return False  # 이미 다른 프로세스가 스케줄러 실행 중
+
+
 def start_feed_scheduler(feed_service=None):
-    """매 분 정각 근처에 스케줄을 검사하는 백그라운드 데몬 스레드 시작."""
+    """매 분 정각 근처에 스케줄을 검사하는 백그라운드 데몬 스레드 시작.
+    같은 프로세스에서 이미 실행 중이거나, 다른 프로세스가 락을 쥐고 있으면 새로 만들지 않는다."""
+    global _scheduler_thread
+    if _scheduler_thread is not None and _scheduler_thread.is_alive():
+        return _scheduler_thread
+    if not _acquire_singleton_lock():
+        return None  # 다른 프로세스가 이미 스케줄러를 돌리는 중 → 중복 실행 방지
 
     def loop():
         last = None
@@ -107,4 +135,5 @@ def start_feed_scheduler(feed_service=None):
 
     thread = threading.Thread(target=loop, daemon=True, name="feed-scheduler")
     thread.start()
+    _scheduler_thread = thread
     return thread
