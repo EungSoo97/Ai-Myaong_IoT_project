@@ -5,7 +5,7 @@ import {
   Moon, PhoneCall, Bell, Trash2,
 } from '../components/icons'
 import {
-  useNotifications, removeNotification, clearNotifications, timeAgo,
+  useNotifications, removeNotification, clearNotifications, markAllRead, timeAgo,
 } from '../lib/notificationRepository'
 
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
@@ -61,6 +61,10 @@ const DEFAULT_META = { icon: Bell, cls: 'bg-brand-brown/10 text-brand-brown' }
 export function Notifications() {
   const navigate = useNavigate()
   const list = useNotifications()
+
+  useEffect(() => {
+    markAllRead()
+  }, [])
 
   const [clearing, setClearing] = useState(false) // 전체 삭제 도미노 진행 중
   const STAGGER = 70 // 항목 간 시차(ms)

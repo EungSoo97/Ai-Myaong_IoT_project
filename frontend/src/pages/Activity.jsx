@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic, Droplets,
   Activity as ActivityIcon, X, Play, MapPin, Clock, Cpu, PawPrint, Dog, Cat,
-  CheckCheck, ShieldAlert, Footprints,
+  CheckCheck, ShieldAlert, Footprints, Trash2,
 } from '../components/icons'
 import { Badge } from '../components/ui'
+import { LogDatePicker } from '../components/LogDatePicker'
 import { api, resolveMediaUrl } from '../api/api'
+import { filterLogsByDate, groupLogsByDate } from '../lib/logGrouping'
 import { mapVisionEventForList } from '../lib/visionEventMapper'
 
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
@@ -101,6 +103,8 @@ export function Activity() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null) // 상세 시트 대상
+  const [selectedDate, setSelectedDate] = useState('')
+  const [calendarOpen, setCalendarOpen] = useState(false)
   const [feedLogs, setFeedLogs] = useState({ feed: [], water: [] })
   const [visionEvents, setVisionEvents] = useState([])
 
@@ -180,7 +184,21 @@ export function Activity() {
     }),
     [feedItems, visionItems],
   )
-  const list = filter === 'all' ? all : all.filter((x) => x.cat === filter)
+  const categoryList = filter === 'all' ? all : all.filter((x) => x.cat === filter)
+  const list = useMemo(() => filterLogsByDate(categoryList, selectedDate), [categoryList, selectedDate])
+  const groupedList = useMemo(() => groupLogsByDate(list), [list])
+
+  const deleteActivityLog = async (item, event) => {
+    event?.stopPropagation()
+    if (!item?.eventId) return
+    try {
+      await api.deleteAlert(item.eventId)
+      setVisionEvents((events) => events.filter((row) => row.id !== item.eventId))
+      setSelected((current) => (current?.eventId === item.eventId ? null : current))
+    } catch (error) {
+      console.error('[Activity] delete event failed:', error)
+    }
+  }
 
   const detectCount = visionItems.length
   const feedTotal = feedItems.filter((x) => x.kind === 'food').reduce((s, x) => s + x.amount, 0)
@@ -243,21 +261,43 @@ export function Activity() {
       </div>
 
       {/* 통합 타임라인 (항목 탭 → 상세) */}
+      <LogDatePicker
+        items={categoryList}
+        open={calendarOpen}
+        selectedDate={selectedDate}
+        onToggle={() => setCalendarOpen((open) => !open)}
+        onSelectDate={(dateKey) => {
+          setSelectedDate(dateKey)
+          setCalendarOpen(false)
+        }}
+        onClearDate={() => setSelectedDate('')}
+        className="mt-3"
+      />
+
       <section className="mt-4">
         <div key={filter} className="page-enter relative rounded-3xl shadow-soft" style={{ backgroundColor: BG_CARD }}>
           <Stitch />
           <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
-          <div className={`relative z-10 m-1.5 rounded-[18px] overflow-hidden divide-y divide-brand-line/70 ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
-            {list.map((e) => {
+          <div className={`relative z-10 m-1.5 rounded-[18px] overflow-hidden ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
+            {groupedList.map((group) => (
+              <div key={group.label}>
+                <div className="sticky top-0 z-10 px-4 py-2 bg-brand-cream/95 backdrop-blur text-[11px] font-bold text-brand-mute border-y border-brand-line/70 first:border-t-0">
+                  {group.label}
+                </div>
+                <div className="divide-y divide-brand-line/70">
+                  {group.items.map((e) => {
               const Icon = e.icon
               const isFeed = e.cat === 'feed'
               return (
-                <button
+                <div
                   key={e.id}
-                  type="button"
-                  onClick={() => setSelected(e)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left bg-brand-card active:bg-brand-cream/60 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-3.5 bg-brand-card"
                 >
+                  <button
+                    type="button"
+                    onClick={() => setSelected(e)}
+                    className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream/60 transition-colors rounded-2xl"
+                  >
                   <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : e.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : e.warning ? 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
                     <Icon className="w-5 h-5" />
                   </span>
@@ -270,9 +310,25 @@ export function Activity() {
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
                     <ChevronRight className="w-4 h-4 text-brand-mute" />
                   </div>
-                </button>
+                  </button>
+                  {e.eventId && (
+                    <button
+                      type="button"
+                      onClick={(event) => deleteActivityLog(e, event)}
+                      className="w-9 h-9 rounded-2xl text-brand-mute flex items-center justify-center shrink-0 border border-dashed border-brand-brown/15 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                      style={{ backgroundColor: BG_INFO }}
+                      aria-label="로그 삭제"
+                      title="로그 삭제"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               )
-            })}
+                  })}
+                </div>
+              </div>
+            ))}
             {list.length === 0 && (
               <div className="px-4 py-10 flex flex-col items-center text-center bg-brand-card">
                 <span className="w-14 h-14 rounded-full flex items-center justify-center mb-3 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
@@ -387,7 +443,6 @@ function DetectionBody({ item }) {
   const [mediaFailed, setMediaFailed] = useState(false)
   const storagePath = item.storage_path || clip?.storage_path || ''
   const isCapture = item.eventType === 'capture_saved'
-  const isClip = item.eventType === 'clip_saved' || !!clip
   const isAwayPerson = item.eventType === 'away_person'
   const hasMedia = !!storagePath
 
@@ -408,7 +463,7 @@ function DetectionBody({ item }) {
   }, [clip, storagePath])
 
   const showImage = isCapture && mediaUrl && !mediaFailed
-  const showVideo = isClip && mediaUrl && !mediaFailed
+  const showVideo = !isCapture && mediaUrl && !mediaFailed
   const openLocalPath = () => {
     if (!storagePath) return
     api.revealVisionMedia(storagePath).catch((error) => {
@@ -429,7 +484,6 @@ function DetectionBody({ item }) {
           </div>
         </div>
       )}
-      {!isAwayPerson && (
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
         {hasMedia || clip ? (
           <>
@@ -477,7 +531,6 @@ function DetectionBody({ item }) {
           </div>
         )}
       </div>
-      )}
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <StatCard icon={<Clock className="w-4 h-4" />} label="탐지 시각" value={item.time} />

@@ -13,6 +13,7 @@ Next step:
 import os
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -27,16 +28,27 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 MODEL_PATH = Path(__file__).with_name("yolov8n.pt")
 CAPTURE_DIR = Path(__file__).with_name("captures")
 CLIP_DIR = Path(__file__).with_name("clips")
+EMERGENCY_CLIP_DIR = Path(__file__).with_name("emergency_clips")
 
 load_dotenv(ENV_PATH)
 CAPTURE_DIR.mkdir(exist_ok=True)
 CLIP_DIR.mkdir(exist_ok=True)
+EMERGENCY_CLIP_DIR.mkdir(exist_ok=True)
 
 DEFAULT_CLASS_LABELS = {
     0: "Person",
     15: "Cat",
     16: "Dog",
 }
+
+DB_API_TIMEOUT = max(0.5, float(os.getenv("VISION_DB_API_TIMEOUT", "3")))
+
+
+def env_bool(name, default=False):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def resolve_capture_source():
@@ -245,7 +257,11 @@ class ActivityTracker:
             "window_seconds": window_seconds,
         }
         try:
-            response = requests.post(f"{self.backend_url}/api/vision/activity", json=payload, timeout=0.5)
+            response = requests.post(
+                f"{self.backend_url}/api/vision/activity",
+                json=payload,
+                timeout=DB_API_TIMEOUT,
+            )
             response.raise_for_status()
         except requests.RequestException as error:
             if now - self.last_activity_error_at > 5:
@@ -263,9 +279,10 @@ class ActivityTracker:
 
 
 class EmergencyTracker:
-    def __init__(self, backend_url, source):
+    def __init__(self, backend_url, source, on_emergency_event=None):
         self.backend_url = backend_url
         self.source = source
+        self.on_emergency_event = on_emergency_event
         self.environment_enabled = os.getenv("EMERGENCY_ENABLED", "true").strip().lower() == "true"
         self.enabled = self.environment_enabled
         self.cooldown_seconds = float(os.getenv("EMERGENCY_COOLDOWN_SECONDS", "60"))
@@ -498,7 +515,7 @@ class EmergencyTracker:
             return False
         self.last_attempt[event_type] = now
         try:
-            post_event(
+            event = post_event(
                 self.backend_url,
                 event_type,
                 title,
@@ -514,6 +531,8 @@ class EmergencyTracker:
 
         self.last_fired[event_type] = now
         self.latest_alert = {"type": event_type, "time": now}
+        if self.on_emergency_event is not None:
+            self.on_emergency_event(event_type, event, now)
         print(f"[Emergency] type={event_type} confidence={confidence}", flush=True)
         return True
 
@@ -576,7 +595,21 @@ def post_event(backend_url, event_type, title, message, source=None, storage_pat
         "storage_path": str(storage_path) if storage_path is not None else None,
         "confidence": confidence,
     }
-    response = requests.post(f"{backend_url}/api/vision/events", json=payload, timeout=0.5)
+    response = requests.post(
+        f"{backend_url}/api/vision/events",
+        json=payload,
+        timeout=DB_API_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def post_event_media(backend_url, alert_id, storage_path):
+    response = requests.post(
+        f"{backend_url}/api/vision/events/{alert_id}/media",
+        json={"storage_path": str(storage_path)},
+        timeout=DB_API_TIMEOUT,
+    )
     response.raise_for_status()
     return response.json()
 
@@ -658,16 +691,175 @@ class ClipRecorder:
         }
 
 
+class EmergencyClipRecorder:
+    EVENT_TYPES = {"fall_detected", "seizure_suspected", "no_motion_emergency"}
+
+    def __init__(
+        self,
+        backend_url,
+        event_types=None,
+        output_dir=EMERGENCY_CLIP_DIR,
+        filename_prefix="emergency",
+        log_prefix="EmergencyClip",
+    ):
+        self.backend_url = backend_url
+        self.event_types = set(event_types or self.EVENT_TYPES)
+        self.output_dir = Path(output_dir)
+        self.filename_prefix = filename_prefix
+        self.log_prefix = log_prefix
+        self.pre_seconds = max(0.0, float(os.getenv("EMERGENCY_CLIP_PRE_SECONDS", "5")))
+        self.post_seconds = max(1.0, float(os.getenv("EMERGENCY_CLIP_POST_SECONDS", "8")))
+        self.record_fps = max(
+            1.0,
+            float(os.getenv("EMERGENCY_CLIP_FPS", os.getenv("VISION_RECORD_FPS", "10"))),
+        )
+        self.jpeg_quality = min(
+            95,
+            max(40, int(os.getenv("EMERGENCY_CLIP_JPEG_QUALITY", "80"))),
+        )
+        self.buffer = deque()
+        self.active = None
+        self.last_sample_at = None
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="emergency-clip")
+
+    def add_frame(self, frame, now):
+        interval = 1.0 / self.record_fps
+        if self.last_sample_at is not None and now - self.last_sample_at + 1e-6 < interval:
+            return
+
+        ok, encoded = cv2.imencode(
+            ".jpg",
+            frame,
+            [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
+        )
+        if not ok:
+            return
+
+        self.last_sample_at = now
+        packet = (now, encoded.tobytes())
+        self.buffer.append(packet)
+        while self.buffer and now - self.buffer[0][0] > self.pre_seconds:
+            self.buffer.popleft()
+
+        if self.active is None:
+            return
+        if now > self.active["triggered_at"]:
+            self.active["frames"].append(packet[1])
+        if now >= self.active["ends_at"]:
+            self._finalize()
+
+    def start(self, event_type, event, now):
+        if event_type not in self.event_types:
+            return
+        if self.active is not None:
+            print(
+                f"[{self.log_prefix}] skipped overlapping event type={event_type}",
+                flush=True,
+            )
+            return
+
+        alert_id = event.get("id") if isinstance(event, dict) else None
+        if not alert_id:
+            print(f"[{self.log_prefix}] alert id is missing; recording skipped", flush=True)
+            return
+
+        self.active = {
+            "alert_id": int(alert_id),
+            "event_type": event_type,
+            "triggered_at": now,
+            "ends_at": now + self.post_seconds,
+            "frames": [packet for _, packet in self.buffer],
+        }
+        print(
+            f"[{self.log_prefix}] recording type={event_type} "
+            f"pre={self.pre_seconds:g}s post={self.post_seconds:g}s",
+            flush=True,
+        )
+
+    def stop(self):
+        if self.active is not None:
+            self._finalize()
+        self.executor.shutdown(wait=True)
+
+    def _finalize(self):
+        active = self.active
+        self.active = None
+        if not active or not active["frames"]:
+            return
+        self.executor.submit(self._save_and_attach, active)
+
+    def _save_and_attach(self, active):
+        path = self._write_clip(active["event_type"], active["frames"])
+        if path is None:
+            return
+        try:
+            post_event_media(self.backend_url, active["alert_id"], path)
+            print(
+                f"[{self.log_prefix}] saved alert_id={active['alert_id']} path={path}",
+                flush=True,
+            )
+        except requests.RequestException as error:
+            print(
+                f"[{self.log_prefix}] media attach failed alert_id={active['alert_id']}: {error}",
+                flush=True,
+            )
+
+    def _write_clip(self, event_type, encoded_frames):
+        first = cv2.imdecode(np.frombuffer(encoded_frames[0], dtype=np.uint8), cv2.IMREAD_COLOR)
+        if first is None:
+            return None
+        height, width = first.shape[:2]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        candidates = [
+            ("webm", "VP80"),
+            ("webm", "VP90"),
+            ("mp4", "avc1"),
+            ("mp4", "mp4v"),
+        ]
+
+        for extension, codec in candidates:
+            path = self.output_dir / f"{self.filename_prefix}_{timestamp}_{event_type}.{extension}"
+            writer = cv2.VideoWriter(
+                str(path),
+                cv2.VideoWriter_fourcc(*codec),
+                self.record_fps,
+                (width, height),
+            )
+            if not writer.isOpened():
+                writer.release()
+                continue
+
+            try:
+                for encoded in encoded_frames:
+                    frame = cv2.imdecode(
+                        np.frombuffer(encoded, dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    if frame is None:
+                        continue
+                    if frame.shape[1] != width or frame.shape[0] != height:
+                        frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+                    writer.write(frame)
+            finally:
+                writer.release()
+            return path
+
+        print(f"[{self.log_prefix}] writer failed: no compatible codec", flush=True)
+        return None
+
+
 def main():
     source = resolve_capture_source()
     backend_url = resolve_backend_url()
     class_filter = resolve_class_filter()
+    flip_horizontal = env_bool("VISION_FLIP_HORIZONTAL", False)
     model = YOLO(resolve_model_path())
     frame_source = open_frame_source(source)
 
     print(f"[Vision] Source: {source}")
     print(f"[Vision] Backend: {backend_url}")
     print(f"[Vision] Classes: {sorted(class_filter)}")
+    print(f"[Vision] Flip horizontal: {flip_horizontal}")
     print("[Vision] Press Q or ESC to exit.")
 
     last_post_error_at = 0.0
@@ -680,13 +872,29 @@ def main():
     last_away_person_event_at = 0.0
     last_event_error_at = 0.0
     recorder = ClipRecorder()
+    emergency_clip_recorder = EmergencyClipRecorder(backend_url)
+    away_clip_recorder = EmergencyClipRecorder(
+        backend_url,
+        event_types={"away_person"},
+        output_dir=CLIP_DIR,
+        filename_prefix="away",
+        log_prefix="AwayClip",
+    )
     activity_tracker = ActivityTracker(backend_url)
-    emergency_tracker = EmergencyTracker(backend_url, source)
+    emergency_tracker = EmergencyTracker(
+        backend_url,
+        source,
+        on_emergency_event=emergency_clip_recorder.start,
+    )
 
     try:
         for frame in frame_source:
+            if flip_horizontal:
+                frame = cv2.flip(frame, 1)
             raw_frame = frame.copy()
             now = time.time()
+            emergency_clip_recorder.add_frame(raw_frame, now)
+            away_clip_recorder.add_frame(raw_frame, now)
 
             if now - last_control_poll_at >= 0.25:
                 last_control_poll_at = now
@@ -757,7 +965,7 @@ def main():
                 person = next((item for item in detections if item["label"] == "Person"), None)
                 if person and now - last_away_person_event_at >= float(os.getenv("AWAY_PERSON_EVENT_COOLDOWN", "10")):
                     try:
-                        post_event(
+                        event = post_event(
                             backend_url,
                             "away_person",
                             "외출 모드 중 사람 감지",
@@ -765,6 +973,7 @@ def main():
                             source,
                             confidence=person.get("confidence"),
                         )
+                        away_clip_recorder.start("away_person", event, now)
                         last_away_person_event_at = now
                     except requests.RequestException as error:
                         if now - last_event_error_at > 5:
@@ -787,6 +996,8 @@ def main():
                 break
     finally:
         recorder.stop()
+        emergency_clip_recorder.stop()
+        away_clip_recorder.stop()
         cv2.destroyAllWindows()
 
 

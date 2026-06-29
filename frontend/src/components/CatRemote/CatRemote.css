@@ -8,7 +8,7 @@
   align-items: center;
   gap: 4px;
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none;
   transform: translateY(0) scale(1);
   transition:
     opacity 0.25s ease,
@@ -78,6 +78,7 @@
   background: transparent;
   padding: 0;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .cat-top-button:active {
@@ -172,6 +173,7 @@
   background: transparent;
   padding: 0;
   cursor: pointer;
+  pointer-events: auto;
   overflow: visible;
   transform: translateY(0);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
