@@ -3,11 +3,49 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Video, Moon, UserX, UtensilsCrossed, Mic, Droplets,
   Activity as ActivityIcon, X, Play, MapPin, Clock, Cpu, PawPrint, Dog, Cat,
-  CheckCheck, ShieldAlert,
+  CheckCheck, ShieldAlert, Footprints,
 } from '../components/icons'
-import { Card, CreamCard, Badge } from '../components/ui'
+import { Badge } from '../components/ui'
 import { api, resolveMediaUrl } from '../api/api'
 import { mapVisionEventForList } from '../lib/visionEventMapper'
+
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
+const BG_CARD = 'color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)'
+const BG_INFO = 'color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)'
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = '' }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  )
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = '', opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: 'url(/paper.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundBlendMode: 'multiply',
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+        opacity,
+      }}
+    />
+  )
+}
 
 /* ═══════════════════════════════════════════════════════════
  * Mock 데이터 — 백엔드 DB 스키마(관계형) 기반
@@ -54,9 +92,9 @@ const getPet = (id) => PETS.find((p) => p.pet_id === id) || null
 const speciesIcon = (t) => (t === 'DOG' ? Dog : Cat)
 
 const FILTERS = [
-  { id: 'all', label: '전체' },
-  { id: 'vision', label: '감지' },
-  { id: 'feed', label: '급여' },
+  { id: 'all', label: '전체', icon: PawPrint },
+  { id: 'vision', label: '감지', icon: Video },
+  { id: 'feed', label: '급여', icon: UtensilsCrossed },
 ]
 
 export function Activity() {
@@ -127,7 +165,7 @@ export function Activity() {
     () => (visionEvents || []).map((event) => ({
       ...mapVisionEventForList(event),
       cat: 'vision',
-      icon: event.type === 'away_person' ? UserX : Video,
+      icon: ['away_person', 'fall_detected', 'no_motion', 'no_motion_warning', 'no_motion_emergency', 'seizure_suspected'].includes(event.type) ? UserX : Video,
       desc: event.message,
     })),
     [visionEvents],
@@ -155,32 +193,32 @@ export function Activity() {
           type="button"
           onClick={() => navigate('/')}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">활동 전체 보기</h1>
-          <p className="text-sm text-brand-mute truncate">최근 이벤트는 30일 동안 보관돼요.</p>
+          <h1 className="font-cute text-2xl font-bold text-brand-brown leading-tight">활동 전체 보기</h1>
+          <p className="text-sm text-brand-mute truncate">최근 이벤트는 30일 동안 보관돼요 🐾</p>
         </div>
       </header>
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="px-4 py-4">
-          <div className="flex items-center gap-1.5 text-brand-mute mb-1">
-            <ActivityIcon className="w-4 h-4 text-brand-primary" />
-            <p className="text-[11px] font-semibold">오늘 감지</p>
-          </div>
-          <p className="font-display text-2xl font-bold text-brand-brown leading-none">{detectCount}건</p>
-        </Card>
-        <Card className="px-4 py-4">
-          <div className="flex items-center gap-1.5 text-brand-mute mb-1">
-            <UtensilsCrossed className="w-4 h-4 text-brand-primary" />
-            <p className="text-[11px] font-semibold">오늘 급여</p>
-          </div>
-          <p className="font-display text-2xl font-bold text-brand-brown leading-none">{feedTotal}g</p>
-        </Card>
+        <SummaryCard
+          icon={<ActivityIcon className="w-4 h-4" />}
+          deco="paw"
+          label="오늘 감지"
+          value={detectCount}
+          unit="건"
+        />
+        <SummaryCard
+          icon={<UtensilsCrossed className="w-4 h-4" />}
+          deco="bone"
+          label="오늘 급여"
+          value={feedTotal}
+          unit="g"
+        />
       </div>
 
       {/* 필터 탭 */}
@@ -188,13 +226,15 @@ export function Activity() {
         <div className="inline-flex bg-brand-cream rounded-full p-1 shadow-soft-inset">
           {FILTERS.map((f) => {
             const active = filter === f.id
+            const FIcon = f.icon
             return (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
-                className={`px-5 py-1.5 text-sm font-bold rounded-full transition-colors ${active ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-mute'}`}
+                className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold rounded-full transition-colors ${active ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-mute'}`}
               >
+                <FIcon className="w-4 h-4" />
                 {f.label}
               </button>
             )
@@ -204,8 +244,10 @@ export function Activity() {
 
       {/* 통합 타임라인 (항목 탭 → 상세) */}
       <section className="mt-4">
-        <div key={filter} className="page-enter">
-          <CreamCard className={`divide-y divide-brand-line ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
+        <div key={filter} className="page-enter relative rounded-3xl shadow-soft" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <div className={`relative z-10 m-1.5 rounded-[18px] overflow-hidden divide-y divide-brand-line/70 ${list.length > 6 ? 'max-h-[420px] overflow-y-auto no-scrollbar' : ''}`}>
             {list.map((e) => {
               const Icon = e.icon
               const isFeed = e.cat === 'feed'
@@ -214,9 +256,9 @@ export function Activity() {
                   key={e.id}
                   type="button"
                   onClick={() => setSelected(e)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-card/60 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left bg-brand-card active:bg-brand-cream/60 transition-colors"
                 >
-                  <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${isFeed ? 'bg-brand-primary/15 text-brand-primary' : 'bg-brand-brown/10 text-brand-brown'}`}>
+                  <span className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : e.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : e.warning ? 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
                     <Icon className="w-5 h-5" />
                   </span>
                   <div className="flex-1 min-w-0">
@@ -224,7 +266,7 @@ export function Activity() {
                     <p className="text-xs text-brand-mute truncate">{e.desc}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge tone={isFeed ? 'primary' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
+                    <Badge tone={isFeed ? 'primary' : e.danger ? 'danger' : e.warning ? 'warn' : 'brown'}>{isFeed ? '급여' : '감지'}</Badge>
                     <span className="text-[11px] text-brand-mute">{e.time}</span>
                     <ChevronRight className="w-4 h-4 text-brand-mute" />
                   </div>
@@ -232,9 +274,15 @@ export function Activity() {
               )
             })}
             {list.length === 0 && (
-              <p className="px-4 py-8 text-center text-sm text-brand-mute">기록이 없어요.</p>
+              <div className="px-4 py-10 flex flex-col items-center text-center bg-brand-card">
+                <span className="w-14 h-14 rounded-full flex items-center justify-center mb-3 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+                  <Footprints className="w-7 h-7 text-brand-primary/70" />
+                </span>
+                <p className="font-display text-base font-bold text-brand-brown">아직 기록이 없어요</p>
+                <p className="text-xs text-brand-mute mt-1">우리 아이의 활동이 여기에 쌓여요 🐾</p>
+              </div>
             )}
-          </CreamCard>
+          </div>
         </div>
       </section>
 
@@ -267,27 +315,35 @@ function DetailSheet({ item, onClose }) {
       />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
-        style={{ transform: show ? 'translateY(0)' : 'translateY(100%)' }}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-b-3xl px-5 pt-3 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: BG_CARD,
+          transform: show ? 'translateY(0)' : 'translateY(100%)',
+          paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+        }}
       >
-        <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+        <Stitch className="!inset-[8px] !rounded-[22px]" />
+        <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.4} className="absolute right-6 top-6 w-3.5 h-3.5" />
+        <div className="relative z-10">
+          <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
 
-        {/* 헤더 */}
-        <div className="flex items-center gap-3">
-          <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${isFeed ? 'bg-brand-primary/15 text-brand-primary' : item.danger ? 'bg-brand-danger/15 text-brand-danger' : 'bg-brand-brown/10 text-brand-brown'}`}>
-            <Icon className="w-5 h-5" />
-          </span>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">{item.type}</h3>
-            <p className="text-xs text-brand-mute">오늘 {item.time}</p>
+          {/* 헤더 */}
+          <div className="flex items-center gap-3">
+            <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${isFeed ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/30' : item.danger ? 'bg-brand-danger/15 text-brand-danger border-brand-danger/30' : item.warning ? 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]' : 'bg-brand-brown/10 text-brand-brown border-brand-brown/25'}`}>
+              <Icon className="w-5 h-5" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">{item.type}</h3>
+              <p className="text-xs text-brand-mute">오늘 {item.time}</p>
+            </div>
+            <button type="button" onClick={dismiss} aria-label="닫기" className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button type="button" onClick={dismiss} aria-label="닫기" className="text-brand-mute touch-active">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
-        <div className="mt-4">
-          {isFeed ? <FeedingBody item={item} /> : <DetectionBody item={item} />}
+          <div className="mt-4">
+            {isFeed ? <FeedingBody item={item} /> : <DetectionBody item={item} />}
+          </div>
         </div>
       </div>
     </div>
@@ -312,12 +368,12 @@ function FeedingBody({ item }) {
         <StatCard icon={<Cpu className="w-4 h-4" />} label="방식" value={FEED_TYPE_KO[item.feedType] || item.feedType || '-'} />
       </div>
 
-      <div className="mt-3 rounded-2xl bg-brand-cream p-3.5 flex items-center gap-2">
-        <span className="w-7 h-7 rounded-full bg-brand-success/20 text-brand-success flex items-center justify-center shrink-0">
+      <div className="mt-3 rounded-2xl p-3.5 flex items-center gap-2 border border-dashed border-brand-brown/15" style={{ backgroundColor: BG_INFO }}>
+        <span className="w-7 h-7 rounded-full bg-brand-success/20 text-brand-success flex items-center justify-center shrink-0 border border-dashed border-brand-success/30">
           <CheckCheck className="w-4 h-4" />
         </span>
         <p className="text-sm text-brand-brown/90">
-          {isWater ? '급수' : '배식'} <b>{item.amount}{item.unit}</b> 완료
+          {isWater ? '급수' : '배식'} <b>{item.amount}{item.unit}</b> 완료 🐾
         </p>
       </div>
     </div>
@@ -429,11 +485,12 @@ function DetectionBody({ item }) {
           type="button"
           onClick={openLocalPath}
           disabled={!storagePath}
-          className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+          className="rounded-2xl p-3.5 text-left border border-dashed border-brand-brown/15 disabled:cursor-default active:bg-brand-line/40"
+          style={{ backgroundColor: BG_INFO }}
           title={storagePath || clip?.camera_location || item.desc}
         >
           <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-            <MapPin className="w-4 h-4" /> 위치
+            <span className="text-brand-primary-deep"><MapPin className="w-4 h-4" /></span> 위치
           </p>
           <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">
             {storagePath || clip?.camera_location || item.desc}
@@ -461,12 +518,37 @@ function DetectionBody({ item }) {
 
 function StatCard({ icon, label, value, accent }) {
   return (
-    <div className={`rounded-2xl p-3.5 ${accent ? 'bg-brand-primary/10' : 'bg-brand-cream'}`}>
+    <div
+      className={`rounded-2xl p-3.5 border border-dashed ${accent ? 'bg-brand-primary/10 border-brand-primary/30' : 'border-brand-brown/15'}`}
+      style={accent ? undefined : { backgroundColor: BG_INFO }}
+    >
       <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-        <span className={accent ? 'text-brand-primary' : 'text-brand-mute'}>{icon}</span>
+        <span className={accent ? 'text-brand-primary' : 'text-brand-primary-deep'}>{icon}</span>
         {label}
       </p>
       <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">{value}</p>
+    </div>
+  )
+}
+
+/* 요약 카드 — 펠트 톤 + 종이질감 장식 + 점선 아이콘칩 (강조) */
+function SummaryCard({ icon, deco, label, value, unit }) {
+  return (
+    <div className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-4" style={{ backgroundColor: BG_CARD }}>
+      <Stitch />
+      <PaperIcon shape={deco} color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-2 -bottom-2 w-14 h-14 rotate-6" />
+      <div className="relative z-10">
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border border-dashed border-brand-brown/20 text-brand-primary" style={{ backgroundColor: BG_INFO }}>
+            {icon}
+          </span>
+          <p className="text-[11px] font-bold text-brand-brown/70">{label}</p>
+        </div>
+        <p className="font-display text-[28px] font-extrabold text-brand-brown leading-none">
+          {value}
+          <span className="text-base ml-0.5 font-bold text-brand-mute">{unit}</span>
+        </p>
+      </div>
     </div>
   )
 }

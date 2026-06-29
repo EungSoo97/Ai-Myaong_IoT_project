@@ -19,11 +19,11 @@ class AwayModeRequest(BaseModel):
 
 
 class FeedRequest(BaseModel):
-    amount: int = Field(default=1, ge=1, le=20)
+    amount: int = Field(default=1, ge=1, le=300)
 
 
 class WaterRequest(BaseModel):
-    amount: int = Field(default=1, ge=1, le=20)
+    amount: int = Field(default=1, ge=1, le=300)
 
 
 class SharedWifiRequest(BaseModel):
@@ -47,6 +47,7 @@ class RobotStatus(BaseModel):
     connected: bool
     battery: int
     mode: str
+    away_mode: bool = False
     last_command: str | None = None
     position: dict[str, int]
     camera: dict[str, int]

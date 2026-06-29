@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -11,6 +11,7 @@ from database.base import get_db
 from database.user import User
 from database.pets import Pet
 from database.feed_logs import FeedLog
+from database.time_utils import kst_iso, now_kst_naive
 from database.water_logs import WaterLog
 
 router = APIRouter(prefix="/api/dispenser", tags=["dispenser"])
@@ -107,9 +108,9 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
 
 @router.get("/logs")
 def list_logs(days: int = 400, authorization: str = Header(None), db: Session = Depends(get_db)):
-    """현재 유저의 배식/급수 기록을 반환 (통계 화면용). created_at 은 UTC → 'Z' 표기."""
+    """현재 유저의 배식/급수 기록을 서울 시간으로 반환."""
     user = _current_user(authorization, db)
-    since = datetime.utcnow() - timedelta(days=days)
+    since = now_kst_naive() - timedelta(days=days)
 
     feeds = (
         db.query(FeedLog)
@@ -124,16 +125,13 @@ def list_logs(days: int = 400, authorization: str = Header(None), db: Session = 
         .all()
     )
 
-    def iso(dt):
-        return (dt.isoformat() + "Z") if dt else None
-
     return {
         "feed": [
-            {"amount_g": f.food_amount_g, "feed_type": f.feed_type, "created_at": iso(f.created_at)}
+            {"amount_g": f.food_amount_g, "feed_type": f.feed_type, "created_at": kst_iso(f.created_at)}
             for f in feeds
         ],
         "water": [
-            {"amount_ml": w.water_amount_ml, "water_type": w.water_type, "created_at": iso(w.created_at)}
+            {"amount_ml": w.water_amount_ml, "water_type": w.water_type, "created_at": kst_iso(w.created_at)}
             for w in waters
         ],
     }

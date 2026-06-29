@@ -12,7 +12,6 @@ settings.feed_schedule / water_schedule 에 저장된 일정(JSON)을 매 분 �
 import json
 import threading
 import time
-from datetime import datetime
 
 # ORM 매퍼가 관계(User/Pet 등)를 해석하도록 관련 모델을 모두 등록
 import database.alerts  # noqa: F401
@@ -28,6 +27,7 @@ from database.base import SessionLocal
 from database.feed_logs import FeedLog
 from database.pets import Pet
 from database.settings import Settings
+from database.time_utils import now_kst_naive
 from database.water_logs import WaterLog
 
 
@@ -96,7 +96,7 @@ def start_feed_scheduler(feed_service=None):
     def loop():
         last = None
         while True:
-            hhmm = datetime.now().strftime("%H:%M")
+            hhmm = now_kst_naive().strftime("%H:%M")
             if hhmm != last:  # 같은 분에 중복 실행 방지
                 last = hhmm
                 try:

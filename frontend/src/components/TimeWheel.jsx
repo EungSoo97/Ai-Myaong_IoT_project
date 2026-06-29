@@ -11,7 +11,7 @@ const MERIDIEMS = ['오전', '오후']
 const HOURS12 = Array.from({ length: 12 }, (_, i) => String(i === 0 ? 12 : i).padStart(2, '0')) // 12,01,...,11
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
-export function TimeWheel({ value, onChange }) {
+export function TimeWheel({ value, onChange, visibleRows = 5 }) {
   const valid = value && /^\d{1,2}:\d{2}$/.test(value)
   const [h24Raw, mmRaw] = valid ? value.split(':') : ['08', '00']
   const h24 = Number(h24Raw)
@@ -30,21 +30,24 @@ export function TimeWheel({ value, onChange }) {
       {/* 가운데 선택 밴드 */}
       <div className="pointer-events-none absolute left-2 right-2 top-1/2 -translate-y-1/2 rounded-xl bg-brand-primary/10 border-y-2 border-brand-primary/30"
         style={{ height: ITEM }} />
-      {/* 위/아래 페이드 */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-brand-cream to-transparent z-10" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-brand-cream to-transparent z-10" />
+      {/* 위/아래 페이드 (휠 높이에 맞춰 조절) */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-brand-cream to-transparent z-10" style={{ height: ITEM }} />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand-cream to-transparent z-10" style={{ height: ITEM }} />
 
       <div className="flex">
-        <LoopWheel items={MERIDIEMS} value={ampm} onChange={(v) => emit(v, hour12, minute)} />
-        <LoopWheel items={HOURS12} value={hour12} unit="시" onChange={(v) => emit(ampm, v, minute)} />
-        <LoopWheel items={MINUTES} value={minute} unit="분" onChange={(v) => emit(ampm, hour12, v)} />
+        <LoopWheel items={MERIDIEMS} value={ampm} visibleRows={visibleRows} onChange={(v) => emit(v, hour12, minute)} />
+        <LoopWheel items={HOURS12} value={hour12} unit="시" visibleRows={visibleRows} onChange={(v) => emit(ampm, v, minute)} />
+        <LoopWheel items={MINUTES} value={minute} unit="분" visibleRows={visibleRows} onChange={(v) => emit(ampm, hour12, v)} />
       </div>
     </div>
   )
 }
 
 /* 무한 반복 휠 */
-function LoopWheel({ items, value, unit, onChange }) {
+function LoopWheel({ items, value, unit, onChange, visibleRows = 5 }) {
+  const rows = visibleRows % 2 === 0 ? visibleRows + 1 : visibleRows // 홀수 보정 (가운데 정렬)
+  const H = rows * ITEM            // 컨테이너 높이
+  const SPACER = ((rows - 1) / 2) * ITEM // 위/아래 여백 (선택 항목 가운데 정렬)
   const ref = useRef(null)
   const lock = useRef(false)   // 프로그램적 스크롤 시 핸들러 무시
   const timer = useRef(null)
@@ -155,9 +158,10 @@ function LoopWheel({ items, value, unit, onChange }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      className="no-scrollbar flex-1 h-[200px] overflow-y-auto overscroll-y-contain snap-y snap-mandatory cursor-grab active:cursor-grabbing select-none"
+      className="no-scrollbar flex-1 overflow-y-auto overscroll-y-contain snap-y snap-mandatory cursor-grab active:cursor-grabbing select-none"
+      style={{ height: H }}
     >
-      <div style={{ height: ITEM * 2 }} />
+      <div style={{ height: SPACER }} />
       {long.map((it, i) => {
         const center = i === centerIdx
         return (
@@ -171,7 +175,7 @@ function LoopWheel({ items, value, unit, onChange }) {
           </div>
         )
       })}
-      <div style={{ height: ITEM * 2 }} />
+      <div style={{ height: SPACER }} />
     </div>
   )
 }

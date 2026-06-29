@@ -70,6 +70,7 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+    is_new_user: bool = False  # 이번 요청에서 계정이 새로 생성됐는지 (구글 신규 가입 판별)
 
 
 class GoogleAuthRequest(BaseModel):

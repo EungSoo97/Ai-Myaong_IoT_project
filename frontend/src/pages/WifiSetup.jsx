@@ -299,7 +299,7 @@ export function WifiSetup() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">Wi-Fi</h1>
+          <h1 className="font-cute text-2xl font-bold text-brand-brown leading-tight">Wi-Fi</h1>
           <p className="mt-1 text-sm text-brand-mute truncate">{currentNetwork || '연결 설정'}</p>
         </div>
         <Badge tone={status?.stationConnected ? 'success' : 'warn'}>

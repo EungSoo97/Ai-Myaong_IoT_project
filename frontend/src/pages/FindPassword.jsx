@@ -1,16 +1,7 @@
 import { useState } from 'react'
-import { User, ArrowRight } from '../components/icons'
-import { Brand, Field, BackLink } from './FindId'
+import { User, ArrowRight, KeyRound } from '../components/icons'
+import { AuthHeader, Field, BackLink, FormCard } from './FindId'
 import { EmailVerifyField } from '../components/EmailVerifyField'
-
-const C = {
-  bg: 'rgb(var(--brand-bg))',
-  card: 'rgb(var(--brand-card))',
-  border: 'rgb(var(--brand-line))',
-  mute: 'rgb(var(--brand-mute))',
-  primary: 'rgb(var(--brand-primary))',
-  danger: 'rgb(var(--brand-danger))',
-}
 
 /**
  * 비밀번호 찾기 (프론트 전용).
@@ -34,15 +25,16 @@ export default function FindPassword({ onBackToLogin, onReset }) {
   }
 
   return (
-    <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
-      <Brand subtitle="비밀번호 찾기" />
+    <div className="page-enter font-cute min-h-[100dvh] flex flex-col px-5 pt-5 pb-8 bg-brand-bg">
+      <AuthHeader title="비밀번호 찾기" subtitle="아이디와 이메일로 본인 확인을 해요" onBack={onBackToLogin} />
 
-      <form
+      <FormCard
+        icon={<KeyRound className="w-6 h-6" />}
         onSubmit={submit}
-        className="mt-6 rounded-3xl p-6 shadow-lg"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        submitIcon={<ArrowRight className="w-5 h-5" />}
+        submitLabel="비밀번호 재설정하기"
       >
-        <p className="text-sm" style={{ color: C.mute }}>
+        <p className="text-sm text-brand-mute">
           아이디 입력 후 이메일을 인증하면 비밀번호를 새로 설정할 수 있어요.
         </p>
 
@@ -56,16 +48,8 @@ export default function FindPassword({ onBackToLogin, onReset }) {
           label="이메일"
         />
 
-        {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
-
-        <button
-          type="submit"
-          className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white py-4 text-base font-bold shadow-md transition-colors active:brightness-90"
-          style={{ background: C.primary }}
-        >
-          비밀번호 재설정하기 <ArrowRight className="w-5 h-5" />
-        </button>
-      </form>
+        {err && <p className="mt-4 text-sm font-bold text-brand-danger">{err}</p>}
+      </FormCard>
 
       <BackLink onBackToLogin={onBackToLogin} />
     </div>
