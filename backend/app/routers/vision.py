@@ -27,7 +27,9 @@ import database.user_oauth_connections  # noqa: F401
 import database.water_logs  # noqa: F401
 from database.alerts import Alert
 from database.base import get_db
+from database.clips import Clip
 from database.daily_activity_summaries import DailyActivitySummary
+from database.emergency_clips import EmergencyClip
 from database.pets import Pet
 from database.settings import Settings
 from database.time_utils import kst_iso, now_kst_naive, today_kst
@@ -95,6 +97,10 @@ class VisionEventCreate(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
 
 
+class VisionEventMediaUpdate(BaseModel):
+    storage_path: str = Field(min_length=1, max_length=500)
+
+
 class VisionActivityCreate(BaseModel):
     activity_score: float = Field(ge=0)
     status: Literal["NO_MOTION", "LOW", "NORMAL", "ACTIVE"]
@@ -110,6 +116,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ALLOWED_MEDIA_DIRS = [
     PROJECT_ROOT / "desktop" / "opencv" / "captures",
     PROJECT_ROOT / "desktop" / "opencv" / "clips",
+    PROJECT_ROOT / "desktop" / "opencv" / "emergency_clips",
 ]
 
 _latest_detection: dict = {
@@ -384,6 +391,62 @@ def create_event(payload: VisionEventCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(alert)
     _log_vision_event(alert, payload)
+    return _alert_to_vision_event(alert)
+
+
+@router.post("/events/{alert_id}/media")
+def attach_event_media(
+    alert_id: int,
+    payload: VisionEventMediaUpdate,
+    db: Session = Depends(get_db),
+):
+    active_user_id = _control_state.get("active_user_id")
+    if active_user_id is None:
+        raise HTTPException(status_code=409, detail="Active vision user is required.")
+
+    alert = (
+        db.query(Alert)
+        .filter(Alert.alert_id == alert_id, Alert.user_id == active_user_id)
+        .first()
+    )
+    if not alert or not alert.alert_type.startswith("vision."):
+        raise HTTPException(status_code=404, detail="Vision alert not found.")
+
+    resolved_path = _resolve_media_path(payload.storage_path)
+    try:
+        message = json.loads(alert.message or "{}")
+    except json.JSONDecodeError:
+        message = {"desc": alert.message or ""}
+    message["media_path"] = str(resolved_path)
+    message["storage_path"] = str(resolved_path)
+    alert.message = json.dumps(message, ensure_ascii=False)
+
+    event_type = _event_type_from_alert(alert.alert_type)
+    if event_type == "away_person":
+        clip = (
+            db.query(Clip)
+            .filter(Clip.user_id == active_user_id, Clip.file_path == str(resolved_path))
+            .first()
+        )
+        if not clip:
+            db.add(Clip(user_id=active_user_id, file_path=str(resolved_path)))
+    else:
+        emergency_clip = (
+            db.query(EmergencyClip)
+            .filter(EmergencyClip.alert_id == alert.alert_id)
+            .first()
+        )
+        if emergency_clip:
+            emergency_clip.file_path = str(resolved_path)
+        else:
+            db.add(EmergencyClip(alert_id=alert.alert_id, file_path=str(resolved_path)))
+
+    db.commit()
+    db.refresh(alert)
+    print(
+        f"[VisionEvent] media attached alert_id={alert.alert_id} path={resolved_path}",
+        flush=True,
+    )
     return _alert_to_vision_event(alert)
 
 

@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from database.detection_logs import DetectionLog
+from database.daily_activity_summaries import DailyActivitySummary
 from database.feed_logs import FeedLog
 from database.pets import Pet
 from database.settings import Settings
@@ -14,7 +14,6 @@ from database.time_utils import today_kst
 from database.water_logs import WaterLog
 
 
-MIN_DETECTION_CONFIDENCE = 0.6
 TREND_RATIO_THRESHOLD = 0.1
 ACTIVE_POSES = {"walking", "running", "playing", "standing", "moving"}
 
@@ -113,24 +112,27 @@ def _most_common_pose(poses: list[str | None]) -> str | None:
 
 
 def _activity_entries(
-    logs: list[DetectionLog],
-) -> tuple[dict[date, list[float]], dict[date, list[str | None]], list[str]]:
-    activity_by_date: dict[date, list[float]] = defaultdict(list)
+    summaries: list[DailyActivitySummary],
+) -> tuple[dict[date, list[tuple[float, int]]], dict[date, list[str | None]], list[str]]:
+    activity_by_date: dict[date, list[tuple[float, int]]] = defaultdict(list)
     poses_by_date: dict[date, list[str | None]] = defaultdict(list)
     valid_poses = []
 
-    for log in logs:
-        if log.confidence is not None and log.confidence < MIN_DETECTION_CONFIDENCE:
-            continue
-
-        log_date = log.created_at.date()
-        if log.activity_level is not None:
-            activity_by_date[log_date].append(float(log.activity_level))
-        poses_by_date[log_date].append(log.pose)
-        if log.pose:
-            valid_poses.append(log.pose)
+    for summary in summaries:
+        if summary.avg_activity_level is not None:
+            minutes = summary.detected_minutes or 1
+            activity_by_date[summary.summary_date].append((float(summary.avg_activity_level), minutes))
 
     return activity_by_date, poses_by_date, valid_poses
+
+
+def _weighted_activity(values: list[tuple[float, int]]) -> float | None:
+    if not values:
+        return None
+    total_minutes = sum(minutes for _, minutes in values)
+    if total_minutes <= 0:
+        return None
+    return sum(score * minutes for score, minutes in values) / total_minutes
 
 
 def _pose_distribution(poses: list[str]) -> dict[str, float]:
@@ -228,13 +230,13 @@ def build_pet_health_summary(db: Session, user_id: int, pet_id: int, days: int =
         )
         .all()
     )
-    detection_logs = (
-        db.query(DetectionLog)
+    activity_summaries = (
+        db.query(DailyActivitySummary)
         .filter(
-            DetectionLog.user_id == user_id,
-            DetectionLog.pet_id == pet_id,
-            DetectionLog.created_at >= start_dt,
-            DetectionLog.created_at < end_dt,
+            DailyActivitySummary.user_id == user_id,
+            DailyActivitySummary.pet_id == pet_id,
+            DailyActivitySummary.summary_date >= period_start,
+            DailyActivitySummary.summary_date <= period_end,
         )
         .all()
     )
@@ -247,14 +249,14 @@ def build_pet_health_summary(db: Session, user_id: int, pet_id: int, days: int =
     for log in water_logs:
         water_by_date[log.created_at.date()] += float(log.water_amount_ml or 0)
 
-    activity_by_date, poses_by_date, valid_poses = _activity_entries(detection_logs)
+    activity_by_date, poses_by_date, valid_poses = _activity_entries(activity_summaries)
 
     daily = []
     activity_values: list[float | None] = []
     for day in dates:
         avg_activity = None
         if activity_by_date.get(day):
-            avg_activity = mean(activity_by_date[day])
+            avg_activity = _weighted_activity(activity_by_date[day])
         activity_values.append(avg_activity)
 
         daily.append(
@@ -365,6 +367,8 @@ def build_pet_health_summary(db: Session, user_id: int, pet_id: int, days: int =
             "missing_water_days": days - water_days,
             "missing_activity_days": days - activity_days,
             "pose_sample_count": len(valid_poses),
+            "activity_summary_count": len(activity_summaries),
+            "activity_detected_minutes": sum(row.detected_minutes or 0 for row in activity_summaries),
             "activity_sample_count": sum(len(values) for values in activity_by_date.values()),
         },
     }
