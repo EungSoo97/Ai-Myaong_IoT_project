@@ -19,11 +19,11 @@ class AwayModeRequest(BaseModel):
 
 
 class FeedRequest(BaseModel):
-    amount: int = Field(default=1, ge=1, le=20)
+    amount: int = Field(default=1, ge=1, le=300)
 
 
 class WaterRequest(BaseModel):
-    amount: int = Field(default=1, ge=1, le=20)
+    amount: int = Field(default=1, ge=1, le=300)
 
 
 class SharedWifiRequest(BaseModel):

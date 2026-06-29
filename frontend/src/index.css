@@ -302,6 +302,11 @@ body {
   transform: translateZ(0);
 }
 
+.public-route-stage > :not(.auth-background-video) {
+  position: relative;
+  z-index: 2;
+}
+
 .public-auth-background-video {
   opacity: 0;
   transition: opacity 280ms ease;

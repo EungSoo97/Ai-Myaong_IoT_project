@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import {
   ArrowDown,
   ArrowLeft,
@@ -23,7 +23,7 @@ import {
   UtensilsCrossed,
   Video,
 } from "lucide-react-native";
-import { api, mediaUrl } from "../api/client";
+import { api } from "../api/client";
 import { Button, Card, Field, Header, Pill, Screen } from "../components/ui";
 import { colors } from "../theme";
 
@@ -44,20 +44,36 @@ const cameraMap = {
 
 export function VisionScreen() {
   const [stream, setStream] = useState("");
+  const [streamMode, setStreamMode] = useState("");
+  const [streamError, setStreamError] = useState("");
+  const [streamLoaded, setStreamLoaded] = useState(false);
   const [events, setEvents] = useState([]);
   const [recording, setRecording] = useState(false);
+  const [emergency, setEmergency] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [streamResult, eventResult] = await Promise.allSettled([
+    const [streamResult, eventResult, settingResult] = await Promise.allSettled([
       api.getStreamUrl(),
       api.getVisionEvents(10),
+      api.getSettings(),
     ]);
-    if (streamResult.status === "fulfilled")
-      setStream(mediaUrl(streamResult.value.url));
+    if (streamResult.status === "fulfilled") {
+      setStream(streamResult.value.url);
+      setStreamMode(streamResult.value.mode || "live");
+      setStreamError("");
+    } else {
+      setStream("");
+      setStreamMode("");
+      setStreamLoaded(false);
+      setStreamError(streamResult.reason?.message || "스트림 URL을 불러오지 못했어요.");
+    }
     if (eventResult.status === "fulfilled")
       setEvents(eventResult.value.events || []);
+    if (settingResult.status === "fulfilled")
+      setEmergency(settingResult.value?.motion_alert !== "N");
   }, []);
+  const streamStatus = streamError ? "off" : stream && streamLoaded ? "live" : "connecting";
   useEffect(() => {
     load();
     const timer = setInterval(load, 5000);
@@ -93,26 +109,73 @@ export function VisionScreen() {
       Alert.alert("녹화 설정 실패", e.message);
     }
   };
+  const toggleEmergency = async () => {
+    const next = !emergency;
+    setEmergency(next);
+    try {
+      await api.setVisionEmergency(next);
+    } catch (e) {
+      setEmergency(!next);
+      Alert.alert("이상 감지 설정 실패", e.message);
+    }
+  };
 
   return (
     <Screen>
       <Header title="로봇 비전" subtitle="실시간 카메라와 로봇을 제어해요" />
       <Card style={styles.streamCard}>
         {stream ? (
-          <Image
-            source={{ uri: stream }}
-            style={styles.stream}
-            resizeMode="cover"
-          />
+          <>
+            <WebView
+              key={stream}
+              originWhitelist={["*"]}
+              source={{ html: streamHtml(stream) }}
+              style={styles.stream}
+              scrollEnabled={false}
+              bounces={false}
+              javaScriptEnabled={false}
+              domStorageEnabled={false}
+              mixedContentMode="always"
+              onLoadEnd={() => {
+                setStreamLoaded(true);
+                setStreamError("");
+              }}
+              onError={() => {
+                setStreamLoaded(false);
+                setStreamError("카메라 스트림을 표시하지 못했어요.");
+              }}
+            />
+            {streamStatus !== "live" ? (
+              <StreamFallback
+                status={streamStatus}
+                mode={streamMode}
+                message={streamError}
+                stream={stream}
+              />
+            ) : null}
+          </>
         ) : (
-          <View style={[styles.stream, styles.streamEmpty]}>
-            <Video size={38} color={colors.muted} />
-            <Text style={styles.muted}>스트림 연결 대기</Text>
-          </View>
+          <StreamFallback
+            status={streamStatus}
+            mode={streamMode}
+            message={streamError}
+          />
         )}
         <View style={styles.live}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE</Text>
+          <View
+            style={[
+              styles.liveDot,
+              streamStatus === "connecting" && styles.liveDotConnecting,
+              streamStatus === "off" && styles.liveDotOff,
+            ]}
+          />
+          <Text style={styles.liveText}>
+            {streamStatus === "live"
+              ? "LIVE"
+              : streamStatus === "connecting"
+                ? "연결 중"
+                : "오프라인"}
+          </Text>
         </View>
       </Card>
       <View style={styles.actionRow}>
@@ -137,6 +200,18 @@ export function VisionScreen() {
           style={{ flex: 1 }}
         />
       </View>
+      <Card style={styles.settingRow}>
+        <View>
+          <Text style={styles.eventTitle}>이상 행동 감지</Text>
+          <Text style={styles.muted}>움직임·응급 상황 알림을 받아요</Text>
+        </View>
+        <Switch
+          value={emergency}
+          onValueChange={toggleEmergency}
+          trackColor={{ false: colors.line, true: colors.primary + "99" }}
+          thumbColor={emergency ? colors.primary : "#fff"}
+        />
+      </Card>
       <Text style={styles.sectionTitle}>로봇 이동</Text>
       <Card style={styles.controls}>
         <ControlPad onPress={(value) => command("move", value)} />
@@ -171,6 +246,60 @@ export function VisionScreen() {
         ) : null}
       </Card>
     </Screen>
+  );
+}
+
+function streamHtml(stream) {
+  const escaped = String(stream)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #17130F;
+      }
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        background: #17130F;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="${escaped}" />
+  </body>
+</html>`;
+}
+
+function StreamFallback({ status, mode, message, stream }) {
+  return (
+    <View style={[styles.stream, styles.streamFallback]}>
+      <View style={styles.streamFallbackIcon}>
+        <Video size={31} color={colors.muted} />
+      </View>
+      <Text style={styles.streamFallbackTitle}>
+        {status === "off" ? "카메라 스트림 연결 대기 중" : "연결 중..."}
+      </Text>
+      <Text style={styles.streamFallbackText}>
+        {message || (mode === "simulated" ? "시뮬레이션 스트림" : "MJPEG 실시간 캠")}
+      </Text>
+      {stream ? (
+        <Text style={styles.streamUrl} numberOfLines={1}>
+          {stream}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -474,12 +603,58 @@ function AmountCard({
 
 const styles = StyleSheet.create({
   streamCard: { padding: 5, overflow: "hidden" },
-  stream: { width: "100%", aspectRatio: 16 / 10, borderRadius: 20 },
+  stream: {
+    width: "100%",
+    aspectRatio: 16 / 10,
+    borderRadius: 20,
+    backgroundColor: colors.black,
+  },
   streamEmpty: {
     backgroundColor: colors.black,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  streamFallback: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    bottom: 5,
+    left: 5,
+    backgroundColor: colors.cream,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 22,
+    gap: 8,
+  },
+  streamFallbackIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#FFFFFF99",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FFFFFFAA",
+  },
+  streamFallbackTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  streamFallbackText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  streamUrl: {
+    color: colors.muted,
+    opacity: 0.7,
+    fontSize: 10,
+    marginTop: 2,
+    maxWidth: "92%",
   },
   live: {
     position: "absolute",
@@ -494,9 +669,19 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   liveDot: { width: 7, height: 7, borderRadius: 5, backgroundColor: "#ff554d" },
+  liveDotConnecting: { backgroundColor: colors.warning },
+  liveDotOff: { backgroundColor: "#FFFFFF66" },
   liveText: { color: "#fff", fontWeight: "900", fontSize: 10 },
   muted: { color: colors.muted, fontSize: 12 },
   actionRow: { flexDirection: "row", gap: 12, marginTop: 13 },
+  settingRow: {
+    minHeight: 70,
+    marginTop: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   sectionTitle: {
     color: colors.text,
     fontSize: 17,
