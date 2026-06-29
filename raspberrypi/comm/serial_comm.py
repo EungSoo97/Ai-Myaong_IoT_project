@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from glob import glob
 
@@ -10,6 +11,7 @@ class SerialComm:
         self.simulation_mode = os.getenv("SIMULATION_MODE", "false").lower() == "true"
         self.debug = os.getenv("SERIAL_DEBUG", "false").lower() == "true"
         self._serial = None
+        self._lock = threading.RLock()
 
     def connect(self) -> None:
         if self.simulation_mode:
@@ -28,16 +30,33 @@ class SerialComm:
             print(f"[serial:simulated] -> robot-controller {command}")
             return
 
-        self._serial.write(f"{command}\n".encode("utf-8"))
-        self._serial.flush()
+        with self._lock:
+            self._serial.write(f"{command}\n".encode("utf-8"))
+            self._serial.flush()
         if self.debug:
             print(f"[serial] -> robot-controller {command}")
-            self._read_available_output()
 
     def close(self) -> None:
-        if self._serial and self._serial.is_open:
-            self._serial.close()
-            print("[serial] disconnected")
+        with self._lock:
+            if self._serial and self._serial.is_open:
+                self._serial.close()
+                print("[serial] disconnected")
+
+    def read_line(self) -> str:
+        if self.simulation_mode or not self._serial:
+            time.sleep(1)
+            return ""
+
+        try:
+            line = self._serial.readline().decode("utf-8", "replace").strip()
+        except Exception as exc:
+            print(f"[serial] read failed: {exc}")
+            time.sleep(1)
+            return ""
+
+        if line and self.debug:
+            print(f"[serial] <- robot-controller {line}")
+        return line
 
     def _resolve_port(self) -> str:
         if self.port and self.port.lower() != "auto" and os.path.exists(self.port):
@@ -80,7 +99,7 @@ class SerialComm:
                 time.sleep(0.02)
                 continue
 
-            line = self._serial.readline().decode("utf-8", "replace").strip()
+            line = self.read_line()
             if line:
                 saw_output = True
                 print(f"[serial] <- robot-controller {line}")

@@ -95,10 +95,14 @@ class RaspberryPiAgent:
         )
         self._client = None
         self._stopping = threading.Event()
+        self._serial_reader_thread = None
+        self._last_sensor_backend_post_at = 0.0
+        self._last_sensor_backend_lookup_at = 0.0
 
     def start(self) -> None:
         try:
             self.serial.connect()
+            self._start_serial_reader()
         except Exception as exc:
             print(f"[serial] connection failed, continuing without Arduino serial: {exc}")
 
@@ -143,6 +147,101 @@ class RaspberryPiAgent:
         self._stopping.set()
         if self._client:
             self._client.disconnect()
+
+    def _start_serial_reader(self) -> None:
+        if self.serial.simulation_mode:
+            return
+        if self._serial_reader_thread and self._serial_reader_thread.is_alive():
+            return
+
+        self._serial_reader_thread = threading.Thread(
+            target=self._serial_reader_loop,
+            name="arduino-serial-reader",
+            daemon=True,
+        )
+        self._serial_reader_thread.start()
+
+    def _serial_reader_loop(self) -> None:
+        while not self._stopping.is_set():
+            line = self.serial.read_line()
+            if not line:
+                continue
+
+            payload = self._parse_sensor_line(line)
+            if not payload:
+                if self.serial.debug:
+                    print(f"[serial] <- robot-controller {line}")
+                continue
+
+            print(f"[sensor] rear distance={payload.get('distance_cm')}cm obstacle={payload.get('rear_obstacle')}")
+            self._publish_sensor_update(payload)
+            self._post_sensor_update(payload)
+
+    def _parse_sensor_line(self, line: str) -> dict[str, object] | None:
+        distance_match = re.search(r"\bcm=(-?\d+)\b", line)
+        if not distance_match:
+            return None
+
+        distance_cm = int(distance_match.group(1))
+        if distance_cm < 0:
+            return None
+
+        if line.startswith("REAR_OBSTACLE"):
+            rear_obstacle = True
+        else:
+            obstacle_match = re.search(r"\bobstacle=([01])\b", line)
+            rear_obstacle = bool(obstacle_match and obstacle_match.group(1) == "1")
+
+        return {
+            "source": "arduino-rear-ultrasonic",
+            "distance_cm": distance_cm,
+            "rear_obstacle": rear_obstacle,
+            "threshold_cm": int(os.getenv("REAR_OBSTACLE_ALERT_CM", "15")),
+            "device_id": DEVICE_ID,
+        }
+
+    def _publish_sensor_update(self, payload: dict[str, object]) -> None:
+        client = self._client
+        if not client:
+            return
+
+        try:
+            client.publish("ai-myaong/robot/sensor", json.dumps(payload, ensure_ascii=False))
+        except Exception as exc:
+            print(f"[sensor] MQTT publish failed: {exc}")
+
+    def _post_sensor_update(self, payload: dict[str, object]) -> None:
+        now = time.monotonic()
+        interval = float(os.getenv("SENSOR_BACKEND_POST_INTERVAL", "1"))
+        if not payload.get("rear_obstacle") and now - self._last_sensor_backend_post_at < interval:
+            return
+
+        configured_backend = os.getenv("DESKTOP_BACKEND_URL", "").strip()
+        if not configured_backend and not MQTT_BACKEND_CACHE["url"]:
+            lookup_interval = float(os.getenv("SENSOR_BACKEND_LOOKUP_INTERVAL", "10"))
+            if now - self._last_sensor_backend_lookup_at < lookup_interval:
+                return
+            self._last_sensor_backend_lookup_at = now
+
+        backend_url = desktop_backend_url()
+        if not backend_url:
+            if now - self._last_sensor_backend_post_at >= 10:
+                print("[sensor] desktop backend was not found; sensor update not posted")
+                self._last_sensor_backend_post_at = now
+            return
+
+        self._last_sensor_backend_post_at = now
+        try:
+            request = urllib.request.Request(
+                f"{backend_url}/api/robot/sensor",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=2) as response:
+                response.read()
+        except Exception as exc:
+            print(f"[sensor] backend post failed: {exc}")
 
     def _make_mqtt_client(self, mqtt):
         try:

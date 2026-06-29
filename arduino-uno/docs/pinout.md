@@ -25,6 +25,7 @@ TB6612FNG wiring:
 - Upload `AiMyaongRobot`, open Arduino Serial Monitor at `115200`, set line ending to newline, and send `MOTOR_TEST`.
 - `MOTOR_TEST` runs left motor, right motor, then both motors briefly.
 - Send `LEFT_MOTOR_TEST` or `RIGHT_MOTOR_TEST` to test only one side.
+- Send `LEFT_BACKWARD_TEST` or `RIGHT_BACKWARD_TEST` to test each side in reverse.
 - Send `PINOUT` to print the expected TB6612FNG and pan/tilt wiring.
 - Send `MOTOR_DIAG` to run left forward/backward, then right forward/backward with serial phase messages.
 - If `MOTOR_TEST` prints `ACK MOTOR_TEST` but motors do not move, check motor power, `STBY` wiring to D8, PWM wiring, shared GND, and whether the motors were damaged by 12V.
@@ -36,6 +37,14 @@ TB6612FNG wiring:
 - Pan servo signal: D9
 - Tilt servo signal: D10
 - Arduino D9-D10 sit next to the motor-driver block and are reserved for the pan/tilt servo signals.
+
+## Rear Ultrasonic Sensor
+
+- TRIG: D11
+- ECHO: D12
+- Sensor direction: rear-facing obstacle detection
+- Current code reports rear distance over serial every 1 second.
+- Rear obstacle alert turns on at 15 cm or closer and clears at 20 cm or farther.
 
 ## Serial Link
 
