@@ -26,6 +26,10 @@ inline bool handleCommand(const String& command) {
     testLeftMotor();
   } else if (command == "RIGHT_MOTOR_TEST") {
     testRightMotor();
+  } else if (command == "LEFT_BACKWARD_TEST") {
+    testLeftMotorBackward();
+  } else if (command == "RIGHT_BACKWARD_TEST") {
+    testRightMotorBackward();
   } else if (command == "CAM_UP") {
     cameraUp();
   } else if (command == "CAM_DOWN") {
@@ -65,7 +69,9 @@ inline void processIncomingCommands() {
       SERIAL_COMMAND_DEBUG ||
       command == "MOTOR_TEST" ||
       command == "LEFT_MOTOR_TEST" ||
-      command == "RIGHT_MOTOR_TEST"
+      command == "RIGHT_MOTOR_TEST" ||
+      command == "LEFT_BACKWARD_TEST" ||
+      command == "RIGHT_BACKWARD_TEST"
     ) {
       Serial.print("ACK ");
       Serial.println(command);
