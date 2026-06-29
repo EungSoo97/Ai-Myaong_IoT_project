@@ -5,25 +5,20 @@
 // TB6612FNG wiring grouped on Arduino Uno D2-D8 for easier jumper routing.
 constexpr uint8_t LEFT_MOTOR_IN1_PIN = 2;   // AIN1
 constexpr uint8_t LEFT_MOTOR_IN2_PIN = 3;   // AIN2
-constexpr uint8_t RIGHT_MOTOR_IN1_PIN = 4;  // BIN1
+constexpr uint8_t RIGHT_MOTOR_IN2_PIN = 4;  // BIN2, swapped with BIN1 after D7 issue
 constexpr uint8_t LEFT_MOTOR_PWM_PIN = 5;   // PWMA
 constexpr uint8_t RIGHT_MOTOR_PWM_PIN = 6;  // PWMB
-constexpr uint8_t RIGHT_MOTOR_IN2_PIN = 7;  // BIN2
+constexpr uint8_t RIGHT_MOTOR_IN1_PIN = A5; // BIN1, moved from D7 after pin issue
 constexpr uint8_t MOTOR_STANDBY_PIN = 8;    // STBY
 // Kick briefly at full PWM, then run lower to reduce current draw.
 constexpr uint8_t MOTOR_RUN_SPEED = 120;
 constexpr uint8_t MOTOR_START_SPEED = 160;
-constexpr uint8_t MOTOR_BACKWARD_LEFT_RUN_SPEED = 150;
-constexpr uint8_t MOTOR_BACKWARD_LEFT_START_SPEED = 190;
-constexpr uint8_t MOTOR_BACKWARD_RIGHT_RUN_SPEED = 180;
-constexpr uint8_t MOTOR_BACKWARD_RIGHT_START_SPEED = 230;
-constexpr uint8_t MOTOR_TURN_LEFT_RUN_SPEED = 180;
-constexpr uint8_t MOTOR_TURN_LEFT_START_SPEED = 230;
-constexpr uint8_t MOTOR_TURN_RIGHT_RUN_SPEED = 220;
-constexpr uint8_t MOTOR_TURN_RIGHT_START_SPEED = 255;
 constexpr uint8_t MOTOR_START_KICK_MS = 50;
-constexpr uint8_t MOTOR_HIGH_TORQUE_KICK_MS = 90;
-constexpr uint8_t MOTOR_TURN_KICK_MS = 120;
+constexpr uint8_t MOTOR_TURN_RUN_SPEED = 145;
+constexpr uint8_t MOTOR_TURN_START_SPEED = 190;
+constexpr uint8_t MOTOR_TURN_START_KICK_MS = 70;
+constexpr uint8_t RIGHT_TURN_LEFT_MOTOR_RUN_SPEED = 160;
+constexpr uint8_t RIGHT_TURN_LEFT_MOTOR_START_SPEED = 200;
 constexpr unsigned long MOTOR_COMMAND_TIMEOUT_MS = 700;
 
 namespace {
@@ -94,10 +89,10 @@ inline void printMotorPinout() {
   Serial.println("TB6612FNG pinout:");
   Serial.println("  AIN1 -> D2");
   Serial.println("  AIN2 -> D3");
-  Serial.println("  BIN1 -> D4");
+  Serial.println("  BIN2 -> D4");
   Serial.println("  PWMA -> D5");
   Serial.println("  PWMB -> D6");
-  Serial.println("  BIN2 -> D7");
+  Serial.println("  BIN1 -> A5");
   Serial.println("  STBY -> D8");
   Serial.println("Pan servo -> D9");
   Serial.println("Tilt servo -> D10");
@@ -105,49 +100,36 @@ inline void printMotorPinout() {
   Serial.println("Rear ultrasonic ECHO -> D12");
 }
 
-inline void driveWithKick(
-  int leftDirection,
-  int rightDirection,
-  uint8_t leftStartSpeed,
-  uint8_t leftRunSpeed,
-  uint8_t rightStartSpeed,
-  uint8_t rightRunSpeed,
-  uint8_t kickMs
-);
-
-inline void driveWithKick(
-  int leftDirection,
-  int rightDirection,
-  uint8_t startSpeed = MOTOR_START_SPEED,
-  uint8_t runSpeed = MOTOR_RUN_SPEED
-) {
-  driveWithKick(
-    leftDirection,
-    rightDirection,
-    startSpeed,
-    runSpeed,
-    startSpeed,
-    runSpeed,
-    MOTOR_START_KICK_MS
-  );
-}
-
-inline void driveWithKick(
-  int leftDirection,
-  int rightDirection,
-  uint8_t leftStartSpeed,
-  uint8_t leftRunSpeed,
-  uint8_t rightStartSpeed,
-  uint8_t rightRunSpeed,
-  uint8_t kickMs
-) {
+inline void driveWithKick(int leftDirection, int rightDirection) {
   if (leftDirection != 0 || rightDirection != 0) {
     markMotorCommandActive();
   }
 
+  const uint8_t leftStartSpeed = leftDirection == 0 ? 0 : MOTOR_START_SPEED;
+  const uint8_t leftRunSpeed = leftDirection == 0 ? 0 : MOTOR_RUN_SPEED;
+  const uint8_t rightStartSpeed = rightDirection == 0 ? 0 : MOTOR_START_SPEED;
+  const uint8_t rightRunSpeed = rightDirection == 0 ? 0 : MOTOR_RUN_SPEED;
+
   driveLeft(leftDirection, leftStartSpeed);
   driveRight(rightDirection, rightStartSpeed);
-  delay(kickMs);
+  delay(MOTOR_START_KICK_MS);
+  driveLeft(leftDirection, leftRunSpeed);
+  driveRight(rightDirection, rightRunSpeed);
+}
+
+inline void turnWithKick(int leftDirection, int rightDirection) {
+  if (leftDirection != 0 || rightDirection != 0) {
+    markMotorCommandActive();
+  }
+
+  const uint8_t leftStartSpeed = leftDirection == 0 ? 0 : MOTOR_TURN_START_SPEED;
+  const uint8_t leftRunSpeed = leftDirection == 0 ? 0 : MOTOR_TURN_RUN_SPEED;
+  const uint8_t rightStartSpeed = rightDirection == 0 ? 0 : MOTOR_TURN_START_SPEED;
+  const uint8_t rightRunSpeed = rightDirection == 0 ? 0 : MOTOR_TURN_RUN_SPEED;
+
+  driveLeft(leftDirection, leftStartSpeed);
+  driveRight(rightDirection, rightStartSpeed);
+  delay(MOTOR_TURN_START_KICK_MS);
   driveLeft(leftDirection, leftRunSpeed);
   driveRight(rightDirection, rightRunSpeed);
 }
@@ -157,39 +139,20 @@ inline void moveForward() {
 }
 
 inline void moveBackward() {
-  driveWithKick(
-    -1,
-    -1,
-    MOTOR_BACKWARD_LEFT_START_SPEED,
-    MOTOR_BACKWARD_LEFT_RUN_SPEED,
-    MOTOR_BACKWARD_RIGHT_START_SPEED,
-    MOTOR_BACKWARD_RIGHT_RUN_SPEED,
-    MOTOR_HIGH_TORQUE_KICK_MS
-  );
+  driveWithKick(-1, -1);
 }
 
 inline void turnLeft() {
-  driveWithKick(
-    0,
-    1,
-    0,
-    0,
-    MOTOR_TURN_LEFT_START_SPEED,
-    MOTOR_TURN_LEFT_RUN_SPEED,
-    MOTOR_TURN_KICK_MS
-  );
+  turnWithKick(0, 1);
 }
 
 inline void turnRight() {
-  driveWithKick(
-    1,
-    0,
-    MOTOR_TURN_RIGHT_START_SPEED,
-    MOTOR_TURN_RIGHT_RUN_SPEED,
-    0,
-    0,
-    MOTOR_TURN_KICK_MS
-  );
+  markMotorCommandActive();
+  driveLeft(1, RIGHT_TURN_LEFT_MOTOR_START_SPEED);
+  driveRight(0, 0);
+  delay(MOTOR_TURN_START_KICK_MS);
+  driveLeft(1, RIGHT_TURN_LEFT_MOTOR_RUN_SPEED);
+  driveRight(0, 0);
 }
 
 inline void testLeftMotor() {
@@ -205,14 +168,32 @@ inline void testRightMotor() {
 }
 
 inline void testLeftMotorBackward() {
-  driveLeft(-1, MOTOR_BACKWARD_LEFT_START_SPEED);
+  driveLeft(-1, MOTOR_START_SPEED);
   delay(800);
   driveLeft(0);
 }
 
 inline void testRightMotorBackward() {
-  driveRight(-1, MOTOR_BACKWARD_RIGHT_START_SPEED);
+  driveRight(-1, MOTOR_START_SPEED);
   delay(800);
+  driveRight(0);
+}
+
+inline void testRightMotorIn1High() {
+  enableMotorDriver();
+  digitalWrite(RIGHT_MOTOR_IN1_PIN, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN2_PIN, LOW);
+  analogWrite(RIGHT_MOTOR_PWM_PIN, MOTOR_START_SPEED);
+  delay(1000);
+  driveRight(0);
+}
+
+inline void testRightMotorIn2High() {
+  enableMotorDriver();
+  digitalWrite(RIGHT_MOTOR_IN1_PIN, LOW);
+  digitalWrite(RIGHT_MOTOR_IN2_PIN, HIGH);
+  analogWrite(RIGHT_MOTOR_PWM_PIN, MOTOR_START_SPEED);
+  delay(1000);
   driveRight(0);
 }
 

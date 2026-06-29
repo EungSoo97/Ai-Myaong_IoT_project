@@ -589,6 +589,7 @@ export function RobotVision() {
                 centerAction="center"
                 muted
                 tone="light"
+                holdToPress
               />
               <span className="text-[11px] font-bold text-brand-mute">
                 카메라 회전
@@ -925,6 +926,7 @@ function FullscreenView({
         onPress={onPan}
         centerAction="center"
         muted
+        holdToPress
       />
     </>
   );
