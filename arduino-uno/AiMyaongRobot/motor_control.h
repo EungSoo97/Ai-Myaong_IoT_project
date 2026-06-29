@@ -114,11 +114,11 @@ inline void moveBackward() {
 }
 
 inline void turnLeft() {
-  driveWithKick(-1, 1);
+  driveWithKick(0, 1);
 }
 
 inline void turnRight() {
-  driveWithKick(1, -1);
+  driveWithKick(1, 0);
 }
 
 inline void testLeftMotor() {
