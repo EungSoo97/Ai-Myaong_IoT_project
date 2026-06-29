@@ -21,6 +21,7 @@ const TYPE_TO_SETTING = {
   manual: 'feed_alert',
   food: 'feed_alert',
   abnormal: 'motion_alert',
+  rear_obstacle: 'motion_alert',
   intruder: 'stranger_alert',
 }
 

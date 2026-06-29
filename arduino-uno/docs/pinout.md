@@ -37,6 +37,14 @@ TB6612FNG wiring:
 - Tilt servo signal: D10
 - Arduino D9-D10 sit next to the motor-driver block and are reserved for the pan/tilt servo signals.
 
+## Rear Ultrasonic Sensor
+
+- TRIG: D11
+- ECHO: D12
+- Sensor direction: rear-facing obstacle detection
+- Current code reports rear distance over serial every 1 second.
+- Rear obstacle alert turns on at 15 cm or closer and clears at 20 cm or farther.
+
 ## Serial Link
 
 - Raspberry Pi TX -> Arduino Uno RX:

@@ -91,6 +91,8 @@ inline void printMotorPinout() {
   Serial.println("  STBY -> D8");
   Serial.println("Pan servo -> D9");
   Serial.println("Tilt servo -> D10");
+  Serial.println("Rear ultrasonic TRIG -> D11");
+  Serial.println("Rear ultrasonic ECHO -> D12");
 }
 
 inline void driveWithKick(int leftDirection, int rightDirection) {
