@@ -4,8 +4,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import device, feed, network, robot, stream, ws, auth, settings, pets, vision, alerts,health_reports
+
 from app.mqtt.mqtt_client import MqttClient
+from app.routers import (
+    alerts,
+    auth,
+    device,
+    feed,
+    health_reports,
+    network,
+    pets,
+    robot,
+    settings,
+    stream,
+    vision,
+    ws,
+)
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.retention import cleanup_old_records
@@ -38,12 +52,7 @@ cors_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=cors_origins,
     allow_origin_regex=r"http://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+):(?:3000|5173)",
     allow_credentials=True,
     allow_methods=["*"],
@@ -63,7 +72,7 @@ app.state.feed_service = FeedService(mqtt_client, database, simulator)
 app.include_router(robot.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
-app.include_router(ws.router)  
+app.include_router(ws.router)
 app.include_router(network.router)
 app.include_router(auth.router)
 app.include_router(pets.router)
@@ -81,13 +90,22 @@ def startup() -> None:
         cleanup_old_records()
     except Exception as error:
         print(f"[Retention] cleanup skipped: {error}", flush=True)
+
     mqtt_client.start()
-    database.log_event("system", "FastAPI 서버 시작", simulator.status())
-    # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
+
+    from app.services.backend_announcer import start_backend_announcer
+
+    start_backend_announcer(mqtt_client)
+    database.log_event("system", "FastAPI server started", simulator.status())
+
     if env_bool("FEED_SCHEDULER_ENABLED", False):
         from app.services.feed_scheduler import start_feed_scheduler
 
-        start_feed_scheduler(app.state.feed_service)
+        thread = start_feed_scheduler(app.state.feed_service)
+        if thread is None:
+            print("[FeedScheduler] skipped: another local scheduler is already running", flush=True)
+        else:
+            print("[FeedScheduler] started", flush=True)
     else:
         print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
 

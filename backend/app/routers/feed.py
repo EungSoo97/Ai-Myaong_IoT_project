@@ -52,6 +52,41 @@ def _resolve_pet_id(user: User, pet_id: Optional[int], db: Session) -> int:
     return pet.pet_id
 
 
+def _minute_window():
+    start = now_kst_naive().replace(second=0, microsecond=0)
+    return start, start + timedelta(minutes=1)
+
+
+def _find_auto_feed_log_this_minute(db: Session, user_id: int, pet_id: int):
+    minute_start, minute_end = _minute_window()
+    return (
+        db.query(FeedLog)
+        .filter(
+            FeedLog.user_id == user_id,
+            FeedLog.pet_id == pet_id,
+            FeedLog.feed_type == "auto",
+            FeedLog.created_at >= minute_start,
+            FeedLog.created_at < minute_end,
+        )
+        .first()
+    )
+
+
+def _find_auto_water_log_this_minute(db: Session, user_id: int, pet_id: int):
+    minute_start, minute_end = _minute_window()
+    return (
+        db.query(WaterLog)
+        .filter(
+            WaterLog.user_id == user_id,
+            WaterLog.pet_id == pet_id,
+            WaterLog.water_type == "auto",
+            WaterLog.created_at >= minute_start,
+            WaterLog.created_at < minute_end,
+        )
+        .first()
+    )
+
+
 class FeedLogCreate(BaseModel):
     amount_g: float
     feed_type: str = "manual"   # manual | auto | quick
@@ -68,6 +103,26 @@ class WaterLogCreate(BaseModel):
 def create_feed_log(body: FeedLogCreate, authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
     pet_id = _resolve_pet_id(user, body.pet_id, db)
+    if body.feed_type == "auto":
+        existing = _find_auto_feed_log_this_minute(db, user.user_id, pet_id)
+        if existing:
+            print(
+                "[DispenserAPI][skip-feed-log] "
+                f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_g} type={body.feed_type}",
+                flush=True,
+            )
+            return {
+                "feed_id": existing.feed_id,
+                "pet_id": existing.pet_id,
+                "food_amount_g": existing.food_amount_g,
+                "feed_type": existing.feed_type,
+            }
+
+    print(
+        "[DispenserAPI][feed-log] "
+        f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_g} type={body.feed_type}",
+        flush=True,
+    )
     log = FeedLog(
         user_id=user.user_id,
         pet_id=pet_id,
@@ -89,6 +144,26 @@ def create_feed_log(body: FeedLogCreate, authorization: str = Header(None), db: 
 def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
     pet_id = _resolve_pet_id(user, body.pet_id, db)
+    if body.water_type == "auto":
+        existing = _find_auto_water_log_this_minute(db, user.user_id, pet_id)
+        if existing:
+            print(
+                "[DispenserAPI][skip-water-log] "
+                f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_ml} type={body.water_type}",
+                flush=True,
+            )
+            return {
+                "water_log_id": existing.water_log_id,
+                "pet_id": existing.pet_id,
+                "water_amount_ml": existing.water_amount_ml,
+                "water_type": existing.water_type,
+            }
+
+    print(
+        "[DispenserAPI][water-log] "
+        f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_ml} type={body.water_type}",
+        flush=True,
+    )
     log = WaterLog(
         user_id=user.user_id,
         pet_id=pet_id,

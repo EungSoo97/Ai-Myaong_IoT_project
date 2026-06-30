@@ -5,7 +5,7 @@ import mimetypes
 import os
 import subprocess
 import sys
-from time import time
+from time import time, monotonic
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -315,8 +315,28 @@ def update_detections(payload: DetectionPayload):
 
 
 @router.get("/detections/latest")
-def latest_detections():
-    return _latest_detection
+def latest_detections(request: Request):
+    # 후방 초음파 센서값을 함께 실어 프론트가 실시간 후방 거리/경고를 표시할 수 있게 한다.
+    # (파이 → POST /api/robot/sensor 가 simulator.sensor 에 저장해 둔 값)
+    sim = request.app.state.simulator
+    sensor = sim.status().get("sensor", {})
+    # staleness: 마지막 센서 수신이 너무 오래됐으면 '끊김'으로 보고 값을 비운다.
+    # (아두이노가 1초마다 거리를 보내므로 5초 무신호면 라이브가 아님)
+    STALE_AFTER_SEC = 5.0
+    last_at = getattr(sim, "sensor_updated_at", 0.0)
+    age = monotonic() - last_at if last_at else None
+    fresh = last_at > 0 and age is not None and age <= STALE_AFTER_SEC
+    return {
+        **_latest_detection,
+        "rear_sensor": {
+            # 라이브일 때만 실제 값을 노출, 끊기면 None → 프론트가 '대기' 표시 & 경고 자동 해제
+            "distance_cm": sensor.get("rear_distance_cm") if fresh else None,
+            "rear_obstacle": bool(sensor.get("rear_obstacle", False)) if fresh else False,
+            "threshold_cm": sensor.get("rear_obstacle_threshold_cm", 15),
+            "fresh": bool(fresh),
+            "age_sec": round(age, 1) if age is not None else None,
+        },
+    }
 
 
 @router.post("/capture")
