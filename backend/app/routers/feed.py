@@ -106,11 +106,6 @@ def create_feed_log(body: FeedLogCreate, authorization: str = Header(None), db: 
     if body.feed_type == "auto":
         existing = _find_auto_feed_log_this_minute(db, user.user_id, pet_id)
         if existing:
-            print(
-                "[DispenserAPI][skip-feed-log] "
-                f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_g} type={body.feed_type}",
-                flush=True,
-            )
             return {
                 "feed_id": existing.feed_id,
                 "pet_id": existing.pet_id,
@@ -118,11 +113,6 @@ def create_feed_log(body: FeedLogCreate, authorization: str = Header(None), db: 
                 "feed_type": existing.feed_type,
             }
 
-    print(
-        "[DispenserAPI][feed-log] "
-        f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_g} type={body.feed_type}",
-        flush=True,
-    )
     log = FeedLog(
         user_id=user.user_id,
         pet_id=pet_id,
@@ -147,11 +137,6 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
     if body.water_type == "auto":
         existing = _find_auto_water_log_this_minute(db, user.user_id, pet_id)
         if existing:
-            print(
-                "[DispenserAPI][skip-water-log] "
-                f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_ml} type={body.water_type}",
-                flush=True,
-            )
             return {
                 "water_log_id": existing.water_log_id,
                 "pet_id": existing.pet_id,
@@ -159,11 +144,6 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
                 "water_type": existing.water_type,
             }
 
-    print(
-        "[DispenserAPI][water-log] "
-        f"user_id={user.user_id} pet_id={pet_id} amount={body.amount_ml} type={body.water_type}",
-        flush=True,
-    )
     log = WaterLog(
         user_id=user.user_id,
         pet_id=pet_id,

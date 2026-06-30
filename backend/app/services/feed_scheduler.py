@@ -128,7 +128,6 @@ def _run_once(feed_service, hhmm):
     if SessionLocal is None:
         return
 
-    print(f"[FeedScheduler][tick] hhmm={hhmm}", flush=True)
     db = SessionLocal()
     try:
         minute_start, minute_end = _minute_window()
@@ -159,11 +158,6 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_feed.add(feed_key)
-                print(
-                    "[FeedScheduler][insert-feed] "
-                    f"user_id={settings.user_id} pet_id={pet_id} amount={amount} minute={minute_start:%Y-%m-%d %H:%M:%S}",
-                    flush=True,
-                )
                 db.add(
                     FeedLog(
                         user_id=settings.user_id,
@@ -200,11 +194,6 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_water.add(water_key)
-                print(
-                    "[FeedScheduler][insert-water] "
-                    f"user_id={settings.user_id} pet_id={pet_id} amount={amount} minute={minute_start:%Y-%m-%d %H:%M:%S}",
-                    flush=True,
-                )
                 db.add(
                     WaterLog(
                         user_id=settings.user_id,
@@ -223,10 +212,8 @@ def _run_once(feed_service, hhmm):
 
         db.commit()
     except IntegrityError:
-        print("[FeedScheduler][skip] duplicate auto log blocked by DB integrity", flush=True)
         db.rollback()
     except Exception as error:
-        print(f"[FeedScheduler][error] {type(error).__name__}: {error}", flush=True)
         db.rollback()
     finally:
         db.close()
