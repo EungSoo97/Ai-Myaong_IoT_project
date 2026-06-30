@@ -173,7 +173,8 @@ class RaspberryPiAgent:
                     print(f"[serial] <- robot-controller {line}")
                 continue
 
-            print(f"[sensor] rear distance={payload.get('distance_cm')}cm obstacle={payload.get('rear_obstacle')}")
+            if self.serial.debug:
+                print(f"[sensor] rear distance={payload.get('distance_cm')}cm obstacle={payload.get('rear_obstacle')}")
             self._publish_sensor_update(payload)
             self._post_sensor_update(payload)
 

@@ -25,6 +25,19 @@ _last_rear_obstacle_alert_at = 0.0
 
 @router.post("/move", response_model=CommandResponse)
 def move_robot(payload: MoveRequest, request: Request):
+    # 후방 충돌 방지: 후방 장애물이 '실시간으로' 감지된 상태면 후진(BACKWARD)을 하드 차단한다.
+    # (프론트 버튼 잠금이 우회되거나 다른 클라이언트로 명령이 와도 로봇이 후진하지 않도록)
+    if payload.command == "BACKWARD":
+        sim = request.app.state.simulator
+        last_at = getattr(sim, "sensor_updated_at", 0.0)
+        fresh = last_at > 0 and (time.monotonic() - last_at) <= 5.0  # 끊긴 옛 값으로는 잠그지 않음
+        # 안전 차단은 '즉시 위험(생값 기준)'으로 판정 — 필터 확정을 기다리지 않고 첫 근접에 바로 차단.
+        if fresh and sim.sensor.get("rear_obstacle_immediate"):
+            dist = sim.sensor.get("rear_distance_raw_cm", sim.sensor.get("rear_distance_cm"))
+            raise HTTPException(
+                status_code=409,
+                detail=f"후방 장애물 감지로 후진이 차단되었습니다 (거리 {dist}cm)",
+            )
     try:
         return request.app.state.robot_service.move(payload.command)
     except LocalSerialError as error:
