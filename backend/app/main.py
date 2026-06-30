@@ -14,6 +14,14 @@ from app.services.simulator import DeviceSimulator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 app = FastAPI(title="Ai-Myaong Backend", version="0.1.0")
 
 default_cors_origins = [
@@ -76,8 +84,12 @@ def startup() -> None:
     mqtt_client.start()
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
     # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
-    from app.services.feed_scheduler import start_feed_scheduler
-    start_feed_scheduler(app.state.feed_service)
+    if env_bool("FEED_SCHEDULER_ENABLED", False):
+        from app.services.feed_scheduler import start_feed_scheduler
+
+        start_feed_scheduler(app.state.feed_service)
+    else:
+        print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
 
 
 @app.on_event("shutdown")

@@ -8,11 +8,11 @@ cd "$PROJECT_PATH"
 export PYTHONPATH="$SCRIPT_DIR/.."
 
 if [[ -x ".venv/bin/python" ]]; then
-  exec .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+  exec .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 fi
 
 if command -v python3.11 >/dev/null 2>&1; then
-  exec python3.11 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+  exec python3.11 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 fi
 
-exec python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
