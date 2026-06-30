@@ -603,20 +603,23 @@ export function RobotVision() {
 
       {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
       <section className="mt-5">
-        <h3 className="font-display text-base font-bold text-brand-brown mb-3">
-          조종 패드
-        </h3>
+        {/* 제목 줄에 알림 칩 — 카드/버튼 레이아웃을 밀지 않도록 흐름 밖이 아닌 '항상 있는 헤더'에 표시 */}
+        <div className="flex items-center justify-between mb-3 min-h-[1.75rem]">
+          <h3 className="font-display text-base font-bold text-brand-brown">
+            조종 패드
+          </h3>
+          {rearObstacle && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+              style={{ background: "rgb(var(--brand-danger) / 0.12)", color: "rgb(var(--brand-danger))", border: "1px dashed rgb(var(--brand-danger) / 0.5)" }}
+            >
+              <Lock className="w-3 h-3" /> 후진 제한됨
+            </span>
+          )}
+        </div>
         <div className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-6" style={{ backgroundColor: BG_CARD }}>
           <Stitch />
           <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
-          {rearObstacle && (
-            <div
-              className="relative z-10 mb-3 flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-[12px] font-bold"
-              style={{ background: "rgb(var(--brand-danger) / 0.12)", color: "rgb(var(--brand-danger))", border: "1px dashed rgb(var(--brand-danger) / 0.5)" }}
-            >
-              <Lock className="w-3.5 h-3.5" /> 후방 장애물 감지 — 후진 제한됨
-            </div>
-          )}
           <div className="relative z-10 flex items-start justify-between gap-2">
             <div className="flex flex-col items-center gap-2">
               <DPad

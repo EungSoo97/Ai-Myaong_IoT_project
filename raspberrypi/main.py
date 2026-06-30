@@ -98,6 +98,11 @@ class RaspberryPiAgent:
         self._serial_reader_thread = None
         self._last_sensor_backend_post_at = 0.0
         self._last_sensor_backend_lookup_at = 0.0
+        # 콘솔 로그 도배 방지: 상태/에러가 '바뀔 때만' 1회 출력하기 위한 플래그
+        self._last_logged_rear_obstacle = False
+        self._mqtt_publish_failed = False
+        self._backend_post_failed = False
+        self._backend_missing_logged = False
 
     def start(self) -> None:
         try:
@@ -173,6 +178,12 @@ class RaspberryPiAgent:
                     print(f"[serial] <- robot-controller {line}")
                 continue
 
+            # 후방 장애물 상태가 바뀔 때만 1회 출력(도배 방지). 매 reading 상세는 SERIAL_DEBUG 로.
+            obstacle = bool(payload.get("rear_obstacle"))
+            if obstacle != self._last_logged_rear_obstacle:
+                dist = payload.get("distance_cm")
+                print(f"[sensor] 후방 장애물 {'감지' if obstacle else '해제'} ({dist}cm)")
+                self._last_logged_rear_obstacle = obstacle
             if self.serial.debug:
                 print(f"[sensor] rear distance={payload.get('distance_cm')}cm obstacle={payload.get('rear_obstacle')}")
             self._publish_sensor_update(payload)
@@ -208,8 +219,13 @@ class RaspberryPiAgent:
 
         try:
             client.publish("ai-myaong/robot/sensor", json.dumps(payload, ensure_ascii=False))
+            if self._mqtt_publish_failed:
+                print("[sensor] MQTT publish 복구됨")
+                self._mqtt_publish_failed = False
         except Exception as exc:
-            print(f"[sensor] MQTT publish failed: {exc}")
+            if not self._mqtt_publish_failed:  # 실패가 '시작될 때' 1회만
+                print(f"[sensor] MQTT publish failed: {exc}")
+                self._mqtt_publish_failed = True
 
     def _post_sensor_update(self, payload: dict[str, object]) -> None:
         now = time.monotonic()
@@ -226,10 +242,11 @@ class RaspberryPiAgent:
 
         backend_url = desktop_backend_url()
         if not backend_url:
-            if now - self._last_sensor_backend_post_at >= 10:
+            if not self._backend_missing_logged:  # 주소 못 찾는 동안 1회만
                 print("[sensor] desktop backend was not found; sensor update not posted")
-                self._last_sensor_backend_post_at = now
+                self._backend_missing_logged = True
             return
+        self._backend_missing_logged = False  # 주소 찾음 → 다음 실종 시 다시 1회 알림
 
         self._last_sensor_backend_post_at = now
         try:
@@ -241,8 +258,13 @@ class RaspberryPiAgent:
             )
             with urllib.request.urlopen(request, timeout=2) as response:
                 response.read()
+            if self._backend_post_failed:
+                print("[sensor] backend post 복구됨")
+                self._backend_post_failed = False
         except Exception as exc:
-            print(f"[sensor] backend post failed: {exc}")
+            if not self._backend_post_failed:  # 실패가 '시작될 때' 1회만
+                print(f"[sensor] backend post failed: {exc}")
+                self._backend_post_failed = True
 
     def _make_mqtt_client(self, mqtt):
         try:
