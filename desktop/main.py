@@ -11,8 +11,7 @@ def main() -> None:
     env_path = Path(__file__).resolve().parent / ".env"
     load_dotenv(env_path)
 
-    stream_url = os.getenv("MJPEG_STREAM_URL", "http://127.0.0.1:8081/stream.mjpg"
-)
+    stream_url = os.getenv("MJPEG_STREAM_URL", "http://127.0.0.1:8081/stream.mjpg")
     broker_host = os.getenv("MQTT_BROKER_HOST", "127.0.0.1")
     broker_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 

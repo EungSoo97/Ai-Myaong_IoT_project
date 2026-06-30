@@ -89,7 +89,7 @@ class RaspberryPiAgent:
             topic.strip()
             for topic in os.getenv(
                 "MQTT_TOPICS",
-                "ai-myaong/robot/move,ai-myaong/robot/pantilt,robot/move,robot/camera",
+                "ai-myaong/robot/move,ai-myaong/robot/pantilt,robot/move,robot/camera,system/backend/announce",
             ).split(",")
             if topic.strip()
         )
