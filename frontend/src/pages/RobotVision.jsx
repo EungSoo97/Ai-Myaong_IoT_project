@@ -519,6 +519,7 @@ export function RobotVision() {
                 detections={detections}
                 className="absolute inset-0"
               />
+              <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-20" />
               <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
                 <span
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${camStatus === "live" ? "bg-black/55" : "bg-black/40"}`}
@@ -560,6 +561,25 @@ export function RobotVision() {
           )}
         </div>
       </Card>
+
+      {/* 후방 충돌 거리 기준 안내 — 경고 색이 뜻하는 거리 단계 */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-bold text-brand-mute">
+        <span className="inline-flex items-center gap-1">
+          <ShieldAlert className="w-3.5 h-3.5" /> 후방 거리
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-danger))" }} />
+          위험 ≤15cm
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-warning))" }} />
+          주의 15~40cm
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-success))" }} />
+          안전 {">"}40cm
+        </span>
+      </div>
 
       {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
       <section className="mt-5">
@@ -868,6 +888,7 @@ function FullscreenView({
         detections={detections}
         className="absolute inset-0 z-10"
       />
+      <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-10" large />
 
       {/* 상단 좌측: LIVE / REC / 외출모드 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
@@ -1365,6 +1386,71 @@ const EVENT_ICON = {
   capture_saved: Camera,
   clip_saved: Video,
 };
+
+/* 후방 초음파 경고 오버레이 — 하단 테두리 글로우(깜빡) + 반투명 토스트.
+ * sensor: { distance_cm, rear_obstacle, threshold_cm } (백엔드 /vision/detections/latest 의 rear_sensor) */
+function RearWarning({ sensor, className = "", large = false }) {
+  if (!sensor) return null;
+  const dist = sensor.distance_cm;
+  const thr = sensor.threshold_cm ?? 15; // 위험 임계(아두이노 장애물 ON 기준, 보통 15cm)
+  const WARN_CM = 40; // 주의 임계: 위험~40cm 사이는 '접근 중'
+  const danger = sensor.rear_obstacle || (dist != null && dist <= thr); // 🔴 ≤15cm
+  const warn = !danger && dist != null && dist <= WARN_CM; // 🟡 15~40cm
+  if (!danger && !warn) return null; // 🟢 >40cm 숨김
+
+  // 위험도별 색: 위험=빨강, 접근=주황 (토큰이라 라이트/다크 자동 대응)
+  const colorVar = danger ? "var(--brand-danger)" : "var(--brand-warning)";
+  const distLabel = dist != null ? `${dist}cm` : ""; // 후방 거리(cm) — 폴링값이라 실시간 갱신
+  const label = danger ? "후방 장애물 감지!" : "후방 주의";
+
+  // 전체화면(large)에서는 글로우·토스트를 키워서 한눈에 보이게
+  const glow = large ? "inset 0 0 110px 30px" : "inset 0 0 55px 14px";
+  const toastPos = large ? "top-7" : "top-4";
+  const toastBox = large ? "gap-3 px-7 py-3.5" : "gap-2 px-4 py-2";
+  const iconSize = large ? "w-7 h-7" : "w-4 h-4";
+  const textSize = large ? "text-2xl" : "text-sm";
+
+  return (
+    <div className={`pointer-events-none overflow-hidden ${className}`}>
+      {/* 사방(상하좌우) 테두리 글로우 — 가장자리에서 안쪽으로 번짐, 깜빡임(위험=빠르게) */}
+      <div
+        className="absolute inset-0"
+        style={{
+          boxShadow: `${glow} rgb(${colorVar} / 0.7)`,
+          // 주의(노랑) ↔ 위험(빨강) 색 전환을 0.6초에 걸쳐 부드럽게 보간
+          transition: "box-shadow 0.6s ease",
+          animation: `pulse ${danger ? 0.8 : 1.6}s ease-in-out infinite`,
+        }}
+      />
+      {/* 반투명 경고 토스트 (중앙 상단) */}
+      <div className={`absolute ${toastPos} left-1/2 -translate-x-1/2`}>
+        <div
+          className={`flex items-center rounded-full bg-black/60 shadow-soft-lg backdrop-blur-sm ${toastBox}`}
+          style={{
+            border: `${large ? 2 : 1.5}px solid rgb(${colorVar})`,
+            transition: "border-color 0.6s ease",
+          }}
+        >
+          <ShieldAlert
+            className={`${iconSize} shrink-0`}
+            style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+          />
+          <span className={`whitespace-nowrap font-bold text-white ${textSize}`}>
+            ⚠️ {label}
+            {distLabel && (
+              <span
+                className="ml-1"
+                style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+              >
+                · {distLabel}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DetectionOverlay({ detections, className = "" }) {
   const boxes = detections?.boxes || [];

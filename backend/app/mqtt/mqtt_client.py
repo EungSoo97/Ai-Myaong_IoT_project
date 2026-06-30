@@ -65,7 +65,7 @@ class MqttClient:
             self.connected = False
             self._connect_event.clear()
 
-    def publish(self, topic: str, payload: dict[str, Any]) -> bool:
+    def publish(self, topic: str, payload: dict[str, Any], retain: bool = False) -> bool:
         self._restart_if_config_changed()
         message = json.dumps(payload, ensure_ascii=False)
         if self.simulation_mode:
@@ -80,7 +80,7 @@ class MqttClient:
             print(f"[mqtt:unavailable] {topic} {message}")
             return False
 
-        result = self._client.publish(topic, message)
+        result = self._client.publish(topic, message, retain=retain)
         if result.rc != 0:
             print(f"[mqtt] publish failed rc={result.rc} {topic} {message}")
         return result.rc == 0
