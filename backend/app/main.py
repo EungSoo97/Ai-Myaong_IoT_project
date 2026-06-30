@@ -74,6 +74,9 @@ def startup() -> None:
     except Exception as error:
         print(f"[Retention] cleanup skipped: {error}", flush=True)
     mqtt_client.start()
+    # 백엔드 LAN 주소를 MQTT(system/backend/announce)로 알려 Pi가 자동 발견하도록 한다.
+    from app.services.backend_announcer import start_backend_announcer
+    start_backend_announcer(mqtt_client)
     database.log_event("system", "FastAPI 서버 시작", simulator.status())
     # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
     # ⚠️ 여러 기계(PC 백엔드 + 라즈베리파이)가 같은 DB에 붙으면 스케줄러가 중복 실행되어
