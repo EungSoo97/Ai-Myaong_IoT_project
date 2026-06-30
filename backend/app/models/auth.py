@@ -47,6 +47,7 @@ class PetResponse(BaseModel):
     height_cm: Optional[float] = None
     circumference: Optional[float] = None
     leg_length: Optional[float] = None
+    photo_path: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -58,6 +59,7 @@ class UserResponse(BaseModel):
     email: str
     nickname: Optional[str] = None
     oauth_provider: Optional[str] = None
+    profile_photo_path: Optional[str] = None
     pets: List[PetResponse] = []
 
     class Config:
@@ -68,6 +70,7 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+    is_new_user: bool = False  # 이번 요청에서 계정이 새로 생성됐는지 (구글 신규 가입 판별)
 
 
 class GoogleAuthRequest(BaseModel):

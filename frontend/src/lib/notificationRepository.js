@@ -16,11 +16,14 @@ import { api } from '../api/api'
 const SETTINGS_KEY = 'aimyaong:alertSettings' // 설정탭의 알림 제어 미러 (Settings.jsx가 저장)
 
 // 알림 type → 설정 컬럼 매핑 (해당 설정이 꺼져 있으면 알림 차단)
+const HIDDEN_KEY = 'aimyaong:hiddenNotifications'
+
 const TYPE_TO_SETTING = {
   feed: 'feed_alert',
   manual: 'feed_alert',
   food: 'feed_alert',
   abnormal: 'motion_alert',
+  rear_obstacle: 'motion_alert',
   intruder: 'stranger_alert',
 }
 
@@ -47,6 +50,46 @@ function setCache(list) {
   window.dispatchEvent(new Event('notifications-changed'))
 }
 
+function readHiddenIds() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY)
+    const ids = JSON.parse(raw || '[]')
+    return new Set(Array.isArray(ids) ? ids.map(String) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeHiddenIds(ids) {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...ids]))
+  } catch {
+    /* ignore */
+  }
+}
+
+function hideServerIds(serverIds) {
+  const hidden = readHiddenIds()
+  serverIds.filter(Boolean).forEach((id) => hidden.add(String(id)))
+  writeHiddenIds(hidden)
+}
+
+function normalizeAlertType(type) {
+  if (type === 'vision.away_person') return 'intruder'
+  if (
+    [
+      'vision.fall_detected',
+      'vision.no_motion',
+      'vision.no_motion_warning',
+      'vision.no_motion_emergency',
+      'vision.seizure_suspected',
+    ].includes(type)
+  ) {
+    return 'abnormal'
+  }
+  return type
+}
+
 export function getNotifications() {
   return cache
 }
@@ -62,7 +105,7 @@ function fromAlert(a) {
   return {
     id: `a${a.alert_id}`,
     serverId: a.alert_id,
-    type: a.alert_type,
+    type: normalizeAlertType(a.alert_type),
     title: extra.title || '',
     desc: extra.desc || (typeof a.message === 'string' && a.message[0] !== '{' ? a.message : ''),
     link: extra.link || '',
@@ -75,7 +118,8 @@ function fromAlert(a) {
 export async function hydrateNotifications() {
   try {
     const rows = await api.getAlerts()
-    setCache((rows || []).map(fromAlert))
+    const hidden = readHiddenIds()
+    setCache((rows || []).filter((row) => !hidden.has(String(row.alert_id))).map(fromAlert))
   } catch {
     /* 백엔드 미연결 → 빈 목록 유지 */
   }
@@ -107,12 +151,12 @@ export function markAllRead() {
 export function removeNotification(id) {
   const target = cache.find((n) => n.id === id)
   setCache(cache.filter((n) => n.id !== id))
-  if (target?.serverId) api.deleteAlert(target.serverId).catch(() => {})
+  if (target?.serverId) hideServerIds([target.serverId])
 }
 
 export function clearNotifications() {
+  hideServerIds(cache.map((n) => n.serverId))
   setCache([])
-  api.deleteAllAlerts().catch(() => {})
 }
 
 export function unreadCount(list) {
@@ -127,7 +171,11 @@ export function useNotifications() {
     const refresh = () => setList(getNotifications())
     window.addEventListener('notifications-changed', refresh)
     hydrateNotifications() // DB 에서 최신 알림 로드
-    return () => window.removeEventListener('notifications-changed', refresh)
+    const timer = window.setInterval(hydrateNotifications, 3000)
+    return () => {
+      window.removeEventListener('notifications-changed', refresh)
+      window.clearInterval(timer)
+    }
   }, [])
 
   return list

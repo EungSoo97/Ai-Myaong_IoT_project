@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Maximize2,
@@ -17,12 +17,63 @@ import {
   Play,
   Clock,
   X,
-} from "lucide-react";
+  Trash2,
+  ShieldAlert,
+} from '../components/icons';
 import { Card, Badge } from "../components/ui";
+import { LogDatePicker } from "../components/LogDatePicker";
 import { api, resolveMediaUrl } from "../api/api";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { getWebSocketUrl } from "../lib/backendUrls";
+import { filterLogsByDate, groupLogsByDate } from "../lib/logGrouping";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
+
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지 공통) / 정보·칩: 따뜻한 탄
+const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
+const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
+const VISION_FLIP_HORIZONTAL =
+  String(import.meta.env.VITE_VISION_FLIP_HORIZONTAL || "").toLowerCase() === "true";
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = "" }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  );
+}
+
+/* 버튼 안쪽 은은한 스티치 — 켜짐(컬러 배경)이면 흰색, 꺼짐이면 갈색 점선 */
+function BtnStitch({ active }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[5px] rounded-[16px] border border-dashed ${active ? "border-white/30" : "border-brand-brown/20"}`} />
+  );
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = "", opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: "url(/paper.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundBlendMode: "multiply",
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        opacity,
+      }}
+    />
+  );
+}
 
 /* 이벤트 로그 — clip_id 로 백엔드 클립(CLIPS) 참조 (활동 기록과 동일 구조) */
 const EVENT_LOG = [
@@ -84,6 +135,8 @@ const MOVE_COMMANDS = {
   right: "RIGHT",
 };
 
+const MOVE_HOLD_REPEAT_MS = 300;
+
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
   down: "CAM_DOWN",
@@ -103,22 +156,34 @@ export function RobotVision() {
       return false;
     }
   });
+  const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [recording, setRecording] = useState(false);
   const [selectedClip, setSelectedClip] = useState(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
   const [streamInfo, setStreamInfo] = useState({ url: "", mode: "loading" });
   const [streamError, setStreamError] = useState("");
   const [detections, setDetections] = useState(null);
   const [eventLog, setEventLog] = useState([]);
   const [captureNotice, setCaptureNotice] = useState(false);
-  const [streamLive, setStreamLive] = useState(false);
+  const [captureFlash, setCaptureFlash] = useState(false); // 캡처 버튼 짧은 반응(찰칵)
+  const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const controlBusyRef = useRef(false);
-  const commandQueueRef = useRef(Promise.resolve());
+  const pendingCommandCountRef = useRef(0);
   const captureNoticeTimerRef = useRef(null);
+  const captureFlashTimerRef = useRef(null);
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
   // Android Chrome 등에서 screen.orientation.lock 이 성공하면 false 로 유지.
   const [forceCssLandscape, setForceCssLandscape] = useState(false);
   const fsRef = useRef(null);
+  const visibleEventLog = eventLog.slice(0, 5);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((settings) => setAbnormalDetection(settings.motion_alert !== "N"))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -186,8 +251,27 @@ export function RobotVision() {
       if (captureNoticeTimerRef.current) {
         window.clearTimeout(captureNoticeTimerRef.current);
       }
+      if (captureFlashTimerRef.current) {
+        window.clearTimeout(captureFlashTimerRef.current);
+      }
     };
   }, []);
+
+  const deleteVisionEvent = async (event, domEvent) => {
+    domEvent?.stopPropagation();
+    if (!event?.eventId) return;
+    try {
+      await api.deleteAlert(event.eventId);
+      setEventLog((items) =>
+        items.filter((item) => item.eventId !== event.eventId),
+      );
+      setSelectedClip((current) =>
+        current?.eventId === event.eventId ? null : current,
+      );
+    } catch (error) {
+      console.error("[RobotVision] delete event failed:", error);
+    }
+  };
 
   // Fullscreen API ↔ React 상태 동기화 (ESC 해제 포함)
   useEffect(() => {
@@ -274,20 +358,23 @@ export function RobotVision() {
   const sendCommand = (kind, command) => {
     if (!command) return;
 
-    commandQueueRef.current = commandQueueRef.current
-      .catch(() => {})
-      .then(async () => {
-        controlBusyRef.current = true;
-        setControlBusy(true);
-        try {
-          if (kind === "camera") {
-            await api.moveCamera(command);
-          } else {
-            await api.moveRobot(command);
-          }
-        } catch (error) {
-          console.error(`[RobotVision] ${kind} command failed:`, error);
-        } finally {
+    pendingCommandCountRef.current += 1;
+    controlBusyRef.current = true;
+    setControlBusy(true);
+
+    const request =
+      kind === "camera" ? api.moveCamera(command) : api.moveRobot(command);
+
+    request
+      .catch((error) => {
+        console.error(`[RobotVision] ${kind} command failed:`, error);
+      })
+      .finally(() => {
+        pendingCommandCountRef.current = Math.max(
+          0,
+          pendingCommandCountRef.current - 1,
+        );
+        if (pendingCommandCountRef.current === 0) {
           controlBusyRef.current = false;
           setControlBusy(false);
         }
@@ -324,6 +411,18 @@ export function RobotVision() {
     }
   };
 
+  const toggleAbnormalDetection = async () => {
+    const next = !abnormalDetection;
+    const previous = abnormalDetection;
+    setAbnormalDetection(next);
+    try {
+      await api.setVisionEmergency(next);
+    } catch (error) {
+      console.error("[RobotVision] abnormal detection setting failed:", error);
+      setAbnormalDetection(previous);
+    }
+  };
+
   const captureSnapshot = async () => {
     try {
       await api.captureSnapshot();
@@ -333,7 +432,15 @@ export function RobotVision() {
       }
       captureNoticeTimerRef.current = window.setTimeout(() => {
         setCaptureNotice(false);
-      }, 2500);
+      }, 3000);
+      // 버튼은 짧게 '찰칵' 반응만 (다른 버튼 활성색과 동일한 코랄)
+      setCaptureFlash(true);
+      if (captureFlashTimerRef.current) {
+        window.clearTimeout(captureFlashTimerRef.current);
+      }
+      captureFlashTimerRef.current = window.setTimeout(() => {
+        setCaptureFlash(false);
+      }, 700);
     } catch (error) {
       console.error("[RobotVision] capture command failed:", error);
     }
@@ -358,11 +465,11 @@ export function RobotVision() {
           type="button"
           onClick={() => navigate("/")}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="flex-1 font-display text-2xl font-bold text-brand-brown">
+        <h1 className="flex-1 font-cute text-2xl font-bold text-brand-brown">
           로봇 비전
         </h1>
         <Badge tone={isConnected ? "success" : "danger"}>
@@ -377,7 +484,7 @@ export function RobotVision() {
           className={
             isFullscreen
               ? "fullscreen-stage"
-              : "relative w-full aspect-video bg-gradient-to-br from-brand-brown to-black overflow-hidden"
+              : "relative w-full aspect-video bg-gradient-to-br from-brand-cream to-brand-line dark:from-[#2b2520] dark:to-black overflow-hidden"
           }
         >
           {isFullscreen ? (
@@ -406,20 +513,25 @@ export function RobotVision() {
                 mode={streamInfo.mode}
                 error={streamError}
                 className="absolute inset-0"
-                onStatusChange={setStreamLive}
+                onStatusChange={setCamStatus}
               />
               <DetectionOverlay
                 detections={detections}
                 className="absolute inset-0"
               />
+              <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-20" />
               <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
                 <span
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${streamLive ? "bg-black/55" : "bg-black/40"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[11px] font-bold ${camStatus === "live" ? "bg-black/55" : "bg-black/40"}`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full ${streamLive ? "bg-red-400 animate-pulse" : "bg-white/40"}`}
+                    className={`w-2 h-2 rounded-full ${camStatus === "live" ? "bg-red-400 animate-pulse" : camStatus === "connecting" ? "bg-amber-300 animate-pulse" : "bg-white/40"}`}
                   />
-                  {streamLive ? "LIVE" : "오프라인"}
+                  {camStatus === "live"
+                    ? "LIVE"
+                    : camStatus === "connecting"
+                      ? "연결 중"
+                      : "오프라인"}
                 </span>
                 {recording && (
                   <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -450,13 +562,34 @@ export function RobotVision() {
         </div>
       </Card>
 
+      {/* 후방 충돌 거리 기준 안내 — 경고 색이 뜻하는 거리 단계 */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-bold text-brand-mute">
+        <span className="inline-flex items-center gap-1">
+          <ShieldAlert className="w-3.5 h-3.5" /> 후방 거리
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-danger))" }} />
+          위험 ≤15cm
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-warning))" }} />
+          주의 15~40cm
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full" style={{ background: "rgb(var(--brand-success))" }} />
+          안전 {">"}40cm
+        </span>
+      </div>
+
       {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
       <section className="mt-5">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">
           조종 패드
         </h3>
-        <Card className="px-4 py-6">
-          <div className="flex items-start justify-between gap-2">
+        <div className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-6" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <div className="relative z-10 flex items-start justify-between gap-2">
             <div className="flex flex-col items-center gap-2">
               <DPad
                 label="이동"
@@ -476,31 +609,37 @@ export function RobotVision() {
                 centerAction="center"
                 muted
                 tone="light"
+                holdToPress
               />
               <span className="text-[11px] font-bold text-brand-mute">
                 카메라 회전
               </span>
             </div>
           </div>
-        </Card>
+        </div>
       </section>
 
-      {/* 컨트롤 (외출 / 녹화 / 캡처) */}
+      {/* 컨트롤 (외출 / 이상 감지 / 녹화 / 캡처) */}
       <section className="mt-5" data-tour="vision-controls">
         <h3 className="font-display text-base font-bold text-brand-brown mb-3">
           제어
         </h3>
-        <Card className="px-5 py-5">
-          <div className="grid grid-cols-3 gap-3">
+        <div className="relative overflow-hidden rounded-3xl shadow-soft px-5 py-5" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="bone" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute right-4 top-3 w-8 h-8 rotate-12" />
+          <div className="relative z-10">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={toggleAwayMode}
-              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
                 awayMode
-                  ? "bg-brand-primary text-white active:bg-brand-primary/80"
-                  : "bg-brand-card text-brand-brown active:bg-brand-cream"
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
               }`}
+              style={awayMode ? undefined : { backgroundColor: BG_INFO }}
             >
+              <BtnStitch active={awayMode} />
               <Moon className="w-5 h-5" />
               <span className="text-xs font-bold">
                 {awayMode ? "외출 ON" : "외출 모드"}
@@ -508,13 +647,32 @@ export function RobotVision() {
             </button>
             <button
               type="button"
-              onClick={toggleRecording}
-              className={`flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] transition-colors ${
-                recording
-                  ? "bg-brand-danger text-white active:bg-brand-danger/80"
-                  : "bg-brand-card text-brand-brown active:bg-brand-cream"
+              onClick={toggleAbnormalDetection}
+              aria-pressed={abnormalDetection}
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                abnormalDetection
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
               }`}
+              style={abnormalDetection ? undefined : { backgroundColor: BG_INFO }}
             >
+              <BtnStitch active={abnormalDetection} />
+              <ShieldAlert className="w-5 h-5" />
+              <span className="text-xs font-bold">
+                {abnormalDetection ? "이상 감지 ON" : "이상 행동 감지"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleRecording}
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                recording
+                  ? "bg-brand-primary text-white border-white/30 active:bg-brand-primary/80"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
+              }`}
+              style={recording ? undefined : { backgroundColor: BG_INFO }}
+            >
+              <BtnStitch active={recording} />
               <Video className="w-5 h-5" />
               <span className="text-xs font-bold">
                 {recording ? "녹화 중" : "녹화"}
@@ -523,10 +681,19 @@ export function RobotVision() {
             <button
               type="button"
               onClick={captureSnapshot}
-              className="flex flex-col items-center gap-1 px-4 py-3 rounded-3xl bg-brand-card text-brand-brown shadow-soft active:bg-brand-cream transition-colors min-w-[88px]"
+              className={`relative overflow-hidden flex flex-col items-center gap-1 px-4 py-3 rounded-3xl shadow-soft min-w-[88px] border border-dashed transition-colors ${
+                captureFlash
+                  ? "bg-brand-primary text-white border-white/30"
+                  : "text-brand-brown border-brand-brown/15 active:brightness-95"
+              }`}
+              style={captureFlash ? undefined : { backgroundColor: BG_INFO }}
             >
-              <Camera className="w-5 h-5" />
-              <span className="text-xs font-bold">캡처</span>
+              <BtnStitch active={captureFlash} />
+              {captureFlash && (
+                <span className="capture-flash pointer-events-none absolute inset-0 z-20 bg-white" />
+              )}
+              <Camera className={`w-5 h-5 ${captureFlash ? "capture-pop" : ""}`} />
+              <span className="text-xs font-bold">{captureFlash ? "찰칵!" : "캡처"}</span>
             </button>
           </div>
           <p className="mt-4 text-center text-xs text-brand-mute">
@@ -534,58 +701,112 @@ export function RobotVision() {
             <span className="font-bold text-brand-primary">전체화면</span>에서
             활성화됩니다.
           </p>
-        </Card>
+          </div>
+        </div>
       </section>
 
       {/* 이벤트 로그 */}
       <section className="mt-6">
-        <h3 className="font-display text-base font-bold text-brand-brown mb-3">
-          이벤트 로그
-        </h3>
-        <Card className="divide-y divide-brand-line">
-          {eventLog.length === 0 && (
-            <div className="px-4 py-5 text-center text-sm font-semibold text-brand-mute">
-              아직 기록된 비전 이벤트가 없어요.
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-display text-base font-bold text-brand-brown">
+              이벤트 로그
+            </h3>
+            <p className="mt-0.5 text-[11px] font-semibold text-brand-mute">
+              최근 이벤트는 30일 동안 보관돼요.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-brand-mute font-semibold">
+              {Math.min(eventLog.length, 5)}/5
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAllEvents(true)}
+              className="text-xs text-brand-mute font-semibold flex items-center touch-active"
+            >
+              전체보기 <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="relative rounded-3xl shadow-soft" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
+          <div className="relative z-10 m-1.5 rounded-[18px] overflow-hidden divide-y divide-brand-line/70">
+          {visibleEventLog.length === 0 && (
+            <div className="px-4 py-6 flex flex-col items-center text-center">
+              <span className="w-12 h-12 rounded-full flex items-center justify-center mb-2 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+                <Video className="w-6 h-6 text-brand-primary/70" />
+              </span>
+              <p className="text-sm font-semibold text-brand-mute">아직 기록된 비전 이벤트가 없어요 🐾</p>
             </div>
           )}
-          {eventLog.map((e) => {
+          {visibleEventLog.map((e) => {
             const Icon = e.icon || EVENT_ICON[e.eventType] || Video;
+            const hasEventMedia = !!(e.storage_path || e.clip_id);
             return (
-              <button
+              <div
                 key={e.id}
-                onClick={() => setSelectedClip(e)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-cream transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-3.5"
               >
-                <span
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${e.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+                <button
+                  type="button"
+                  onClick={() => setSelectedClip(e)}
+                  className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream transition-colors rounded-2xl"
                 >
-                  <Icon className="w-5 h-5" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-brand-brown truncate">
-                    {e.type}
-                  </p>
-                  <p className="text-xs text-brand-mute truncate">
-                    {e.location}
-                    {e.clip_id ? "" : " · 영상 없음"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge tone={e.danger ? "danger" : "primary"}>
-                    {e.clip_id ? "VOD" : "기록"}
-                  </Badge>
-                  <span className="text-[11px] text-brand-mute">{e.time}</span>
-                  <ChevronRight className="w-4 h-4 text-brand-mute" />
-                </div>
-              </button>
+                  <span
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${e.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : e.warning ? "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-brand-brown truncate">
+                      {e.type}
+                    </p>
+                    <p className="text-xs text-brand-mute truncate">
+                      {e.location}
+                      {hasEventMedia ? "" : " · 영상 없음"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge tone={e.danger ? "danger" : e.warning ? "warn" : "primary"}>
+                      {hasEventMedia ? "VOD" : "기록"}
+                    </Badge>
+                    <span className="text-[11px] text-brand-mute">{e.time}</span>
+                    <ChevronRight className="w-4 h-4 text-brand-mute" />
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => deleteVisionEvent(e, event)}
+                  className="w-9 h-9 rounded-2xl text-brand-mute flex items-center justify-center shrink-0 border border-dashed border-brand-brown/15 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                  style={{ backgroundColor: BG_INFO }}
+                  aria-label="로그 삭제"
+                  title="로그 삭제"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             );
           })}
-        </Card>
+          </div>
+        </div>
       </section>
 
       {/* 클립 뷰어 (활동 기록 상세와 동일 형식) */}
       {selectedClip && (
         <ClipModal clip={selectedClip} onClose={() => setSelectedClip(null)} />
+      )}
+      {showAllEvents && (
+        <EventLogSheet
+          items={eventLog}
+          onClose={() => setShowAllEvents(false)}
+          onDelete={deleteVisionEvent}
+          onSelect={(event) => {
+            setShowAllEvents(false);
+            setSelectedClip(event);
+          }}
+        />
       )}
 
       {/* 전체화면 스테이지 - 가로 모드 풀스크린 */}
@@ -645,7 +866,7 @@ function FullscreenView({
   detections,
 }) {
   const [micOn, setMicOn] = useState(false);
-  const [streamLive, setStreamLive] = useState(false); // 카메라 스트림 연결 상태
+  const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const toggleMic = () => {
     setMicOn((v) => {
       console.log("[RobotVision] mic:", !v ? "ON" : "OFF");
@@ -661,20 +882,25 @@ function FullscreenView({
         error={streamError}
         className="absolute inset-0"
         fullscreen
-        onStatusChange={setStreamLive}
+        onStatusChange={setCamStatus}
       />
       <DetectionOverlay
         detections={detections}
         className="absolute inset-0 z-10"
       />
+      <RearWarning sensor={detections?.rear_sensor} className="absolute inset-0 z-10" large />
 
       {/* 상단 좌측: LIVE / REC / 외출모드 인디케이터 */}
       <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
         <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[11px] font-bold">
           <span
-            className={`w-2 h-2 rounded-full ${streamLive ? "bg-red-400 animate-pulse" : "bg-white/40"}`}
+            className={`w-2 h-2 rounded-full ${camStatus === "live" ? "bg-red-400 animate-pulse" : camStatus === "connecting" ? "bg-amber-300 animate-pulse" : "bg-white/40"}`}
           />
-          {streamLive ? "LIVE" : "오프라인"}
+          {camStatus === "live"
+            ? "LIVE"
+            : camStatus === "connecting"
+              ? "연결 중"
+              : "오프라인"}
         </span>
         {recording && (
           <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
@@ -721,6 +947,7 @@ function FullscreenView({
         onPress={onPan}
         centerAction="center"
         muted
+        holdToPress
       />
     </>
   );
@@ -728,13 +955,160 @@ function FullscreenView({
 
 /* 클립 뷰어 — 바텀시트 + 실제 영상 재생 (활동 기록 상세와 동일 형식).
  * 백엔드가 클립을 저장/서빙하면 자동 재생, 미구현 시 placeholder 폴백. */
+function EventLogSheet({ items, onClose, onDelete, onSelect }) {
+  const [show, setShow] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const filteredItems = useMemo(() => filterLogsByDate(items, selectedDate), [items, selectedDate]);
+  const groups = useMemo(() => groupLogsByDate(filteredItems), [filteredItems]);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShow(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const dismiss = () => {
+    setShow(false);
+    setTimeout(onClose, 280);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center"
+      onClick={dismiss}
+    >
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: "rgba(45,37,32,0.45)", opacity: show ? 1 : 0 }}
+      />
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-hidden rounded-t-3xl sm:rounded-b-3xl px-5 pt-3 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: BG_CARD,
+          transform: show ? "translateY(0)" : "translateY(100%)",
+          paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))",
+        }}
+      >
+        <Stitch className="!inset-[8px] !rounded-[22px]" />
+        <div className="relative z-10">
+          <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed bg-brand-primary/15 text-brand-primary border-brand-primary/30">
+              <Video className="w-5 h-5" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg font-bold text-brand-brown leading-tight">
+                이벤트 로그 전체보기
+              </h3>
+              <p className="text-xs text-brand-mute">
+                날짜별로 최근 비전 이벤트를 확인해요.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label="닫기"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20"
+              style={{ backgroundColor: BG_INFO }}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <LogDatePicker
+            items={items}
+            open={calendarOpen}
+            selectedDate={selectedDate}
+            onToggle={() => setCalendarOpen((open) => !open)}
+            onSelectDate={(dateKey) => {
+              setSelectedDate(dateKey);
+              setCalendarOpen(false);
+            }}
+            onClearDate={() => setSelectedDate("")}
+            className="mt-4"
+          />
+
+          <div className="mt-4 max-h-[62dvh] overflow-y-auto no-scrollbar rounded-[18px] overflow-hidden">
+            {groups.length === 0 && (
+              <div className="px-4 py-10 flex flex-col items-center text-center bg-brand-card">
+                <span className="w-14 h-14 rounded-full flex items-center justify-center mb-3 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
+                  <Video className="w-7 h-7 text-brand-primary/70" />
+                </span>
+                <p className="text-sm font-semibold text-brand-mute">
+                  아직 기록된 이벤트가 없어요.
+                </p>
+              </div>
+            )}
+            {groups.map((group) => (
+              <div key={group.label}>
+                <div className="sticky top-0 z-10 px-4 py-2 bg-brand-cream/95 backdrop-blur text-[11px] font-bold text-brand-mute border-y border-brand-line/70 first:border-t-0">
+                  {group.label}
+                </div>
+                <div className="divide-y divide-brand-line/70">
+                  {group.items.map((event) => {
+                    const Icon = event.icon || EVENT_ICON[event.eventType] || Video;
+                    const hasMedia = !!(event.storage_path || event.clip_id);
+                    return (
+                      <div
+                        key={event.id}
+                        className="w-full flex items-center gap-2 px-4 py-3.5 bg-brand-card"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onSelect(event)}
+                          className="flex-1 min-w-0 flex items-center gap-3 text-left active:bg-brand-cream/60 transition-colors rounded-2xl"
+                        >
+                          <span
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${event.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : event.warning ? "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
+                          >
+                            <Icon className="w-5 h-5" />
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-brand-brown truncate">
+                              {event.type}
+                            </p>
+                            <p className="text-xs text-brand-mute truncate">
+                              {event.location}
+                              {hasMedia ? "" : " · 미디어 없음"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Badge tone={event.danger ? "danger" : event.warning ? "warn" : "primary"}>
+                              {hasMedia ? "VOD" : "기록"}
+                            </Badge>
+                            <span className="text-[11px] text-brand-mute">{event.time}</span>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(domEvent) => onDelete(event, domEvent)}
+                          className="w-9 h-9 rounded-2xl text-brand-mute flex items-center justify-center shrink-0 border border-dashed border-brand-brown/15 active:bg-brand-danger/10 active:text-brand-danger transition-colors"
+                          style={{ backgroundColor: BG_INFO }}
+                          aria-label="로그 삭제"
+                          title="로그 삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClipModal({ clip, onClose }) {
   const [show, setShow] = useState(false);
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaFailed, setMediaFailed] = useState(false);
   const Icon = clip.icon || Video;
   const isCapture = clip.eventType === "capture_saved";
-  const isClip = clip.eventType === "clip_saved" || !!clip.clip_id;
   const isAwayPerson = clip.eventType === "away_person";
   const hasMedia = !!(clip.storage_path || clip.clip_id);
 
@@ -771,7 +1145,7 @@ function ClipModal({ clip, onClose }) {
     setTimeout(onClose, 280);
   };
   const showImage = isCapture && mediaUrl && !mediaFailed;
-  const showVideo = isClip && mediaUrl && !mediaFailed;
+  const showVideo = !isCapture && mediaUrl && !mediaFailed;
   const openLocalPath = () => {
     if (!clip.storage_path) return;
     api.revealVisionMedia(clip.storage_path).catch((error) => {
@@ -790,15 +1164,20 @@ function ClipModal({ clip, onClose }) {
       />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-brand-bg px-5 pt-3 pb-8 shadow-soft-lg transition-transform duration-300 ease-out"
-        style={{ transform: show ? "translateY(0)" : "translateY(100%)" }}
+        className="relative w-full max-w-[480px] max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-b-3xl px-5 pt-3 shadow-soft-lg transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: BG_CARD,
+          transform: show ? "translateY(0)" : "translateY(100%)",
+          paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))",
+        }}
       >
+        <Stitch className="!inset-[8px] !rounded-[22px]" />
         <div className="mx-auto w-10 h-1.5 rounded-full bg-brand-line mb-4" />
 
         {/* 헤더 */}
         <div className="flex items-center gap-3">
           <span
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${clip.danger ? "bg-brand-danger/15 text-brand-danger" : "bg-brand-primary/15 text-brand-primary"}`}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border border-dashed ${clip.danger ? "bg-brand-danger/15 text-brand-danger border-brand-danger/30" : "bg-brand-primary/15 text-brand-primary border-brand-primary/30"}`}
           >
             <Icon className="w-5 h-5" />
           </span>
@@ -812,7 +1191,8 @@ function ClipModal({ clip, onClose }) {
             type="button"
             onClick={dismiss}
             aria-label="닫기"
-            className="text-brand-mute touch-active"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-brand-mute touch-active shrink-0 border border-dashed border-brand-brown/20"
+            style={{ backgroundColor: BG_INFO }}
           >
             <X className="w-5 h-5" />
           </button>
@@ -831,8 +1211,7 @@ function ClipModal({ clip, onClose }) {
         )}
 
         {/* 영상 */}
-        {!isAwayPerson && (
-          <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
+        <div className="mt-4 relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-brand-brown to-black">
             {hasMedia ? (
               <>
                 {showImage ? (
@@ -889,14 +1268,13 @@ function ClipModal({ clip, onClose }) {
                 저장된 미디어가 없는 이벤트예요
               </div>
             )}
-          </div>
-        )}
+        </div>
 
         {/* 메타 */}
         <div className="mt-3 grid grid-cols-2 gap-2.5">
-          <div className="rounded-2xl bg-brand-cream p-3.5">
+          <div className="rounded-2xl p-3.5 border border-dashed border-brand-brown/15" style={{ backgroundColor: BG_INFO }}>
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-              <Clock className="w-4 h-4" /> 탐지 시각
+              <span className="text-brand-primary-deep"><Clock className="w-4 h-4" /></span> 탐지 시각
             </p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none">
               {clip.time}
@@ -906,11 +1284,12 @@ function ClipModal({ clip, onClose }) {
             type="button"
             onClick={openLocalPath}
             disabled={!clip.storage_path}
-            className="rounded-2xl bg-brand-cream p-3.5 text-left disabled:cursor-default active:bg-brand-line/40"
+            className="rounded-2xl p-3.5 text-left border border-dashed border-brand-brown/15 disabled:cursor-default active:bg-brand-line/40"
+            style={{ backgroundColor: BG_INFO }}
             title={clip.storage_path || clip.location}
           >
             <p className="flex items-center gap-1 text-[11px] font-bold text-brand-mute">
-              <MapPin className="w-4 h-4" /> 위치
+              <span className="text-brand-primary-deep"><MapPin className="w-4 h-4" /></span> 위치
             </p>
             <p className="mt-1 font-display text-lg font-bold text-brand-brown leading-none truncate">
               {clip.location}
@@ -940,42 +1319,52 @@ function StreamFrame({
   onStatusChange,
 }) {
   const [imageError, setImageError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setImageError(false);
+    setLoaded(false);
   }, [src]);
 
-  const showFallback = !src || error || imageError;
-  const live = !!src && !error && !imageError;
+  // connecting(주소 확인/로딩 중) → live(실제 로드됨) / off(실패)
+  const status =
+    error || imageError ? "off" : src && loaded ? "live" : "connecting";
+  const showFallback = status !== "live";
 
-  // 실제 스트림 연결 상태를 부모에 알림 (LIVE/오프라인 배지용)
+  // 실제 스트림 연결 상태를 부모에 알림 (LIVE/연결중/오프라인 배지용)
   useEffect(() => {
-    onStatusChange?.(live);
-  }, [live, onStatusChange]);
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   return (
     <div
-      className={`${className} bg-black flex items-center justify-center overflow-hidden`}
+      className={`${className} bg-brand-cream dark:bg-black flex items-center justify-center overflow-hidden`}
     >
       {src && !imageError && (
-        <img
-          src={src}
-          alt="Robot camera live stream"
-          onError={() => setImageError(true)}
-          onLoad={() => setImageError(false)}
-          className="w-full h-full object-cover"
-        />
+        <>
+          <img
+            src={src}
+            alt="Robot camera live stream"
+            onError={() => setImageError(true)}
+            onLoad={() => { setImageError(false); setLoaded(true) }}
+            className="w-full h-full object-contain bg-black brightness-95 saturate-[0.95] dark:brightness-[0.78] dark:saturate-90"
+            style={VISION_FLIP_HORIZONTAL ? { transform: "scaleX(-1)" } : undefined}
+          />
+          {/* 심플·모던: 상하 은은한 그라데이션으로 차분하게 + 배지 가독성 */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/35" />
+        </>
       )}
       {showFallback && (
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-brown via-[#2a1d12] to-black flex items-center justify-center text-white/75">
-          <div className="text-center px-6">
-            <Video
-              className={`${fullscreen ? "w-16 h-16" : "w-12 h-12"} mx-auto mb-2 opacity-75`}
-            />
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-cream via-brand-line to-brand-line dark:from-[#2b2520] dark:via-[#1f1815] dark:to-black flex items-center justify-center text-brand-mute dark:text-white/75">
+          {/* 글래스 빛 반사(sheen) + 유리 테두리 */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 via-white/5 to-transparent dark:from-white/10 dark:via-white/0" />
+          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40 dark:ring-white/10" />
+          <div className="relative text-center px-6">
+            <span className={`${fullscreen ? "w-20 h-20 mb-3" : "w-16 h-16 mb-2.5"} mx-auto rounded-full flex items-center justify-center bg-white/40 dark:bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/50 dark:ring-white/15 shadow-sm`}>
+              <Video className={`${fullscreen ? "w-9 h-9" : "w-7 h-7"} opacity-80`} />
+            </span>
             <p className="text-sm font-semibold">
-              {error || imageError
-                ? "카메라 스트림 연결 대기 중"
-                : "스트림 준비 중"}
+              {status === "off" ? "카메라 스트림 연결 대기 중" : "연결 중…"}
             </p>
             <p className="mt-1 text-xs opacity-70">
               {mode === "simulated" ? "시뮬레이션 스트림" : "MJPEG 실시간 캠"}
@@ -989,9 +1378,79 @@ function StreamFrame({
 
 const EVENT_ICON = {
   away_person: UserX,
+  fall_detected: UserX,
+  no_motion: UserX,
+  no_motion_warning: UserX,
+  no_motion_emergency: UserX,
+  seizure_suspected: UserX,
   capture_saved: Camera,
   clip_saved: Video,
 };
+
+/* 후방 초음파 경고 오버레이 — 하단 테두리 글로우(깜빡) + 반투명 토스트.
+ * sensor: { distance_cm, rear_obstacle, threshold_cm } (백엔드 /vision/detections/latest 의 rear_sensor) */
+function RearWarning({ sensor, className = "", large = false }) {
+  if (!sensor) return null;
+  const dist = sensor.distance_cm;
+  const thr = sensor.threshold_cm ?? 15; // 위험 임계(아두이노 장애물 ON 기준, 보통 15cm)
+  const WARN_CM = 40; // 주의 임계: 위험~40cm 사이는 '접근 중'
+  const danger = sensor.rear_obstacle || (dist != null && dist <= thr); // 🔴 ≤15cm
+  const warn = !danger && dist != null && dist <= WARN_CM; // 🟡 15~40cm
+  if (!danger && !warn) return null; // 🟢 >40cm 숨김
+
+  // 위험도별 색: 위험=빨강, 접근=주황 (토큰이라 라이트/다크 자동 대응)
+  const colorVar = danger ? "var(--brand-danger)" : "var(--brand-warning)";
+  const distLabel = dist != null ? `${dist}cm` : ""; // 후방 거리(cm) — 폴링값이라 실시간 갱신
+  const label = danger ? "후방 장애물 감지!" : "후방 주의";
+
+  // 전체화면(large)에서는 글로우·토스트를 키워서 한눈에 보이게
+  const glow = large ? "inset 0 0 110px 30px" : "inset 0 0 55px 14px";
+  const toastPos = large ? "top-7" : "top-4";
+  const toastBox = large ? "gap-3 px-7 py-3.5" : "gap-2 px-4 py-2";
+  const iconSize = large ? "w-7 h-7" : "w-4 h-4";
+  const textSize = large ? "text-2xl" : "text-sm";
+
+  return (
+    <div className={`pointer-events-none overflow-hidden ${className}`}>
+      {/* 사방(상하좌우) 테두리 글로우 — 가장자리에서 안쪽으로 번짐, 깜빡임(위험=빠르게) */}
+      <div
+        className="absolute inset-0"
+        style={{
+          boxShadow: `${glow} rgb(${colorVar} / 0.7)`,
+          // 주의(노랑) ↔ 위험(빨강) 색 전환을 0.6초에 걸쳐 부드럽게 보간
+          transition: "box-shadow 0.6s ease",
+          animation: `pulse ${danger ? 0.8 : 1.6}s ease-in-out infinite`,
+        }}
+      />
+      {/* 반투명 경고 토스트 (중앙 상단) */}
+      <div className={`absolute ${toastPos} left-1/2 -translate-x-1/2`}>
+        <div
+          className={`flex items-center rounded-full bg-black/60 shadow-soft-lg backdrop-blur-sm ${toastBox}`}
+          style={{
+            border: `${large ? 2 : 1.5}px solid rgb(${colorVar})`,
+            transition: "border-color 0.6s ease",
+          }}
+        >
+          <ShieldAlert
+            className={`${iconSize} shrink-0`}
+            style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+          />
+          <span className={`whitespace-nowrap font-bold text-white ${textSize}`}>
+            ⚠️ {label}
+            {distLabel && (
+              <span
+                className="ml-1"
+                style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+              >
+                · {distLabel}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DetectionOverlay({ detections, className = "" }) {
   const boxes = detections?.boxes || [];
@@ -1005,31 +1464,39 @@ function DetectionOverlay({ detections, className = "" }) {
   }
 
   return (
-    <div className={`${className} pointer-events-none overflow-hidden`}>
-      {boxes.map((box, index) => {
-        const left = (box.x / frameWidth) * 100;
-        const top = (box.y / frameHeight) * 100;
-        const width = (box.w / frameWidth) * 100;
-        const height = (box.h / frameHeight) * 100;
-        const label = `${box.label} ${Math.round((box.confidence || 0) * 100)}%`;
+    <div className={`${className} pointer-events-none flex items-center justify-center overflow-hidden`}>
+      <div
+        className="relative max-w-full max-h-full"
+        style={{
+          height: "100%",
+          aspectRatio: `${frameWidth} / ${frameHeight}`,
+        }}
+      >
+        {boxes.map((box, index) => {
+          const left = (box.x / frameWidth) * 100;
+          const top = (box.y / frameHeight) * 100;
+          const width = (box.w / frameWidth) * 100;
+          const height = (box.h / frameHeight) * 100;
+          const label = `${box.label} ${Math.round((box.confidence || 0) * 100)}%`;
 
-        return (
-          <div
-            key={`${box.label}-${index}-${box.x}-${box.y}`}
-            className="absolute border-2 border-emerald-400 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-            style={{
-              left: `${left}%`,
-              top: `${top}%`,
-              width: `${width}%`,
-              height: `${height}%`,
-            }}
-          >
-            <span className="absolute left-0 top-0 -translate-y-full rounded-t-md bg-black/70 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
-              {label}
-            </span>
-          </div>
-        );
-      })}
+          return (
+            <div
+              key={`${box.label}-${index}-${box.x}-${box.y}`}
+              className="absolute border-2 border-emerald-400 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                width: `${width}%`,
+                height: `${height}%`,
+              }}
+            >
+              <span className="absolute left-0 top-0 -translate-y-full rounded-t-md bg-black/70 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+                {label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1124,23 +1591,45 @@ function DBtn({
   onClick,
   onRelease = null,
   holdToPress = false,
+  repeatMs = MOVE_HOLD_REPEAT_MS,
   bg,
   aria,
   rotate = "",
   tone = "dark",
 }) {
   const activePointerRef = useRef(null);
+  const holdTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) {
+        window.clearInterval(holdTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      window.clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
 
   const startPress = (event) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     activePointerRef.current = event.pointerId;
     onClick();
+    clearHoldTimer();
+    if (holdToPress) {
+      holdTimerRef.current = window.setInterval(onClick, repeatMs);
+    }
   };
 
   const endPress = (event) => {
     if (activePointerRef.current !== event.pointerId) return;
     activePointerRef.current = null;
+    clearHoldTimer();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     if (holdToPress && onRelease) {
       onRelease();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { PublicLayout, PrivateLayout } from './components/Layout'
+import { resetOnboarding } from './onboarding/onboardingPlatform'
 import { Splash } from './pages/Splash'
 import { Login } from './pages/Login'
 import Signup from './pages/Signup'
@@ -17,6 +18,7 @@ import { Dispenser } from './pages/Dispenser'
 import { Feeding } from './pages/Feeding'
 import { Activity } from './pages/Activity'
 import { PetDetail } from './pages/PetDetail'
+import { HealthReport } from './pages/HealthReport'
 import { ProfileEdit } from './pages/ProfileEdit'
 import { Settings } from './pages/Settings'
 import { MyPage } from './pages/MyPage'
@@ -93,6 +95,7 @@ function App() {
           <Route path="activity" element={<Activity />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="pet/:idx" element={<PetDetail />} />
+          <Route path="health-report/:idx" element={<HealthReport />} />
           <Route path="profile/edit" element={<ProfileEdit />} />
           <Route path="settings" element={<Settings />} />
           <Route path="mypage" element={<MyPage />} />
@@ -149,6 +152,7 @@ function SignupRoute({ onLogin }) {
   return (
     <Signup
       onComplete={() => {
+        resetOnboarding() // 신규/재가입 모두 온보딩을 최초 1회 다시 노출
         onLogin()
         navigate('/', { replace: true })
       }}

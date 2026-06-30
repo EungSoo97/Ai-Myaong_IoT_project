@@ -7,7 +7,7 @@ export function PageHeader({ title, subtitle, right }) {
   return (
     <header className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
       <div className="min-w-0">
-        <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">{title}</h1>
+        <h1 className="font-cute text-xl sm:text-2xl font-bold text-brand-brown leading-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-brand-mute truncate">{subtitle}</p>}
       </div>
       {right}
@@ -97,14 +97,14 @@ export function ToggleSwitch({ checked, onChange, label }) {
 
 export function Badge({ tone = 'primary', children }) {
   const tones = {
-    primary: 'bg-brand-primary/15 text-brand-primary',
-    brown: 'bg-brand-brown/10 text-brand-brown',
-    warn: 'bg-brand-warning/20 text-[#A06B1A]',
-    danger: 'bg-brand-danger/15 text-brand-danger',
-    success: 'bg-brand-success/20 text-[#2F6A2E]',
+    primary: 'bg-brand-primary/15 text-brand-primary ring-brand-primary/20',
+    brown: 'bg-brand-brown/10 text-brand-brown ring-brand-brown/15',
+    warn: 'bg-brand-warning/25 text-[rgb(var(--brand-warning-ink))] ring-[rgb(var(--brand-warning-ink)/0.25)]',
+    danger: 'bg-brand-danger/15 text-brand-danger ring-brand-danger/25',
+    success: 'bg-brand-success/25 text-[rgb(var(--brand-success-ink))] ring-[rgb(var(--brand-success-ink)/0.25)]',
   }
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${tones[tone]}`}>
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 ring-inset ${tones[tone]}`}>
       {children}
     </span>
   )

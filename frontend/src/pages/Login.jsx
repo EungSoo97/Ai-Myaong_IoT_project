@@ -1,43 +1,53 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock, LogIn, User } from "lucide-react";
+// import { Lock, LogIn, User } from "lucide-react";
+import { AuthVideoLayout } from "../components/auth/AuthVideoLayout";
+import { Lock, LogIn, User } from "../components/icons";
 import { GoogleButton } from "../components/GoogleButton";
 import { saveAccount } from "../lib/accountRepository";
 import { api } from "../api/api";
 import { fromApiPet } from "../lib/petMap";
 
-
 /* Warm-tone 팔레트 */
 const C = {
-  bg: 'rgb(var(--brand-bg))',
-  card: 'rgb(var(--brand-card))',
-  input: 'rgb(var(--brand-input))',
-  border: 'rgb(var(--brand-line))',
-  brown: 'rgb(var(--brand-brown))',
-  mute: 'rgb(var(--brand-mute))',
-  primary: 'rgb(var(--brand-primary))',
-  primaryDeep: 'rgb(var(--brand-primary-deep))',
-  outline: 'rgb(var(--brand-brown))',
+  bg: "rgb(var(--brand-bg))",
+  card: "rgb(var(--brand-card))",
+  input: "rgb(var(--brand-input))",
+  border: "rgb(var(--brand-line))",
+  brown: "rgb(var(--brand-brown))",
+  mute: "rgb(var(--brand-mute))",
+  primary: "rgb(var(--brand-primary))",
+  primaryDeep: "rgb(var(--brand-primary-deep))",
+  outline: "rgb(var(--brand-brown))",
   // 고양이 일러스트 색은 의도된 고정값 (다크에서도 동일 유지)
-  catOrange: '#F0A56E',
-  catOrangeDark: '#E58A4F',
-  catCream: '#FAF1E2',
-  catPink: '#F5B5A4',
-}
+  catOrange: "#F0A56E",
+  catOrangeDark: "#E58A4F",
+  catCream: "#FAF1E2",
+  catPink: "#F5B5A4",
+};
 
 /* 로그인 결과를 화면용 계정 저장소(useAccount)에 반영.
  * 펫은 DB(getMe)에서 불러와 pet_id 포함으로 저장 (실패 시 빈 배열). */
 async function applyLoggedInUser(result, provider) {
   const u = result?.user || {};
+  let userInfo = u;
   let pets = [];
   try {
     const me = await api.getMe(); // user + pets (DB)
+    userInfo = { ...u, ...me };
     pets = (me.pets || []).map((p) => fromApiPet(p));
   } catch {
     /* DB 조회 실패 → 펫 없이 진행 */
   }
+  const photo = userInfo.profile_photo_path || "";
   saveAccount({
     provider,
-    user: { userId: u.username, email: u.email, nickname: u.nickname },
+    user: {
+      userId: userInfo.username,
+      email: userInfo.email,
+      nickname: userInfo.nickname,
+      photo,
+      profile_photo_path: photo,
+    },
     pets,
     createdAt: new Date().toISOString(),
   });
@@ -52,6 +62,7 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
+  const [showLoginCard, setShowLoginCard] = useState(false);
 
   const stageRef = useRef(null);
   const headRef = useRef(null);
@@ -138,146 +149,134 @@ export function Login({ onLogin, onSignup, onFindId, onFindPassword }) {
   };
 
   return (
-    <div
+    <AuthVideoLayout
       ref={stageRef}
-      className="page-enter flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8 sm:pt-12"
-      style={{ background: C.bg }}
+      className={`page-enter auth-login-page ${showLoginCard ? "is-login-open" : ""}`}
     >
       {/* 브랜드 */}
-      <div className="text-center">
+      <div className="auth-brand-text auth-login-brand auth-glass-card auth-brand-card text-center">
         <h1
-          className="font-display text-3xl font-bold tracking-tight"
+          className="font-cute text-3xl font-bold tracking-tight"
           style={{ color: C.brown }}
         >
           Ai<span style={{ color: C.primary }}>:</span>Myaong
         </h1>
-        <p className="mt-1 text-xs font-semibold" style={{ color: C.mute }}>
+        <p className="mt-1 text-xs font-semibold" style={{ color: C.brown }}>
           사료를 전하고 싶다던가 🐾
         </p>
       </div>
 
-      {/* 반응형 고양이 이미지 */}
-      <div className="mt-4 sm:mt-6 flex justify-center">
-        <div className="w-full max-w-[240px]">
-          <ReactiveCat headRef={headRef} />
-        </div>
-      </div>
+      <div className="auth-login-spacer" aria-hidden="true" />
 
-      {/* 로그인 폼 */}
-      <form
-        onSubmit={submit}
-        className="mt-4 sm:mt-6 rounded-3xl p-5 shadow-lg"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
-      >
-        <p
-          className="text-center text-xs font-bold tracking-widest uppercase"
-          style={{ color: C.primary }}
-        >
-          로그인
-        </p>
-
-        <WarmField
-          icon={<User className="w-4 h-4" />}
-          label="아이디"
-          value={id}
-          onChange={setId}
-          placeholder="아이디를 입력해 주세요"
-          autoComplete="username"
-        />
-        <WarmField
-          icon={<Lock className="w-4 h-4" />}
-          label="비밀번호"
-          value={pw}
-          onChange={setPw}
-          type="password"
-          placeholder="비밀번호"
-          autoComplete="current-password"
-        />
-
-        {err && (
-          <p
-            className="mt-2 text-xs font-semibold"
-            style={{ color: "#E26D5C" }}
-          >
-            {err}
-          </p>
-        )}
-
+      {!showLoginCard && (
         <button
-          type="submit"
-          className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-md transition-colors active:brightness-90"
-          style={{ background: C.primary }}
+          type="button"
+          onClick={() => setShowLoginCard(true)}
+          className="auth-start-login-button"
         >
           <LogIn className="w-4 h-4" />
-          들어가기
+          로그인
         </button>
+      )}
 
-        <div className="mt-5 flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ background: C.border }} />
-          <span className="text-xs font-bold" style={{ color: C.mute }}>
-            또는
-          </span>
-          <div className="flex-1 h-px" style={{ background: C.border }} />
-        </div>
-        <div className="mt-4">
-          <GoogleButton
-            label="Google 계정으로 로그인"
-            onSuccess={handleGoogleLogin}
-            onError={(e) =>
-              setErr(
-                e?.message ||
-                  e?.error_description ||
-                  e?.error ||
-                  "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
-              )
-            }
-          />
-        </div>
+      <div className={`auth-login-drawer ${showLoginCard ? "is-open" : ""}`}>
+        <div className="auth-login-drawer-inner">
+          {/* 로그인 폼 */}
+          <form
+            onSubmit={submit}
+            className="auth-glass-card auth-login-card rounded-3xl p-4 shadow-lg sm:p-5"
+          >
+            <button
+              type="button"
+              onClick={() => setShowLoginCard(false)}
+              className="auth-collapse-button"
+            >
+              접기
+            </button>
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={onFindId}
-            className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
-            style={{
-              background: C.input,
-              color: C.brown,
-              border: `1.5px solid ${C.border}`,
-            }}
-          >
-            아이디 찾기
-          </button>
-          <button
-            type="button"
-            onClick={onFindPassword}
-            className="rounded-2xl py-3 text-sm font-semibold transition-colors active:brightness-95"
-            style={{
-              background: C.input,
-              color: C.brown,
-              border: `1.5px solid ${C.border}`,
-            }}
-          >
-            비밀번호 찾기
-          </button>
-          <button
-            type="button"
-            onClick={onSignup}
-            className="rounded-2xl py-3 text-sm font-bold text-white transition-colors active:brightness-90"
-            style={{ background: C.primary }}
-          >
-            회원가입
-          </button>
-        </div>
+            <WarmField
+              icon={<User className="w-4 h-4" />}
+              value={id}
+              onChange={setId}
+              placeholder="아이디를 입력해 주세요"
+              autoComplete="username"
+            />
+            <WarmField
+              icon={<Lock className="w-4 h-4" />}
+              value={pw}
+              onChange={setPw}
+              type="password"
+              placeholder="비밀번호"
+              autoComplete="current-password"
+            />
 
-      </form>
-    </div>
+            {err && (
+              <p
+                className="mt-2 text-xs font-semibold"
+                style={{ color: "#E26D5C" }}
+              >
+                {err}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-md transition-colors active:brightness-90"
+              style={{ background: C.primary }}
+            >
+              <LogIn className="w-4 h-4" />
+              들어가기
+            </button>
+
+            <div className="mt-5 flex items-center gap-3">
+              <div className="flex-1 h-px" style={{ background: C.border }} />
+              <span className="text-xs font-bold" style={{ color: C.mute }}>
+                또는
+              </span>
+              <div className="flex-1 h-px" style={{ background: C.border }} />
+            </div>
+            <div className="mt-4">
+              <GoogleButton
+                label="Google 계정으로 로그인"
+                onSuccess={handleGoogleLogin}
+                onError={(e) =>
+                  setErr(
+                    e?.message ||
+                      e?.error_description ||
+                      e?.error ||
+                      "구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.",
+                  )
+                }
+              />
+            </div>
+          </form>
+
+          <div className="auth-login-actions">
+            <button type="button" onClick={onFindId}>
+              아이디 찾기
+            </button>
+            <span />
+            <button type="button" onClick={onFindPassword}>
+              비밀번호 찾기
+            </button>
+            <span />
+            <button
+              type="button"
+              onClick={onSignup}
+              className="auth-login-actions-primary"
+            >
+              회원가입
+            </button>
+          </div>
+        </div>
+      </div>
+    </AuthVideoLayout>
   );
 }
 
 /* ─────────────── Warm Input ─────────────── */
 function WarmField({
   icon,
-  label,
   value,
   onChange,
   type = "text",
@@ -285,16 +284,10 @@ function WarmField({
   autoComplete,
 }) {
   return (
-    <label className="mt-4 block">
-      <span
-        className="text-[11px] font-semibold pl-1"
-        style={{ color: C.mute }}
-      >
-        {label}
-      </span>
+    <label className="block">
       <div
-        className="mt-1 flex items-center gap-2 rounded-2xl px-4 py-3 transition-colors"
-        style={{ background: C.input, border: `1.5px solid ${C.border}` }}
+        className="auth-input flex items-center gap-2 rounded-2xl px-4 py-3 transition-colors"
+        style={{ border: `1.5px solid ${C.border}` }}
       >
         <span style={{ color: C.mute }}>{icon}</span>
         <input

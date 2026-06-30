@@ -1,3 +1,5 @@
+import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +15,11 @@ class DeviceSimulator:
         self.camera = {"pan": 90, "tilt": 90}
         self.dispenser = {"food_remaining": 75, "water_remaining": 60, "last_feed_amount": 0}
         self.sensor = {"distance": 30, "motion": False}
+        self.sensor_updated_at = 0.0  # 후방 센서값 마지막 수신 시각(monotonic) — staleness 판정용
+        # 후방 초음파 노이즈(스파이크) 제거용 중앙값 필터 상태
+        self._rear_window: list[int] = []                       # 최근 거리값 버퍼
+        self._rear_window_size = max(1, int(os.getenv("REAR_FILTER_WINDOW", "5")))
+        self._rear_obstacle = False                             # 필터값 기반 장애물 상태(히스테리시스)
 
     def move(self, command: str) -> dict[str, Any]:
         self.last_command = command
@@ -82,6 +89,53 @@ class DeviceSimulator:
             "sensor": self.sensor,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    def update_sensor(
+        self,
+        *,
+        distance_cm: int | None = None,
+        rear_obstacle: bool | None = None,
+        threshold_cm: int | None = None,
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        now = time.monotonic()
+        if threshold_cm is not None:
+            self.sensor["rear_obstacle_threshold_cm"] = threshold_cm
+        thr = self.sensor.get("rear_obstacle_threshold_cm", 15)
+
+        if distance_cm is not None:
+            # 끊겼다 다시 들어오면(>3초 공백) 옛 버퍼는 버리고 새로 시작
+            if self.sensor_updated_at and now - self.sensor_updated_at > 3.0:
+                self._rear_window.clear()
+
+            # 중앙값 필터: 최근 N개 중 가운데 값 → 가끔 튀는 스파이크(40↔18) 자동 제거
+            self._rear_window.append(int(distance_cm))
+            if len(self._rear_window) > self._rear_window_size:
+                self._rear_window.pop(0)
+            filtered = sorted(self._rear_window)[len(self._rear_window) // 2]
+
+            self.sensor["distance"] = filtered
+            self.sensor["rear_distance_cm"] = filtered
+            self.sensor["rear_distance_raw_cm"] = int(distance_cm)  # 원본(디버깅용)
+
+            # 장애물 판정은 '필터값' 기준으로 재계산(히스테리시스: thr 이하 ON, thr+5 이상 OFF)
+            # → 생값 한 번 튄 걸로 경고가 깜빡이지 않게 한다.
+            if filtered <= thr:
+                self._rear_obstacle = True
+            elif filtered >= thr + 5:
+                self._rear_obstacle = False
+            self.sensor["rear_obstacle"] = self._rear_obstacle
+        elif rear_obstacle is not None:
+            # 거리 없이 플래그만 온 경우(예외적)는 그대로 반영
+            self._rear_obstacle = rear_obstacle
+            self.sensor["rear_obstacle"] = rear_obstacle
+
+        if source:
+            self.sensor["source"] = source
+        # 거리값이 실제로 들어온 경우에만 '수신 시각' 갱신 (라이브 여부 판정 근거)
+        if distance_cm is not None or rear_obstacle is not None:
+            self.sensor_updated_at = now
+        return self.status()
 
     def _drain_battery(self) -> None:
         self.battery = max(0, self.battery - 1)

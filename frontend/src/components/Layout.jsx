@@ -1,7 +1,12 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { BottomTabBar } from './BottomTabBar'
+import { CatRemote } from './CatRemote/CatRemote'
 import { OnboardingTour } from './OnboardingTour'
 import { PageTransition } from './PageTransition'
+
+const AUTH_BACKGROUND_MP4 =
+  'https://pybrgtwclllhaanexose.supabase.co/storage/v1/object/public/myaong/asset/CalicoCatSwap_logo_removed.mp4'
 
 /**
  * 글로벌 모바일 셸.
@@ -26,9 +31,44 @@ function MobileShell({ children }) {
  * 하단 탭 바 없음. 컨텐츠가 전체 셸을 채움.
  */
 export function PublicLayout() {
+  const { pathname } = useLocation()
+  const videoRef = useRef(null)
+  const [isVideoReady, setIsVideoReady] = useState(false)
+  const isAuthVideoPage = pathname === '/login' || pathname === '/signup'
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (!isAuthVideoPage) {
+      video.pause()
+      video.currentTime = 0
+      return
+    }
+
+    video.play().catch(() => {
+      // 자동 재생이 막히면 기존 배경을 그대로 유지한다.
+    })
+  }, [isAuthVideoPage])
+
   return (
     <MobileShell>
-      <Outlet />
+      <div className="public-route-stage">
+        <video
+          ref={videoRef}
+          className={`auth-background-video public-auth-background-video ${
+            isVideoReady ? 'is-ready' : ''
+          } ${isAuthVideoPage ? 'is-active' : ''}`}
+          src={AUTH_BACKGROUND_MP4}
+          muted
+          loop
+          playsInline
+          preload="auto"
+          onCanPlay={() => setIsVideoReady(true)}
+          aria-hidden="true"
+        />
+        <Outlet />
+      </div>
     </MobileShell>
   )
 }
@@ -46,6 +86,7 @@ export function PrivateLayout() {
           <Outlet />
         </PageTransition>
       </main>
+      <CatRemote />
       <BottomTabBar />
       <OnboardingTour />
     </MobileShell>

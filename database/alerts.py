@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Identity
 from sqlalchemy.orm import relationship
 from database.base import Base
-from datetime import datetime
+from database.time_utils import now_kst_naive
 
 class Alert(Base):
     __tablename__ = "ALERTS"
@@ -12,7 +12,7 @@ class Alert(Base):
     alert_type   = Column(String(50),  nullable=False)
     message      = Column(String(2000), nullable=True)
     is_confirmed = Column(String(1),   default="N")
-    created_at   = Column(DateTime,    default=datetime.utcnow)
+    created_at   = Column(DateTime,    default=now_kst_naive)
 
     user = relationship("User", back_populates="alerts")
     pet  = relationship("Pet",  back_populates="alerts")

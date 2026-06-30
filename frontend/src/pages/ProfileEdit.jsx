@@ -1,18 +1,45 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, User, Mail, Smile, Lock } from 'lucide-react'
-import { Card } from '../components/ui'
+import { Camera, ChevronLeft, ChevronRight, User, Mail, Smile, Lock, Plus } from '../components/icons'
 import { useAccount, updateUser } from '../lib/accountRepository'
 import { api } from '../api/api'
 
-const C = {
-  card: 'rgb(var(--brand-card))',
-  input: 'rgb(var(--brand-input))',
-  border: 'rgb(var(--brand-line))',
-  brown: 'rgb(var(--brand-brown))',
-  mute: 'rgb(var(--brand-mute))',
-  primary: 'rgb(var(--brand-primary))',
-  danger: 'rgb(var(--brand-danger))',
+// 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
+const BG_CARD = 'color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)'
+const BG_INFO = 'color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)'
+
+/* 안쪽 점선 바느질 테두리 (펠트 느낌) */
+function Stitch({ className = '' }) {
+  return (
+    <span className={`pointer-events-none absolute inset-[6px] rounded-[18px] border border-dashed border-brand-brown/15 ${className}`} />
+  )
+}
+
+/* 종이질감 장식 아이콘 — public/icons/*.svg 실루엣을 마스크로, paper.jpg 텍스처를 그 안에만.
+ * 아이콘 출처: Phosphor Icons (MIT) — public/icons/{paw,bone,heart}.svg */
+function PaperIcon({ shape, color, className = '', opacity = 1 }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none ${className}`}
+      style={{
+        backgroundColor: color,
+        backgroundImage: 'url(/paper.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundBlendMode: 'multiply',
+        WebkitMaskImage: `url(/icons/${shape}.svg)`,
+        maskImage: `url(/icons/${shape}.svg)`,
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+        opacity,
+      }}
+    />
+  )
 }
 
 export function ProfileEdit() {
@@ -22,9 +49,25 @@ export function ProfileEdit() {
 
   const [nickname, setNickname] = useState(user.nickname || '')
   const [email, setEmail] = useState(user.email || '')
+  // 구글 기본 프로필(googleusercontent)은 표시하지 않고 기본 이미지로 (마이페이지와 동일)
+  const initialPhoto = user.photo || user.profile_photo_path || ''
+  const [photo, setPhoto] = useState(initialPhoto.includes('googleusercontent') ? '' : initialPhoto)
+  const [photoFile, setPhotoFile] = useState(null)
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  const onPick = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPhoto(reader.result)
+      setPhotoFile(file)
+    }
+    reader.readAsDataURL(file)
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -37,18 +80,25 @@ export function ProfileEdit() {
     setBusy(true)
     try {
       // 1) DB 반영 (백엔드 PATCH /me 준비되면 실제 컬럼 변경)
-      const updated = await api.updateMe({ nickname: nn, email: em })
-      const data = updated && (updated.nickname || updated.email) ? updated : { nickname: nn, email: em }
+      let updated = await api.updateMe({ nickname: nn, email: em })
+      if (photoFile) {
+        updated = await api.uploadUserPhoto(photoFile)
+      }
+      const data =
+        updated && (updated.nickname || updated.email) ?
+          updated
+        : { nickname: nn, email: em, profile_photo_path: photo }
+      const photoUrl = data.profile_photo_path || photo
       // 2) 토큰 유저(sessionStorage) 동기화
       try {
         const su = JSON.parse(sessionStorage.getItem('aimyaong:user') || '{}')
-        sessionStorage.setItem('aimyaong:user', JSON.stringify({ ...su, nickname: data.nickname, email: data.email }))
+        sessionStorage.setItem('aimyaong:user', JSON.stringify({ ...su, ...data, photo: photoUrl }))
       } catch { /* ignore */ }
       // 3) 화면용 로컬(useAccount) 동기화
-      updateUser({ nickname: data.nickname, email: data.email })
+      updateUser({ nickname: data.nickname, email: data.email, photo: photoUrl, profile_photo_path: photoUrl })
     } catch {
       // 백엔드 미구현/오류 → 로컬만이라도 반영 (기존 동작 유지)
-      updateUser({ nickname: nn, email: em })
+      updateUser({ nickname: nn, email: em, photo })
     } finally {
       setBusy(false)
       setSaved(true)
@@ -64,47 +114,77 @@ export function ProfileEdit() {
           type="button"
           onClick={() => navigate(-1)}
           aria-label="뒤로가기"
-          className="w-10 h-10 rounded-2xl bg-brand-card shadow-soft flex items-center justify-center text-brand-brown touch-active shrink-0"
+          className="w-9 h-9 -ml-1 flex items-center justify-center text-brand-brown touch-active shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="font-display text-2xl font-bold text-brand-brown leading-tight">회원 정보 수정</h1>
+        <div className="min-w-0">
+          <h1 className="font-cute text-2xl font-bold text-brand-brown leading-tight">
+            회원 정보 수정
+          </h1>
+          <p className="text-sm text-brand-mute truncate">프로필을 관리해요</p>
+        </div>
       </header>
 
       <form onSubmit={submit}>
-        <Card className="px-5 py-5">
-          {/* 아이디 (읽기 전용) */}
-          <ReadOnly label="아이디" icon={<User className="w-5 h-5" />} value={user.userId || '—'} />
+        <div className="relative overflow-hidden rounded-3xl shadow-soft px-5 py-5" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-20 h-20 rotate-6" />
+          <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.5} className="absolute right-5 top-4 w-3.5 h-3.5" />
+          <div className="relative z-10">
+            <div className="mb-5 flex justify-center">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="relative w-24 h-24 rounded-3xl flex items-center justify-center overflow-hidden shadow-soft border-2 border-dashed border-brand-brown/25"
+                style={{ backgroundColor: BG_INFO }}
+              >
+                {photo ?
+                  <img src={photo} alt="프로필" className="w-full h-full object-cover" />
+                : <Camera className="w-7 h-7 text-brand-mute" />}
+                <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full flex items-center justify-center text-white bg-brand-primary border-2 border-brand-card">
+                  <Plus className="w-4 h-4" />
+                </span>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
+            </div>
 
-          <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={nickname}
-            onChange={setNickname} placeholder="집사 이름" />
-          <Field icon={<Mail className="w-5 h-5" />} label="이메일" value={email}
-            onChange={setEmail} placeholder="example@aimyaong.com" type="email" />
+            {/* 아이디 (읽기 전용) */}
+            <ReadOnly label="아이디" icon={<User className="w-5 h-5" />} value={user.userId || '—'} />
 
-          {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
-          {saved && <p className="mt-4 text-sm font-bold" style={{ color: '#7FB28A' }}>저장되었어요!</p>}
-        </Card>
+            <Field icon={<Smile className="w-5 h-5" />} label="닉네임" value={nickname}
+              onChange={setNickname} placeholder="집사 이름" />
+            <Field icon={<Mail className="w-5 h-5" />} label="이메일" value={email}
+              onChange={setEmail} placeholder="example@aimyaong.com" type="email" />
+
+            {err && <p className="mt-4 text-sm font-bold text-brand-danger">{err}</p>}
+            {saved && <p className="mt-4 text-sm font-bold text-brand-success">저장되었어요!</p>}
+          </div>
+        </div>
 
         {/* 비밀번호 변경 안내 */}
         <button
           type="button"
           onClick={() => navigate('/find-password')}
-          className="mt-3 w-full flex items-center gap-3 rounded-2xl bg-brand-card shadow-soft px-4 py-3.5 touch-active text-left"
+          className="mt-3 w-full relative overflow-hidden flex items-center gap-3 rounded-3xl shadow-soft px-4 py-3.5 touch-active text-left"
+          style={{ backgroundColor: BG_CARD }}
         >
-          <span className="w-9 h-9 rounded-2xl bg-brand-cream flex items-center justify-center shrink-0">
+          <Stitch />
+          <span className="relative z-10 w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-dashed border-brand-brown/20" style={{ backgroundColor: BG_INFO }}>
             <Lock className="w-4 h-4 text-brand-brown" />
           </span>
-          <span className="flex-1 text-sm font-bold text-brand-brown">비밀번호 변경</span>
-          <ChevronLeft className="w-4 h-4 text-brand-mute rotate-180" />
+          <span className="relative z-10 flex-1 text-sm font-bold text-brand-brown">비밀번호 변경</span>
+          <ChevronRight className="relative z-10 w-4 h-4 text-brand-mute" />
         </button>
 
         <div className="mt-5 flex gap-3">
           <button type="button" onClick={() => navigate(-1)}
-            className="flex-1 rounded-2xl py-3.5 text-base font-bold bg-brand-cream text-brand-brown touch-active">
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold border border-dashed border-brand-brown/25 text-brand-brown touch-active"
+            style={{ backgroundColor: BG_INFO }}>
             취소
           </button>
           <button type="submit" disabled={busy}
-            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white shadow-soft touch-active disabled:opacity-60" style={{ background: C.primary }}>
+            className="flex-1 rounded-2xl py-3.5 text-base font-bold text-white shadow-soft touch-active disabled:opacity-60 bg-brand-primary border border-dashed border-white/30">
             {busy ? '저장 중…' : '저장'}
           </button>
         </div>
@@ -116,12 +196,11 @@ export function ProfileEdit() {
 function ReadOnly({ icon, label, value }) {
   return (
     <div className="block">
-      <span className="text-sm font-bold pl-1" style={{ color: C.mute }}>{label}</span>
-      <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4 opacity-70"
-        style={{ background: C.input, border: `1.5px solid ${C.border}` }}>
-        {icon && <span style={{ color: C.mute }}>{icon}</span>}
-        <span className="flex-1 text-base font-semibold" style={{ color: C.brown }}>{value}</span>
-        <span className="text-[11px] font-bold" style={{ color: C.mute }}>변경 불가</span>
+      <span className="text-xs font-bold text-brand-mute pl-1">{label}</span>
+      <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-3.5 border border-brand-brown/15 opacity-90" style={{ backgroundColor: BG_INFO }}>
+        {icon && <span className="text-brand-mute">{icon}</span>}
+        <span className="flex-1 text-base font-semibold text-brand-brown">{value}</span>
+        <span className="text-[11px] font-bold text-brand-mute">변경 불가</span>
       </div>
     </div>
   )
@@ -129,18 +208,16 @@ function ReadOnly({ icon, label, value }) {
 
 function Field({ icon, label, value, onChange, type = 'text', placeholder }) {
   return (
-    <label className="mt-5 block">
-      <span className="text-sm font-bold pl-1" style={{ color: C.mute }}>{label}</span>
-      <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-4"
-        style={{ background: C.input, border: `1.5px solid ${C.border}` }}>
-        {icon && <span style={{ color: C.mute }}>{icon}</span>}
+    <label className="mt-4 block">
+      <span className="text-xs font-bold text-brand-mute pl-1">{label}</span>
+      <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl px-4 py-3.5 border border-brand-brown/15 focus-within:border-brand-primary/50 transition-colors" style={{ backgroundColor: BG_INFO }}>
+        {icon && <span className="text-brand-primary">{icon}</span>}
         <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
-          style={{ color: C.brown }}
+          className="flex-1 min-w-0 bg-transparent text-base font-semibold text-brand-brown outline-none placeholder:font-normal placeholder:text-brand-mute/60"
         />
       </div>
     </label>

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import signal
+import socket
 import ssl
 import subprocess
 import sys
@@ -42,6 +43,34 @@ ROBOT_COMMANDS = {
     "CAM_CENTER",
 }
 
+MOVE_COMMAND_ALIASES = {
+    "F": "FORWARD",
+    "FORWARD": "FORWARD",
+    "FRONT": "FORWARD",
+    "B": "BACKWARD",
+    "BACK": "BACKWARD",
+    "BACKWARD": "BACKWARD",
+    "L": "LEFT",
+    "LEFT": "LEFT",
+    "R": "RIGHT",
+    "RIGHT": "RIGHT",
+    "S": "STOP",
+    "STOP": "STOP",
+}
+
+PANTILT_COMMAND_ALIASES = {
+    "UP": "CAM_UP",
+    "CAM_UP": "CAM_UP",
+    "DOWN": "CAM_DOWN",
+    "CAM_DOWN": "CAM_DOWN",
+    "LEFT": "CAM_LEFT",
+    "CAM_LEFT": "CAM_LEFT",
+    "RIGHT": "CAM_RIGHT",
+    "CAM_RIGHT": "CAM_RIGHT",
+    "CENTER": "CAM_CENTER",
+    "CAM_CENTER": "CAM_CENTER",
+}
+
 
 class RaspberryPiAgent:
     def __init__(self) -> None:
@@ -53,19 +82,27 @@ class RaspberryPiAgent:
         self.mqtt_password = os.getenv("MQTT_PASSWORD")
         self.client_id = os.getenv("MQTT_CLIENT_ID", "ai-myaong-raspberrypi")
         self.reconnect_delay = float(os.getenv("MQTT_RECONNECT_DELAY", "5"))
-        self.mqtt_tls = os.getenv("MQTT_TLS", "auto").lower()
+        self.mqtt_tls = os.getenv("MQTT_USE_TLS", os.getenv("MQTT_TLS", "auto")).lower()
         self.mqtt_tls_insecure = os.getenv("MQTT_TLS_INSECURE", "false").lower() == "true"
+        self.mqtt_tcp_nodelay = os.getenv("MQTT_TCP_NODELAY", "true").lower() == "true"
         self.topics = tuple(
             topic.strip()
-            for topic in os.getenv("MQTT_TOPICS", "robot/move,robot/camera").split(",")
+            for topic in os.getenv(
+                "MQTT_TOPICS",
+                "ai-myaong/robot/move,ai-myaong/robot/pantilt,robot/move,robot/camera,system/backend/announce",
+            ).split(",")
             if topic.strip()
         )
         self._client = None
         self._stopping = threading.Event()
+        self._serial_reader_thread = None
+        self._last_sensor_backend_post_at = 0.0
+        self._last_sensor_backend_lookup_at = 0.0
 
     def start(self) -> None:
         try:
             self.serial.connect()
+            self._start_serial_reader()
         except Exception as exc:
             print(f"[serial] connection failed, continuing without Arduino serial: {exc}")
 
@@ -111,6 +148,101 @@ class RaspberryPiAgent:
         if self._client:
             self._client.disconnect()
 
+    def _start_serial_reader(self) -> None:
+        if self.serial.simulation_mode:
+            return
+        if self._serial_reader_thread and self._serial_reader_thread.is_alive():
+            return
+
+        self._serial_reader_thread = threading.Thread(
+            target=self._serial_reader_loop,
+            name="arduino-serial-reader",
+            daemon=True,
+        )
+        self._serial_reader_thread.start()
+
+    def _serial_reader_loop(self) -> None:
+        while not self._stopping.is_set():
+            line = self.serial.read_line()
+            if not line:
+                continue
+
+            payload = self._parse_sensor_line(line)
+            if not payload:
+                if self.serial.debug:
+                    print(f"[serial] <- robot-controller {line}")
+                continue
+
+            print(f"[sensor] rear distance={payload.get('distance_cm')}cm obstacle={payload.get('rear_obstacle')}")
+            self._publish_sensor_update(payload)
+            self._post_sensor_update(payload)
+
+    def _parse_sensor_line(self, line: str) -> dict[str, object] | None:
+        distance_match = re.search(r"\bcm=(-?\d+)\b", line)
+        if not distance_match:
+            return None
+
+        distance_cm = int(distance_match.group(1))
+        if distance_cm < 0:
+            return None
+
+        if line.startswith("REAR_OBSTACLE"):
+            rear_obstacle = True
+        else:
+            obstacle_match = re.search(r"\bobstacle=([01])\b", line)
+            rear_obstacle = bool(obstacle_match and obstacle_match.group(1) == "1")
+
+        return {
+            "source": "arduino-rear-ultrasonic",
+            "distance_cm": distance_cm,
+            "rear_obstacle": rear_obstacle,
+            "threshold_cm": int(os.getenv("REAR_OBSTACLE_ALERT_CM", "15")),
+            "device_id": DEVICE_ID,
+        }
+
+    def _publish_sensor_update(self, payload: dict[str, object]) -> None:
+        client = self._client
+        if not client:
+            return
+
+        try:
+            client.publish("ai-myaong/robot/sensor", json.dumps(payload, ensure_ascii=False))
+        except Exception as exc:
+            print(f"[sensor] MQTT publish failed: {exc}")
+
+    def _post_sensor_update(self, payload: dict[str, object]) -> None:
+        now = time.monotonic()
+        interval = float(os.getenv("SENSOR_BACKEND_POST_INTERVAL", "1"))
+        if not payload.get("rear_obstacle") and now - self._last_sensor_backend_post_at < interval:
+            return
+
+        configured_backend = os.getenv("DESKTOP_BACKEND_URL", "").strip()
+        if not configured_backend and not MQTT_BACKEND_CACHE["url"]:
+            lookup_interval = float(os.getenv("SENSOR_BACKEND_LOOKUP_INTERVAL", "10"))
+            if now - self._last_sensor_backend_lookup_at < lookup_interval:
+                return
+            self._last_sensor_backend_lookup_at = now
+
+        backend_url = desktop_backend_url()
+        if not backend_url:
+            if now - self._last_sensor_backend_post_at >= 10:
+                print("[sensor] desktop backend was not found; sensor update not posted")
+                self._last_sensor_backend_post_at = now
+            return
+
+        self._last_sensor_backend_post_at = now
+        try:
+            request = urllib.request.Request(
+                f"{backend_url}/api/robot/sensor",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=2) as response:
+                response.read()
+        except Exception as exc:
+            print(f"[sensor] backend post failed: {exc}")
+
     def _make_mqtt_client(self, mqtt):
         try:
             return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.client_id)
@@ -129,6 +261,7 @@ class RaspberryPiAgent:
             print(f"[raspberrypi] MQTT connect failed: {reason_code}")
             return
 
+        self._set_tcp_nodelay(client)
         for topic in self.topics:
             client.subscribe(topic)
             print(f"[raspberrypi] subscribed to {topic}")
@@ -155,7 +288,7 @@ class RaspberryPiAgent:
                 print(f"[mqtt] backend announce parse error: {exc}")
             return
 
-        command = self._extract_command(message.payload)
+        command = self._extract_command(topic, message.payload)
         if not command:
             print(f"[raspberrypi] ignored empty command on {topic}")
             return
@@ -167,7 +300,7 @@ class RaspberryPiAgent:
         print(f"[raspberrypi] MQTT {topic} -> Arduino {command}")
         self.serial.send(command)
 
-    def _extract_command(self, payload_bytes: bytes) -> str | None:
+    def _extract_command(self, topic: str, payload_bytes: bytes) -> str | None:
         payload_text = payload_bytes.decode("utf-8").strip()
         if not payload_text:
             return None
@@ -175,10 +308,10 @@ class RaspberryPiAgent:
         try:
             payload = json.loads(payload_text)
         except json.JSONDecodeError:
-            return payload_text
+            return self._normalize_command(topic, payload_text)
 
         if isinstance(payload, str):
-            return payload.strip() or None
+            return self._normalize_command(topic, payload)
 
         if not isinstance(payload, dict):
             return None
@@ -192,7 +325,30 @@ class RaspberryPiAgent:
         if command is None:
             return None
 
-        return str(command).strip() or None
+        return self._normalize_command(topic, str(command))
+
+    def _normalize_command(self, topic: str, command: str) -> str | None:
+        normalized = command.strip().upper().replace("-", "_")
+        if not normalized:
+            return None
+
+        if topic.endswith("/move"):
+            return MOVE_COMMAND_ALIASES.get(normalized, normalized)
+        if topic.endswith("/pantilt") or topic.endswith("/camera"):
+            return PANTILT_COMMAND_ALIASES.get(normalized, normalized)
+
+        return MOVE_COMMAND_ALIASES.get(normalized) or PANTILT_COMMAND_ALIASES.get(normalized) or normalized
+
+    def _set_tcp_nodelay(self, client) -> None:
+        if not self.mqtt_tcp_nodelay:
+            return
+
+        try:
+            mqtt_socket = client.socket()
+            if mqtt_socket:
+                mqtt_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception as exc:
+            print(f"[raspberrypi] TCP_NODELAY setup skipped: {exc}")
 
     def _is_success(self, reason_code) -> bool:
         try:

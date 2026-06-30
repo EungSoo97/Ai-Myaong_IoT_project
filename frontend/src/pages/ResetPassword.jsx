@@ -1,19 +1,8 @@
 import { useState } from 'react'
-import { Check, LogIn } from 'lucide-react'
-import { Brand, BackLink } from './FindId'
+import { Check, LogIn, KeyRound } from '../components/icons'
+import { AuthHeader, BackLink, FormCard, Stitch, PaperIcon, BG_CARD, BG_INFO } from './FindId'
 import { PasswordField, isStrongPassword } from '../components/PasswordField'
 import { updatePassword } from '../lib/accountRepository'
-
-const C = {
-  bg: 'rgb(var(--brand-bg))',
-  card: 'rgb(var(--brand-card))',
-  border: 'rgb(var(--brand-line))',
-  brown: 'rgb(var(--brand-brown))',
-  mute: 'rgb(var(--brand-mute))',
-  primary: 'rgb(var(--brand-primary))',
-  danger: 'rgb(var(--brand-danger))',
-  ok: 'rgb(var(--brand-success))',
-}
 
 /**
  * 비밀번호 재설정 (프론트 전용).
@@ -40,58 +29,56 @@ export default function ResetPassword({ onBackToLogin, onDone }) {
 
   if (done) {
     return (
-      <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-10 pb-8 sm:px-8" style={{ background: C.bg }}>
-        <Brand subtitle="비밀번호 재설정" />
-        <div className="mt-6 rounded-3xl p-6 shadow-lg text-center" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-          <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center" style={{ background: C.ok }}>
-            <Check className="w-8 h-8 text-white" />
+      <div className="page-enter font-cute min-h-[100dvh] flex flex-col px-5 pt-5 pb-8 bg-brand-bg">
+        <AuthHeader title="비밀번호 재설정" subtitle="변경이 완료되었어요" onBack={onDone} />
+
+        <div className="mt-5 relative overflow-hidden rounded-3xl shadow-soft px-5 py-6 text-center" style={{ backgroundColor: BG_CARD }}>
+          <Stitch />
+          <PaperIcon shape="heart" color="rgb(var(--brand-primary))" opacity={0.5} className="absolute left-6 top-5 w-3.5 h-3.5" />
+          <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.1} className="absolute -right-3 -bottom-3 w-20 h-20 rotate-6" />
+          <div className="relative z-10">
+            <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center bg-brand-success/20 text-brand-success border border-dashed border-brand-success/40 shadow-soft-inset">
+              <Check className="w-8 h-8" />
+            </div>
+            <h2 className="mt-4 text-lg font-bold text-brand-brown">비밀번호가 변경되었어요 🐾</h2>
+            <p className="mt-2 text-sm text-brand-mute">새 비밀번호로 다시 로그인해 주세요.</p>
+            <button
+              type="button"
+              onClick={onDone}
+              className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white py-3.5 text-base font-bold shadow-soft border border-dashed border-white/30 bg-brand-primary transition-colors active:brightness-95"
+            >
+              <LogIn className="w-5 h-5" /> 로그인하러 가기
+            </button>
           </div>
-          <h2 className="mt-4 text-lg font-bold" style={{ color: C.brown }}>비밀번호가 변경되었어요</h2>
-          <p className="mt-2 text-sm" style={{ color: C.mute }}>새 비밀번호로 다시 로그인해 주세요.</p>
-          <button
-            type="button"
-            onClick={onDone}
-            className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white py-4 text-base font-bold shadow-md transition-colors active:brightness-90"
-            style={{ background: C.primary }}
-          >
-            <LogIn className="w-5 h-5" /> 로그인하러 가기
-          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="page-enter font-cute flex-1 flex flex-col px-5 pt-8 pb-6 sm:px-8" style={{ background: C.bg }}>
-      <Brand subtitle="비밀번호 재설정" />
+    <div className="page-enter font-cute min-h-[100dvh] flex flex-col px-5 pt-5 pb-8 bg-brand-bg">
+      <AuthHeader title="비밀번호 재설정" subtitle="새 비밀번호를 설정해요" onBack={onBackToLogin} />
 
-      <form
+      <FormCard
+        icon={<KeyRound className="w-6 h-6" />}
         onSubmit={submit}
-        className="mt-6 rounded-3xl p-6 shadow-lg"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        submitIcon={<Check className="w-5 h-5" />}
+        submitLabel="비밀번호 변경하기"
       >
-        <p className="text-sm" style={{ color: C.mute }}>
+        <p className="text-sm text-brand-mute">
           새로 사용할 비밀번호를 입력해 주세요.
         </p>
 
         <PasswordField label="새 비밀번호" value={pw} onChange={setPw} />
         <PasswordField label="새 비밀번호 확인" value={pwConfirm} onChange={setPwConfirm} placeholder="비밀번호 재입력" showStrength={false} />
         {pwConfirm && (
-          <p className="mt-1.5 text-xs font-bold pl-1" style={{ color: pw === pwConfirm ? C.ok : C.danger }}>
+          <p className={`mt-1.5 text-xs font-bold pl-1 ${pw === pwConfirm ? 'text-brand-success' : 'text-brand-danger'}`}>
             {pw === pwConfirm ? '✓ 비밀번호가 일치해요' : '비밀번호가 일치하지 않아요'}
           </p>
         )}
 
-        {err && <p className="mt-4 text-sm font-bold" style={{ color: C.danger }}>{err}</p>}
-
-        <button
-          type="submit"
-          className="mt-6 w-full rounded-2xl text-white py-4 text-base font-bold shadow-md transition-colors active:brightness-90"
-          style={{ background: C.primary }}
-        >
-          비밀번호 변경하기
-        </button>
-      </form>
+        {err && <p className="mt-4 text-sm font-bold text-brand-danger">{err}</p>}
+      </FormCard>
 
       <BackLink onBackToLogin={onBackToLogin} />
     </div>

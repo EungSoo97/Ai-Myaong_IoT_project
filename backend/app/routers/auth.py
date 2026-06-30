@@ -10,7 +10,8 @@ import database.settings
 import database.user_credentials
 import database.user_oauth_connections
 import database.water_logs
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
@@ -24,6 +25,7 @@ from app.models.auth import (
     UpdateMeRequest,
     UserResponse,
 )
+from app.services.supabase_storage import upload_image_to_supabase
 from database.base import get_db
 from database.oauth2_providers import OAuth2Provider
 from database.pets import Pet
@@ -33,6 +35,7 @@ from database.user_oauth_connections import UserOAuthConnection
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+USER_PHOTO_DIR = "user-photo"
 
 
 def _username_for(user: User) -> str | None:
@@ -53,6 +56,7 @@ def _to_user_response(user: User) -> UserResponse:
         email=user.email,
         nickname=user.nickname,
         oauth_provider=_oauth_provider_for(user),
+        profile_photo_path=user.profile_photo_path,
         pets=[PetResponse.model_validate(p) for p in user.pets],
     )
 
@@ -167,6 +171,20 @@ def update_me(body: UpdateMeRequest, authorization: str = Header(None), db: Sess
     return _to_user_response(user)
 
 
+@router.post("/me/photo", response_model=UserResponse)
+def upload_me_photo(
+    file: UploadFile = File(...),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    public_url = upload_image_to_supabase(USER_PHOTO_DIR, user.user_id, file)
+    user.profile_photo_path = public_url
+    db.commit()
+    db.refresh(user)
+    return _to_user_response(user)
+
+
 @router.post("/me/credentials", response_model=UserResponse)
 def set_credentials(
     body: SetCredentialsRequest,
@@ -199,12 +217,58 @@ def set_credentials(
 @router.delete("/me")
 def delete_me(authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
+    uid = user.user_id
 
-    db.query(UserOAuthConnection).filter(UserOAuthConnection.user_id == user.user_id).delete()
-    db.query(UserCredential).filter(UserCredential.user_id == user.user_id).delete()
-    db.query(Pet).filter(Pet.user_id == user.user_id).delete()
-    db.delete(user)
-    db.commit()
+    Alert = database.alerts.Alert
+    EmergencyClip = database.emergency_clips.EmergencyClip
+    DetectionLog = database.detection_logs.DetectionLog
+    FeedLog = database.feed_logs.FeedLog
+    WaterLog = database.water_logs.WaterLog
+    PetHealthReport = database.pet_health_reports.PetHealthReport
+    Clip = database.clips.Clip
+    Settings = database.settings.Settings
+
+    # 자식 레코드부터 FK 의존 순서대로 삭제해야 Oracle FK 제약(ORA-02292)으로
+    # 롤백되지 않는다. (이게 빠져 탈퇴가 실패→계정/펫이 서버에 남던 버그)
+    # 실패하면 롤백하고 실제 DB 오류를 그대로 반환 → 프론트에서 원인 확인 가능.
+    try:
+        # 1) emergency_clips → alerts(alert_id) 를 참조하므로 먼저 삭제
+        alert_ids = [row[0] for row in db.query(Alert.alert_id).filter(Alert.user_id == uid).all()]
+        if alert_ids:
+            db.query(EmergencyClip).filter(EmergencyClip.alert_id.in_(alert_ids)).delete(synchronize_session=False)
+
+        # 2) user/pet 을 참조하는 알림·로그·리포트·클립·설정 (pet 보다 먼저)
+        db.query(Alert).filter(Alert.user_id == uid).delete(synchronize_session=False)
+        db.query(DetectionLog).filter(DetectionLog.user_id == uid).delete(synchronize_session=False)
+        db.query(FeedLog).filter(FeedLog.user_id == uid).delete(synchronize_session=False)
+        db.query(WaterLog).filter(WaterLog.user_id == uid).delete(synchronize_session=False)
+        db.query(PetHealthReport).filter(PetHealthReport.user_id == uid).delete(synchronize_session=False)
+        db.query(Clip).filter(Clip.user_id == uid).delete(synchronize_session=False)
+        db.query(Settings).filter(Settings.user_id == uid).delete(synchronize_session=False)
+
+        # 3) 펫 · OAuth 연결 · 자격증명
+        db.query(UserOAuthConnection).filter(UserOAuthConnection.user_id == uid).delete(synchronize_session=False)
+        db.query(UserCredential).filter(UserCredential.user_id == uid).delete(synchronize_session=False)
+
+        # 3-1) ORM 모델에 없는 외부 테이블(DAILY_ACTIVITY_SUMMARIES: PETS·USERS 둘 다 참조)을
+        #      펫/유저 삭제 전에 raw SQL 로 비운다. (없는 환경이면 ORA-00942 무시)
+        for table in ("DAILY_ACTIVITY_SUMMARIES",):
+            try:
+                db.execute(text(f"DELETE FROM {table} WHERE user_id = :uid"), {"uid": uid})
+            except Exception as ex:  # noqa: BLE001
+                if "ORA-00942" not in str(ex):  # 테이블 미존재가 아니면 재발생
+                    raise
+
+        db.query(Pet).filter(Pet.user_id == uid).delete(synchronize_session=False)
+
+        # 4) 마지막으로 유저 본체 — ORM relationship 의 FK NULL화 부작용을 피하려
+        #    db.delete(user) 가 아니라 bulk 삭제 사용
+        db.query(User).filter(User.user_id == uid).delete(synchronize_session=False)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"회원 탈퇴 중 DB 삭제 실패: {e}")
+
     return {"ok": True}
 
 
@@ -220,6 +284,7 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         .first()
     )
     user = connection.user if connection else None
+    is_new_user = False
 
     if not user:
         user = db.query(User).filter(User.email == body.email).first()
@@ -236,6 +301,7 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
             )
             db.add(user)
             db.flush()
+            is_new_user = True  # 이번에 계정을 새로 만든 경우만 신규
 
         connection = UserOAuthConnection(
             user_id=user.user_id,
@@ -247,4 +313,4 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         db.refresh(user)
 
     token = create_access_token(user.user_id, user.email)
-    return AuthResponse(access_token=token, user=_to_user_response(user))
+    return AuthResponse(access_token=token, user=_to_user_response(user), is_new_user=is_new_user)

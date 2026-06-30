@@ -1,17 +1,20 @@
 import database.oauth2_providers
 import database.user_credentials
 import database.user_oauth_connections
-from fastapi import APIRouter, Depends, HTTPException, Header
+
+from fastapi import APIRouter, Depends, File, HTTPException, Header, UploadFile
 from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.security import decode_access_token
 from app.models.auth import PetCreate, PetResponse
+from app.services.supabase_storage import upload_image_to_supabase
 from database.base import get_db
 from database.user import User
 from database.pets import Pet
 
 router = APIRouter(prefix="/api/pets", tags=["pets"])
+PET_PHOTO_DIR = "pet-photo"
 
 _PET_FIELDS = [
     "name", "species", "breed", "gender", "birth_date",
@@ -57,6 +60,25 @@ def update_pet(pet_id: int, body: PetCreate, authorization: str = Header(None), 
         v = getattr(body, f)
         if v is not None:
             setattr(pet, f, v)
+    db.commit()
+    db.refresh(pet)
+    return PetResponse.model_validate(pet)
+
+
+@router.post("/{pet_id}/photo", response_model=PetResponse)
+def upload_pet_photo(
+    pet_id: int,
+    file: UploadFile = File(...),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = _current_user(authorization, db)
+    pet = db.query(Pet).filter(Pet.pet_id == pet_id, Pet.user_id == user.user_id).first()
+    if not pet:
+        raise HTTPException(status_code=404, detail="펫을 찾을 수 없습니다.")
+
+    public_url = upload_image_to_supabase(PET_PHOTO_DIR, pet_id, file)
+    pet.photo_path = public_url
     db.commit()
     db.refresh(pet)
     return PetResponse.model_validate(pet)

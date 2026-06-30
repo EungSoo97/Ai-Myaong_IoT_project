@@ -20,7 +20,7 @@ class RobotService:
 
     def move(self, command: str) -> dict[str, Any]:
         request_id = str(uuid4())
-        topic = "robot/move"
+        topic = "ai-myaong/robot/move"
         payload = {"request_id": request_id, "cmd": command}
         self._send_robot_command(topic, payload)
         status = self.simulator.move(command)
@@ -30,7 +30,7 @@ class RobotService:
 
     def camera(self, direction: str) -> dict[str, Any]:
         request_id = str(uuid4())
-        topic = "robot/camera"
+        topic = "ai-myaong/robot/pantilt"
         payload = {"request_id": request_id, "cmd": direction}
         self._send_robot_command(topic, payload)
         status = self.simulator.control_camera(direction)

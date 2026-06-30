@@ -4,29 +4,48 @@ Use this page to lock down the final Arduino Uno wiring.
 
 ## Motor Driver
 
-- Left motor PWM: D5
-- Left motor direction A: D4
-- Left motor direction B: D7
-- Right motor PWM: D6
-- Right motor direction A: D8
-- Right motor direction B: D12
-- Motor supply: use a voltage matched to the motor rating. Stop using 12V if the motor smells hot or burnt.
-- L298N drops motor voltage significantly. With a 6V supply, the motors may receive only about 4V and can stutter or stall.
-- Current code kicks the motors at PWM 255 briefly, then runs at PWM 220 to reduce current draw and driver heat.
-- Arduino/Raspberry Pi GND and motor driver GND must be shared.
+TB6612FNG wiring:
+
+- AIN1 / left motor direction A: D2
+- AIN2 / left motor direction B: D3
+- BIN2 / right motor direction B: D4
+- PWMA / left motor PWM: D5
+- PWMB / right motor PWM: D6
+- BIN1 / right motor direction A: A5
+- STBY / standby: D8
+- VCC: Arduino 5V logic power
+- VM: motor supply matched to the motor rating. Stop using 12V if the motor smells hot or burnt.
+- GND: Arduino/Raspberry Pi GND and TB6612FNG GND must be shared.
+- Arduino D2-D8 plus A5 are reserved for the TB6612FNG control pins. A5 replaces D7 because D7 showed unreliable output.
+- Current code enables `STBY` HIGH during setup, kicks the motors at PWM 160 briefly, then runs at PWM 120 to reduce current draw.
+- Movement commands automatically stop after 700 ms unless another movement command arrives.
 
 ## Motor Test
 
 - Upload `AiMyaongRobot`, open Arduino Serial Monitor at `115200`, set line ending to newline, and send `MOTOR_TEST`.
 - `MOTOR_TEST` runs left motor, right motor, then both motors briefly.
 - Send `LEFT_MOTOR_TEST` or `RIGHT_MOTOR_TEST` to test only one side.
-- If `MOTOR_TEST` prints `ACK MOTOR_TEST` but motors do not move, check motor power, L298N ENA/ENB jumpers or PWM wiring, shared GND, and whether the motors were damaged by 12V.
-- If only one side spins and stops, swap the left/right motor outputs on the L298N. If the problem follows the motor, the motor is weak or damaged. If it stays on the same L298N side, the driver channel, wiring, or power path is the problem.
+- Send `LEFT_BACKWARD_TEST` or `RIGHT_BACKWARD_TEST` to test each side in reverse.
+- Send `RIGHT_IN1_HIGH_TEST` or `RIGHT_IN2_HIGH_TEST` to isolate the right motor direction input pins.
+- Send `PINOUT` to print the expected TB6612FNG and pan/tilt wiring.
+- Send `MOTOR_DIAG` to run left forward/backward, then right forward/backward with serial phase messages.
+- If `MOTOR_TEST` prints `ACK MOTOR_TEST` but motors do not move, check motor power, `STBY` wiring to D8, PWM wiring, shared GND, and whether the motors were damaged by 12V.
+- If only one side spins and stops, swap the left/right motor outputs on the TB6612FNG. If the problem follows the motor, the motor is weak or damaged. If it stays on the same TB6612FNG side, the driver channel, wiring, or power path is the problem.
+- If pan/tilt works but both crawler motors do not, check `VM` motor power first. `VCC` powers TB6612FNG logic only; motors need separate `VM` power and shared GND.
 
 ## Pan/Tilt Servos
 
 - Pan servo signal: D9
 - Tilt servo signal: D10
+- Arduino D9-D10 sit next to the motor-driver block and are reserved for the pan/tilt servo signals.
+
+## Rear Ultrasonic Sensor
+
+- TRIG: D11
+- ECHO: D12
+- Sensor direction: rear-facing obstacle detection
+- Current code reports rear distance over serial every 1 second.
+- Rear obstacle alert turns on at 15 cm or closer and clears at 20 cm or farther.
 
 ## Serial Link
 

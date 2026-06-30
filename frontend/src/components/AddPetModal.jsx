@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, PawPrint, Dog, Cat, Camera } from 'lucide-react'
+import { X, PawPrint, Dog, Cat, Camera } from './icons'
 import { DateWheel } from './DateWheel'
 
 /* Warm-tone 팔레트 */
@@ -14,12 +14,13 @@ const C = {
 }
 
 const TODAY = new Date().toISOString().slice(0, 10) // 미래 생일 선택 방지
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024 // 프로필 이미지 최대 5MB
 
 const emptyPet = () => ({
   name: '', species: 'DOG', breed: '', gender: 'M',
-  birthDate: '', weightKg: '', heightCm: '',
+  birthDate: '', age: '', weightKg: '', heightCm: '',
   circumference: '', legLength: '', // (선택) 체지방률 계산용
-  photo: '', notes: '',
+  photo: '', photoFile: null, notes: '',
 })
 
 /**
@@ -49,8 +50,14 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
   const onPick = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > MAX_PHOTO_BYTES) {
+      setErr('이미지는 5MB 이하로 업로드해 주세요.')
+      e.target.value = '' // 같은 파일 다시 고를 수 있게 초기화
+      return
+    }
+    setErr('')
     const reader = new FileReader()
-    reader.onload = () => set('photo', reader.result) // Base64
+    reader.onload = () => setPet((p) => ({ ...p, photo: reader.result, photoFile: file })) // Base64 preview + upload file
     reader.readAsDataURL(file)
   }
 
@@ -59,6 +66,7 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
     if (!pet.name.trim()) { setErr('이름을 입력해 주세요.'); return }
     if (!pet.breed.trim()) { setErr('품종을 입력해 주세요.'); return }
     if (pet.birthDate && pet.birthDate > TODAY) { setErr('생년월일은 오늘 이후로 선택할 수 없어요.'); return }
+    if (pet.age !== '' && Number(pet.age) < 0) { setErr('나이는 0 이상으로 입력해 주세요.'); return }
     dismiss(() => onSave(pet))
   }
 
@@ -101,6 +109,9 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
         </div>
+        <p className="mt-2 text-center text-xs" style={{ color: C.mute }}>
+          JPG · PNG · 5MB 이하로 업로드해 주세요
+        </p>
 
         <Field icon={<PawPrint className="w-5 h-5" />} label="이름" value={pet.name}
           onChange={(v) => set('name', v)} placeholder="예: 초코" />
@@ -124,6 +135,7 @@ export function AddPetModal({ onClose, onSave, initial = null, title = '반려�
         <div className="mt-1.5">
           <DateWheel value={pet.birthDate} onChange={(v) => set('birthDate', v)} />
         </div>
+        <Field label="나이" value={pet.age} onChange={(v) => set('age', v)} placeholder="예: 3" type="number" min="0" />
         <Field label="몸무게 (kg)" value={pet.weightKg} onChange={(v) => set('weightKg', v)} placeholder="예: 4.2" type="number" />
         <Field label="키 (cm)" value={pet.heightCm} onChange={(v) => set('heightCm', v)} placeholder="예: 25" type="number" />
         <Field label={`${pet.species === 'CAT' ? '갈비뼈 둘레' : '골반 둘레'} (cm)`} value={pet.circumference}
@@ -161,7 +173,7 @@ function Label({ children }) {
   return <span className="mt-4 block text-sm font-bold pl-1" style={{ color: C.mute }}>{children}</span>
 }
 
-function Field({ icon, label, value, onChange, type = 'text', placeholder, max }) {
+function Field({ icon, label, value, onChange, type = 'text', placeholder, max, min }) {
   return (
     <label className="mt-4 block">
       <span className="text-sm font-bold pl-1" style={{ color: C.mute }}>{label}</span>
@@ -173,6 +185,7 @@ function Field({ icon, label, value, onChange, type = 'text', placeholder, max }
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           max={max}
+          min={min}
           className="flex-1 min-w-0 bg-transparent text-base outline-none placeholder:opacity-60"
           style={{ color: C.brown }}
         />

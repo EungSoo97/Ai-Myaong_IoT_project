@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-/* Warm-tone 일부 (버튼 테두리용) */
-const C = {
-  brown: 'rgb(var(--brand-brown))',
-  border: 'rgb(var(--brand-line))',
-  card: 'rgb(var(--brand-card))',
-  danger: 'rgb(var(--brand-danger))',
-}
-
 /* Google OAuth Client ID.
  * 우선순위: .env(VITE_GOOGLE_CLIENT_ID) → 없으면 아래 공개 기본값.
  * 웹 OAuth Client ID는 비밀값이 아니라 공개값이다(어차피 브라우저 번들에 노출됨).
@@ -136,7 +128,8 @@ export function GoogleButton({ onSuccess, onError, label = 'Google 계정으로 
       onClick={handleClick}
       disabled={loading}
       className="w-full inline-flex items-center justify-center gap-2.5 rounded-2xl py-3.5 text-base font-bold transition-colors active:brightness-95 disabled:opacity-60"
-      style={{ background: C.card, color: C.brown, border: `1.5px solid ${C.border}` }}
+      /* 구글 공식 흰색 버튼 — 라이트/다크 무관하게 항상 흰 배경 고정 */
+      style={{ background: '#ffffff', color: '#3c4043', border: '1.5px solid #dadce0' }}
     >
       <GoogleG />
       {loading ? '구글 로그인 중…' : label}

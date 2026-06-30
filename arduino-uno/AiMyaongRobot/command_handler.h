@@ -3,10 +3,12 @@
 #include "motor_control.h"
 #include "servo_control.h"
 
-constexpr bool SERIAL_COMMAND_DEBUG = false;
+constexpr bool SERIAL_COMMAND_DEBUG = true;
 
 inline bool handleCommand(const String& command) {
-  if (command == "FORWARD") {
+  if (command == "PINOUT") {
+    printMotorPinout();
+  } else if (command == "FORWARD") {
     moveForward();
   } else if (command == "BACKWARD") {
     moveBackward();
@@ -18,10 +20,20 @@ inline bool handleCommand(const String& command) {
     stopMotors();
   } else if (command == "MOTOR_TEST") {
     testMotors();
+  } else if (command == "MOTOR_DIAG") {
+    diagnoseMotors();
   } else if (command == "LEFT_MOTOR_TEST") {
     testLeftMotor();
   } else if (command == "RIGHT_MOTOR_TEST") {
     testRightMotor();
+  } else if (command == "LEFT_BACKWARD_TEST") {
+    testLeftMotorBackward();
+  } else if (command == "RIGHT_BACKWARD_TEST") {
+    testRightMotorBackward();
+  } else if (command == "RIGHT_IN1_HIGH_TEST") {
+    testRightMotorIn1High();
+  } else if (command == "RIGHT_IN2_HIGH_TEST") {
+    testRightMotorIn2High();
   } else if (command == "CAM_UP") {
     cameraUp();
   } else if (command == "CAM_DOWN") {
@@ -61,7 +73,11 @@ inline void processIncomingCommands() {
       SERIAL_COMMAND_DEBUG ||
       command == "MOTOR_TEST" ||
       command == "LEFT_MOTOR_TEST" ||
-      command == "RIGHT_MOTOR_TEST"
+      command == "RIGHT_MOTOR_TEST" ||
+      command == "LEFT_BACKWARD_TEST" ||
+      command == "RIGHT_BACKWARD_TEST" ||
+      command == "RIGHT_IN1_HIGH_TEST" ||
+      command == "RIGHT_IN2_HIGH_TEST"
     ) {
       Serial.print("ACK ");
       Serial.println(command);
