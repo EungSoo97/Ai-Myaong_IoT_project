@@ -220,7 +220,8 @@ export function RobotVision() {
         });
     };
     load();
-    const timer = window.setInterval(load, 500);
+    // 후방 센서값은 1Hz(파이가 1초마다 push, 장애물이면 즉시)라 250ms 폴링이면 충분히 빠릿하게 잡는다.
+    const timer = window.setInterval(load, 250);
     return () => {
       mounted = false;
       window.clearInterval(timer);
@@ -1461,9 +1462,9 @@ function RearWarning({ sensor, className = "", large = false }) {
         className="absolute inset-0"
         style={{
           boxShadow: `${glow} rgb(${colorVar} / 0.7)`,
-          // 주의(노랑) ↔ 위험(빨강) 색 전환을 0.6초에 걸쳐 부드럽게 보간
-          transition: "box-shadow 0.6s ease",
-          animation: `pulse ${danger ? 0.8 : 1.6}s ease-in-out infinite`,
+          // 위험색이 '딱' 꽂히도록 빠르게 스냅(0.12s). 깜빡임도 위험 시 더 긴박하게.
+          transition: "box-shadow 0.12s ease",
+          animation: `pulse ${danger ? 0.5 : 1.2}s ease-in-out infinite`,
         }}
       />
       {/* 반투명 경고 토스트 (중앙 상단) */}
@@ -1472,19 +1473,19 @@ function RearWarning({ sensor, className = "", large = false }) {
           className={`flex items-center rounded-full bg-black/60 shadow-soft-lg backdrop-blur-sm ${toastBox}`}
           style={{
             border: `${large ? 2 : 1.5}px solid rgb(${colorVar})`,
-            transition: "border-color 0.6s ease",
+            transition: "border-color 0.12s ease",
           }}
         >
           <ShieldAlert
             className={`${iconSize} shrink-0`}
-            style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+            style={{ color: `rgb(${colorVar})`, transition: "color 0.12s ease" }}
           />
           <span className={`whitespace-nowrap font-bold text-white ${textSize}`}>
             ⚠️ {label}
             {distLabel && (
               <span
                 className="ml-1"
-                style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+                style={{ color: `rgb(${colorVar})`, transition: "color 0.12s ease" }}
               >
                 · {distLabel}
               </span>
