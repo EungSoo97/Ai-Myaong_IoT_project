@@ -16,7 +16,7 @@ constexpr int TILT_MAX_ANGLE = 140;
 
 constexpr int PAN_CENTER_ANGLE = 90;
 constexpr int TILT_CENTER_ANGLE = 90;
-constexpr int SERVO_STEP = 4;
+constexpr int SERVO_STEP = 2;
 constexpr unsigned long SERVO_SMOOTH_DELAY_MS = 12;
 
 int currentPanAngle = PAN_CENTER_ANGLE;

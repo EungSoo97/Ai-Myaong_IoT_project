@@ -136,6 +136,7 @@ const MOVE_COMMANDS = {
 };
 
 const MOVE_HOLD_REPEAT_MS = 300;
+const CAMERA_HOLD_REPEAT_MS = 180;
 
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
@@ -590,6 +591,7 @@ export function RobotVision() {
                 muted
                 tone="light"
                 holdToPress
+                repeatMs={CAMERA_HOLD_REPEAT_MS}
               />
               <span className="text-[11px] font-bold text-brand-mute">
                 카메라 회전
@@ -927,6 +929,7 @@ function FullscreenView({
         centerAction="center"
         muted
         holdToPress
+        repeatMs={CAMERA_HOLD_REPEAT_MS}
       />
     </>
   );
@@ -1426,6 +1429,7 @@ function DPad({
   centerAction = null,
   className = "",
   holdToPress = false,
+  repeatMs,
   label,
   onPress,
   onRelease = null,
@@ -1450,6 +1454,7 @@ function DPad({
             onClick={() => onPress("up")}
             onRelease={onRelease}
             holdToPress={holdToPress}
+            repeatMs={repeatMs}
             bg={baseBg}
             tone={tone}
             aria="Up"
@@ -1459,6 +1464,7 @@ function DPad({
             onClick={() => onPress("left")}
             onRelease={onRelease}
             holdToPress={holdToPress}
+            repeatMs={repeatMs}
             bg={baseBg}
             tone={tone}
             aria="Left"
@@ -1479,6 +1485,7 @@ function DPad({
             onClick={() => onPress("right")}
             onRelease={onRelease}
             holdToPress={holdToPress}
+            repeatMs={repeatMs}
             bg={baseBg}
             tone={tone}
             aria="Right"
@@ -1489,6 +1496,7 @@ function DPad({
             onClick={() => onPress("down")}
             onRelease={onRelease}
             holdToPress={holdToPress}
+            repeatMs={repeatMs}
             bg={baseBg}
             tone={tone}
             aria="Down"

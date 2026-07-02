@@ -3,12 +3,12 @@
 #include <Arduino.h>
 
 // TB6612FNG wiring grouped on Arduino Uno D2-D8 for easier jumper routing.
-constexpr uint8_t LEFT_MOTOR_IN1_PIN = 2;   // AIN1
-constexpr uint8_t LEFT_MOTOR_IN2_PIN = 3;   // AIN2
+constexpr uint8_t LEFT_MOTOR_IN2_PIN = 2;   // AIN2, swapped with AIN1
+constexpr uint8_t LEFT_MOTOR_IN1_PIN = 3;   // AIN1, swapped with AIN2
 constexpr uint8_t RIGHT_MOTOR_IN2_PIN = 4;  // BIN2, swapped with BIN1 after D7 issue
 constexpr uint8_t LEFT_MOTOR_PWM_PIN = 5;   // PWMA
 constexpr uint8_t RIGHT_MOTOR_PWM_PIN = 6;  // PWMB
-constexpr uint8_t RIGHT_MOTOR_IN1_PIN = A5; // BIN1, moved from D7 after pin issue
+constexpr uint8_t RIGHT_MOTOR_IN1_PIN = 7;  // BIN1
 constexpr uint8_t MOTOR_STANDBY_PIN = 8;    // STBY
 // Kick briefly at full PWM, then run lower to reduce current draw.
 constexpr uint8_t MOTOR_RUN_SPEED = 120;
@@ -87,12 +87,12 @@ inline void setupMotors() {
 
 inline void printMotorPinout() {
   Serial.println("TB6612FNG pinout:");
-  Serial.println("  AIN1 -> D2");
-  Serial.println("  AIN2 -> D3");
+  Serial.println("  AIN2 -> D2");
+  Serial.println("  AIN1 -> D3");
   Serial.println("  BIN2 -> D4");
   Serial.println("  PWMA -> D5");
   Serial.println("  PWMB -> D6");
-  Serial.println("  BIN1 -> A5");
+  Serial.println("  BIN1 -> D7");
   Serial.println("  STBY -> D8");
   Serial.println("Pan servo -> D9");
   Serial.println("Tilt servo -> D10");
@@ -195,6 +195,24 @@ inline void testRightMotorIn2High() {
   analogWrite(RIGHT_MOTOR_PWM_PIN, MOTOR_START_SPEED);
   delay(1000);
   driveRight(0);
+}
+
+inline void testLeftMotorIn1High() {
+  enableMotorDriver();
+  digitalWrite(LEFT_MOTOR_IN1_PIN, HIGH);
+  digitalWrite(LEFT_MOTOR_IN2_PIN, LOW);
+  analogWrite(LEFT_MOTOR_PWM_PIN, MOTOR_START_SPEED);
+  delay(1000);
+  driveLeft(0);
+}
+
+inline void testLeftMotorIn2High() {
+  enableMotorDriver();
+  digitalWrite(LEFT_MOTOR_IN1_PIN, LOW);
+  digitalWrite(LEFT_MOTOR_IN2_PIN, HIGH);
+  analogWrite(LEFT_MOTOR_PWM_PIN, MOTOR_START_SPEED);
+  delay(1000);
+  driveLeft(0);
 }
 
 inline void diagnoseMotors() {
