@@ -93,12 +93,20 @@ export function Dispenser() {
   const [editing, setEditing] = useState(null) // { id?, time, type, amount } | null
   const [logs, setLogs] = useState({ feed: [], water: [] }) // 오늘의 급여 통계용 DB 기록
 
-  // 배식/급수 기록 불러오기 (오늘의 통계 차트)
+  // 배식/급수 기록 불러오기 (오늘의 통계 차트) — 자동 배식이 새로고침 없이 바로 반영되도록 폴링
   useEffect(() => {
-    api
-      .getDispenserLogs()
-      .then((d) => setLogs({ feed: d.feed || [], water: d.water || [] }))
-      .catch(() => {})
+    let alive = true
+    const load = () =>
+      api
+        .getDispenserLogs()
+        .then((d) => { if (alive) setLogs({ feed: d.feed || [], water: d.water || [] }) })
+        .catch(() => {})
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   // ── 스케줄 DB 연동 (settings.feed_schedule / water_schedule 에 JSON 직렬화 저장) ──

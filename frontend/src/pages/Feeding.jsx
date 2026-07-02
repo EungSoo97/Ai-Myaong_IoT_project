@@ -134,12 +134,20 @@ export function Feeding() {
   const [period, setPeriod] = useState('day')
   const [logs, setLogs] = useState({ feed: [], water: [] })
 
-  // 실제 배식/급수 기록을 DB에서 불러옴
+  // 실제 배식/급수 기록을 DB에서 불러옴 — 자동 배식이 새로고침 없이 바로 반영되도록 폴링
   useEffect(() => {
-    api
-      .getDispenserLogs()
-      .then((d) => setLogs({ feed: d.feed || [], water: d.water || [] }))
-      .catch(() => {})
+    let alive = true
+    const load = () =>
+      api
+        .getDispenserLogs()
+        .then((d) => { if (alive) setLogs({ feed: d.feed || [], water: d.water || [] }) })
+        .catch(() => {})
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   // DB 기록으로 일/주/월 집계 + 요약 계산
