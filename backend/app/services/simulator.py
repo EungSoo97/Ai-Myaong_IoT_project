@@ -19,7 +19,8 @@ class DeviceSimulator:
         # 후방 초음파 노이즈(스파이크) 제거용 중앙값 필터 상태
         self._rear_window: list[int] = []                       # 최근 거리값 버퍼
         self._rear_window_size = max(1, int(os.getenv("REAR_FILTER_WINDOW", "5")))
-        self._rear_obstacle = False                             # 필터값 기반 장애물 상태(히스테리시스)
+        self._rear_obstacle = False                             # 필터값 기반 장애물 상태(히스테리시스) — UI 표시용
+        self._rear_obstacle_immediate = False                   # 생(raw)값 기반 즉시 위험 — 안전 차단용(필터 우회)
 
     def move(self, command: str) -> dict[str, Any]:
         self.last_command = command
@@ -118,17 +119,26 @@ class DeviceSimulator:
             self.sensor["rear_distance_cm"] = filtered
             self.sensor["rear_distance_raw_cm"] = int(distance_cm)  # 원본(디버깅용)
 
-            # 장애물 판정은 '필터값' 기준으로 재계산(히스테리시스: thr 이하 ON, thr+5 이상 OFF)
-            # → 생값 한 번 튄 걸로 경고가 깜빡이지 않게 한다.
+            # (UI 표시용) 장애물 판정은 '필터값' 기준 재계산 — 노이즈로 경고가 깜빡이지 않게.
             if filtered <= thr:
                 self._rear_obstacle = True
             elif filtered >= thr + 5:
                 self._rear_obstacle = False
             self.sensor["rear_obstacle"] = self._rear_obstacle
+
+            # (안전 차단용) 즉시 위험은 '생값' 기준 — 첫 근접 reading에 바로 ON, thr+5 이상에서만 OFF.
+            # 필터를 우회해 후진 차단을 가장 빠르게 건다(충돌 방지 우선).
+            if int(distance_cm) <= thr or rear_obstacle:
+                self._rear_obstacle_immediate = True
+            elif int(distance_cm) >= thr + 5:
+                self._rear_obstacle_immediate = False
+            self.sensor["rear_obstacle_immediate"] = self._rear_obstacle_immediate
         elif rear_obstacle is not None:
             # 거리 없이 플래그만 온 경우(예외적)는 그대로 반영
             self._rear_obstacle = rear_obstacle
+            self._rear_obstacle_immediate = rear_obstacle
             self.sensor["rear_obstacle"] = rear_obstacle
+            self.sensor["rear_obstacle_immediate"] = rear_obstacle
 
         if source:
             self.sensor["source"] = source

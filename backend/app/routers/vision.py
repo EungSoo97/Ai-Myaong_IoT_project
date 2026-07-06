@@ -332,6 +332,8 @@ def latest_detections(request: Request):
             # 라이브일 때만 실제 값을 노출, 끊기면 None → 프론트가 '대기' 표시 & 경고 자동 해제
             "distance_cm": sensor.get("rear_distance_cm") if fresh else None,
             "rear_obstacle": bool(sensor.get("rear_obstacle", False)) if fresh else False,
+            # 후진 차단/자동정지용 '즉시 위험'(생값 기준, 필터 우회) — 안전 신호
+            "rear_obstacle_immediate": bool(sensor.get("rear_obstacle_immediate", False)) if fresh else False,
             "threshold_cm": sensor.get("rear_obstacle_threshold_cm", 15),
             "fresh": bool(fresh),
             "age_sec": round(age, 1) if age is not None else None,
