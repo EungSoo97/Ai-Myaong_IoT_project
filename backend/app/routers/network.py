@@ -47,7 +47,7 @@ def network_status(request: Request):
     return {
         "raspberrypiEnv": read_env_values(
             PI_ENV,
-            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "LOCAL_MQTT_HOST", "LOCAL_MQTT_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
         "backendEnv": backend_env,
         "wifiIp": pi_status.get("ip") or _host_from_url(backend_env.get("PI_AGENT_BASE_URL", "")) or local_wifi_ip,
@@ -97,8 +97,8 @@ def configure_shared_wifi(payload: SharedWifiRequest):
         )
 
     env = os.environ.copy()
-    env["MQTT_BROKER_HOST"] = (payload.mqtt_host or "auto").strip() or "auto"
-    env["MQTT_BROKER_PORT"] = str(payload.mqtt_port)
+    env["LOCAL_MQTT_HOST"] = (payload.mqtt_host or "auto").strip() or "auto"
+    env["LOCAL_MQTT_PORT"] = str(payload.mqtt_port)
     env["PI_AP_FALLBACK"] = "true" if payload.pi_ap_fallback else "false"
     if payload.esp32_setup_url:
         env["ESP32_SETUP_URL"] = payload.esp32_setup_url
@@ -147,7 +147,7 @@ def configure_shared_wifi(payload: SharedWifiRequest):
         "stderr": result.stderr,
         "raspberrypiEnv": read_env_values(
             PI_ENV,
-            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
+            ("MQTT_BROKER_HOST", "MQTT_BROKER_PORT", "LOCAL_MQTT_HOST", "LOCAL_MQTT_PORT", "SERIAL_PORT", "MQTT_DISABLED"),
         ),
         "backendEnv": read_env_values(
             REPO_ROOT / "backend" / ".env",
@@ -194,8 +194,6 @@ def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
 
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
     stream_port = runtime_env("STREAM_PORT", "1").strip() or "8081"
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_HOST", pi_ip)
-    _set_env_value(BACKEND_ENV, "MQTT_BROKER_PORT", mqtt_port)
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
     _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")

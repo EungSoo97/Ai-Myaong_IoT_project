@@ -431,8 +431,8 @@ def _run_wifi_http_server(host: str, port: int, agent: RaspberryPiAgent) -> None
             print(f"[device] desktop backend URL saved before Wi-Fi change: {desktop_backend_url}")
 
         env = os.environ.copy()
-        env["MQTT_BROKER_HOST"] = mqtt_host
-        env["MQTT_BROKER_PORT"] = str(mqtt_port)
+        env["LOCAL_MQTT_HOST"] = mqtt_host
+        env["LOCAL_MQTT_PORT"] = str(mqtt_port)
         env["PI_AP_FALLBACK"] = "true" if pi_ap_fallback else "false"
         if esp32_setup_url:
             env["ESP32_SETUP_URL"] = esp32_setup_url
