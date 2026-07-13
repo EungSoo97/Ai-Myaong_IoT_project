@@ -19,6 +19,8 @@ import {
   X,
   Trash2,
   ShieldAlert,
+  Lock,
+  Activity,
 } from '../components/icons';
 import { Card, Badge } from "../components/ui";
 import { LogDatePicker } from "../components/LogDatePicker";
@@ -219,7 +221,8 @@ export function RobotVision() {
         });
     };
     load();
-    const timer = window.setInterval(load, 500);
+    // 후방 센서값은 1Hz(파이가 1초마다 push, 장애물이면 즉시)라 250ms 폴링이면 충분히 빠릿하게 잡는다.
+    const timer = window.setInterval(load, 250);
     return () => {
       mounted = false;
       window.clearInterval(timer);
@@ -382,13 +385,30 @@ export function RobotVision() {
       });
   };
 
+  // 후진 차단/자동정지 신호 — '즉시 위험'(생값 기준, 필터 우회)로 첫 근접에 바로 반응.
+  // (경고 글로우는 RearWarning이 필터값으로 부드럽게 처리 — 역할 분리)
+  const rearObstacle = !!detections?.rear_sensor?.rear_obstacle_immediate;
+
   const onMove = (dir) => {
+    // 후진(아래)은 후방 장애물 시 차단하고 즉시 정지 명령을 보낸다.
+    if (dir === "down" && rearObstacle) {
+      sendCommand("move", "STOP");
+      return;
+    }
     sendCommand("move", MOVE_COMMANDS[dir]);
   };
 
   const onMoveStop = () => {
     sendCommand("move", "STOP");
   };
+
+  // 위험이 발생하는 순간(false→true) 후진 중이면 자동으로 멈춘다.
+  useEffect(() => {
+    if (rearObstacle) {
+      sendCommand("move", "STOP");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rearObstacle]);
 
   const onPan = (dir) => {
     sendCommand("camera", CAMERA_COMMANDS[dir]);
@@ -534,6 +554,7 @@ export function RobotVision() {
                       ? "연결 중"
                       : "오프라인"}
                 </span>
+                <RearSensorChip sensor={detections?.rear_sensor} compact />
                 {recording && (
                   <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
                     ● REC
@@ -584,9 +605,20 @@ export function RobotVision() {
 
       {/* 세로 모드 조종 패드 (이동 + 카메라) — 스트리밍 바로 아래 */}
       <section className="mt-5">
-        <h3 className="font-display text-base font-bold text-brand-brown mb-3">
-          조종 패드
-        </h3>
+        {/* 제목 줄에 알림 칩 — 카드/버튼 레이아웃을 밀지 않도록 흐름 밖이 아닌 '항상 있는 헤더'에 표시 */}
+        <div className="flex items-center justify-between mb-3 min-h-[1.75rem]">
+          <h3 className="font-display text-base font-bold text-brand-brown">
+            조종 패드
+          </h3>
+          {rearObstacle && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+              style={{ background: "rgb(var(--brand-danger) / 0.12)", color: "rgb(var(--brand-danger))", border: "1px dashed rgb(var(--brand-danger) / 0.5)" }}
+            >
+              <Lock className="w-3 h-3" /> 후진 제한됨
+            </span>
+          )}
+        </div>
         <div className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-6" style={{ backgroundColor: BG_CARD }}>
           <Stitch />
           <PaperIcon shape="paw" color="rgb(var(--brand-primary-deep))" opacity={0.08} className="absolute -right-3 -bottom-3 w-16 h-16 rotate-6" />
@@ -598,6 +630,7 @@ export function RobotVision() {
                 onRelease={onMoveStop}
                 tone="light"
                 holdToPress
+                disabledDir={rearObstacle ? "down" : null}
               />
               <span className="text-[11px] font-bold text-brand-mute">
                 기기 이동
@@ -869,6 +902,7 @@ function FullscreenView({
 }) {
   const [micOn, setMicOn] = useState(false);
   const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
+  const rearObstacle = !!detections?.rear_sensor?.rear_obstacle_immediate; // 즉시 위험 → 후진 잠금
   const toggleMic = () => {
     setMicOn((v) => {
       console.log("[RobotVision] mic:", !v ? "ON" : "OFF");
@@ -904,6 +938,7 @@ function FullscreenView({
               ? "연결 중"
               : "오프라인"}
         </span>
+        <RearSensorChip sensor={detections?.rear_sensor} />
         {recording && (
           <span className="px-2.5 py-1 rounded-full bg-brand-danger text-white text-[11px] font-bold">
             ● REC
@@ -933,14 +968,24 @@ function FullscreenView({
         </button>
       </div>
 
-      {/* 좌측 하단: 기계 이동 D-Pad */}
-      <DPad
-        className="absolute bottom-6 left-6 z-50"
-        label="이동"
-        onPress={onMove}
-        onRelease={onMoveStop}
-        holdToPress
-      />
+      {/* 좌측 하단: 기계 이동 D-Pad (후방 장애물 시 후진 잠금) */}
+      <div className="absolute bottom-6 left-6 z-50 flex flex-col items-center gap-2">
+        {rearObstacle && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+            style={{ background: "rgb(0 0 0 / 0.6)", color: "rgb(var(--brand-danger))", border: "1px solid rgb(var(--brand-danger))" }}
+          >
+            <Lock className="w-3 h-3" /> 후진 제한
+          </span>
+        )}
+        <DPad
+          label="이동"
+          onPress={onMove}
+          onRelease={onMoveStop}
+          holdToPress
+          disabledDir={rearObstacle ? "down" : null}
+        />
+      </div>
 
       {/* 우측 하단: 카메라 Pan/Tilt D-Pad */}
       <DPad
@@ -1420,9 +1465,9 @@ function RearWarning({ sensor, className = "", large = false }) {
         className="absolute inset-0"
         style={{
           boxShadow: `${glow} rgb(${colorVar} / 0.7)`,
-          // 주의(노랑) ↔ 위험(빨강) 색 전환을 0.6초에 걸쳐 부드럽게 보간
-          transition: "box-shadow 0.6s ease",
-          animation: `pulse ${danger ? 0.8 : 1.6}s ease-in-out infinite`,
+          // 위험색이 '딱' 꽂히도록 빠르게 스냅(0.12s). 깜빡임도 위험 시 더 긴박하게.
+          transition: "box-shadow 0.12s ease",
+          animation: `pulse ${danger ? 0.5 : 1.2}s ease-in-out infinite`,
         }}
       />
       {/* 반투명 경고 토스트 (중앙 상단) */}
@@ -1431,19 +1476,19 @@ function RearWarning({ sensor, className = "", large = false }) {
           className={`flex items-center rounded-full bg-black/60 shadow-soft-lg backdrop-blur-sm ${toastBox}`}
           style={{
             border: `${large ? 2 : 1.5}px solid rgb(${colorVar})`,
-            transition: "border-color 0.6s ease",
+            transition: "border-color 0.12s ease",
           }}
         >
           <ShieldAlert
             className={`${iconSize} shrink-0`}
-            style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+            style={{ color: `rgb(${colorVar})`, transition: "color 0.12s ease" }}
           />
           <span className={`whitespace-nowrap font-bold text-white ${textSize}`}>
             ⚠️ {label}
             {distLabel && (
               <span
                 className="ml-1"
-                style={{ color: `rgb(${colorVar})`, transition: "color 0.6s ease" }}
+                style={{ color: `rgb(${colorVar})`, transition: "color 0.12s ease" }}
               >
                 · {distLabel}
               </span>
@@ -1452,6 +1497,35 @@ function RearWarning({ sensor, className = "", large = false }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* 후방 충돌감지 센서 상태칩 — 라이브(fresh)면 초록 ON, 끊기면 빨강 OFF.
+ * compact=true(작은 창): 아이콘만 / compact=false(전체화면): "후방 충돌감지 ON/OFF" 텍스트. */
+function RearSensorChip({ sensor, compact = false }) {
+  const active = !!sensor?.fresh;
+  const color = active ? "rgb(var(--brand-success))" : "rgb(var(--brand-danger))";
+  const title = `후방 충돌감지 ${active ? "ON" : "OFF"}`;
+
+  if (compact) {
+    // 작은 창 — 아이콘만(시야 방해 최소). 색으로 ON/OFF, OFF면 붉은 테두리로 눈에 띄게.
+    return (
+      <span
+        title={title}
+        aria-label={title}
+        className="flex items-center justify-center w-7 h-7 rounded-full bg-black/55 backdrop-blur-sm"
+        style={{ border: active ? "none" : "1.5px solid rgb(var(--brand-danger))" }}
+      >
+        <Activity className="w-4 h-4" style={{ color }} />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm text-white text-[11px] font-bold">
+      <Activity className="w-3.5 h-3.5" style={{ color }} />
+      후방 충돌감지 {active ? "ON" : "OFF"}
+    </span>
   );
 }
 
@@ -1521,6 +1595,7 @@ function DPad({
   onRelease = null,
   muted = false,
   tone = "dark",
+  disabledDir = null,
 }) {
   const light = tone === "light";
   const baseBg = light
@@ -1587,6 +1662,7 @@ function DPad({
             tone={tone}
             aria="Down"
             rotate="rotate-180"
+            disabled={disabledDir === "down"}
           />
           <span />
         </div>
@@ -1604,6 +1680,7 @@ function DBtn({
   aria,
   rotate = "",
   tone = "dark",
+  disabled = false,
 }) {
   const activePointerRef = useRef(null);
   const holdTimerRef = useRef(null);
@@ -1624,6 +1701,7 @@ function DBtn({
   };
 
   const startPress = (event) => {
+    if (disabled) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     activePointerRef.current = event.pointerId;
@@ -1643,6 +1721,20 @@ function DBtn({
       onRelease();
     }
   };
+
+  if (disabled) {
+    // 후방 장애물로 잠긴 버튼 — 누름 무효, 잠금 아이콘 + 붉은 점선 테두리
+    return (
+      <div
+        aria-label={`${aria} (잠김)`}
+        aria-disabled="true"
+        className="w-12 h-12 rounded-2xl flex items-center justify-center bg-brand-danger/15 border border-dashed border-brand-danger/60 cursor-not-allowed"
+        style={{ color: "rgb(var(--brand-danger))" }}
+      >
+        <Lock className="w-4 h-4" strokeWidth={2.2} />
+      </div>
+    );
+  }
 
   return (
     <button
