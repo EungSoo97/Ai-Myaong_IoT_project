@@ -14,7 +14,7 @@ constexpr const char* PREF_NAMESPACE = "wifi";
 constexpr const char* PREF_SSID = "ssid";
 constexpr const char* PREF_PASSWORD = "password";
 constexpr const char* PREF_MQTT_HOST = "mqtt_host";
-constexpr const char* DEFAULT_MQTT_HOST = "localhost";
+constexpr const char* DEFAULT_MQTT_HOST = "raspberrypi.local";
 constexpr uint16_t MQTT_PORT = 1883;
 constexpr uint8_t CONFIG_BUTTON_PIN = 0;
 constexpr unsigned long CONFIG_BUTTON_HOLD_MS = 3000;
@@ -250,6 +250,21 @@ inline void publishStatus(const char* state) {
   mqttClient.publish("dispenser/status", payload.c_str(), true);
 }
 
+inline void publishDispenserWeight(float foodGrams, float waterGrams) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String payload = "{\"food_g\":";
+  payload += String(foodGrams, 1);
+  payload += ",\"water_g\":";
+  payload += String(waterGrams, 1);
+  payload += ",\"ip\":\"";
+  payload += WiFi.localIP().toString();
+  payload += "\"}";
+  mqttClient.publish("dispenser/weight", payload.c_str(), false);
+}
+
 inline void connectMqtt() {
   if (WiFi.status() != WL_CONNECTED || mqttClient.connected()) {
     return;
@@ -434,7 +449,7 @@ inline void handleRoot() {
   <div class="card">
     <input id="ssid" placeholder="SSID">
     <input id="password" type="password" placeholder="Password">
-    <input id="mqttHost" placeholder="MQTT host" value="localhost">
+    <input id="mqttHost" placeholder="MQTT host" value="raspberrypi.local">
     <button onclick="connectWifi()">Save and connect</button>
     <p id="result" class="muted"></p>
   </div>

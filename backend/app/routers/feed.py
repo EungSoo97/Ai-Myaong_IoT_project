@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -64,6 +65,24 @@ class WaterLogCreate(BaseModel):
     pet_id: Optional[int] = None
 
 
+class PumpSpeedRequest(BaseModel):
+    speed: int
+
+
+def _publish_dispenser_command(request: Request, topic: str, payload: dict):
+    request_id = str(uuid4())
+    message = {"request_id": request_id, **payload}
+    mqtt_client = request.app.state.mqtt_client
+    mqtt_client.publish(topic, message)
+    return {
+        "request_id": request_id,
+        "status": "accepted",
+        "topic": topic,
+        "payload": message,
+        "simulated": mqtt_client.simulation_mode,
+    }
+
+
 @router.post("/feed-log")
 def create_feed_log(body: FeedLogCreate, authorization: str = Header(None), db: Session = Depends(get_db)):
     user = _current_user(authorization, db)
@@ -104,6 +123,27 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
         "water_amount_ml": log.water_amount_ml,
         "water_type": log.water_type,
     }
+
+
+@router.post("/pump/off", response_model=CommandResponse)
+def pump_off(request: Request):
+    return _publish_dispenser_command(request, "dispenser/pump/off", {})
+
+
+@router.post("/pump/speed", response_model=CommandResponse)
+def pump_speed(payload: PumpSpeedRequest, request: Request):
+    speed = max(0, min(255, int(payload.speed)))
+    return _publish_dispenser_command(request, "dispenser/pump/speed", {"amount": speed, "speed": speed})
+
+
+@router.post("/tare", response_model=CommandResponse)
+def tare_loadcells(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare", {})
+
+
+@router.post("/weight/request", response_model=CommandResponse)
+def request_weight(request: Request):
+    return _publish_dispenser_command(request, "dispenser/weight/request", {})
 
 
 @router.get("/logs")

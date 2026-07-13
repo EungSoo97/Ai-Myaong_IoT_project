@@ -141,6 +141,43 @@ bash ./scripts/start-mqtt-broker.sh
 [serial] -> robot-controller CAM_LEFT
 ```
 
+## HiveMQ to Local Mosquitto Bridge
+
+Use this layout when ESP32 devices are on the same Wi-Fi as the Raspberry Pi:
+
+```text
+Frontend/backend -> HiveMQ Cloud -> Raspberry Pi mqtt_bridge.py -> local Mosquitto -> ESP32 dispenser
+ESP32 dispenser -> local Mosquitto -> Raspberry Pi mqtt_bridge.py -> HiveMQ Cloud
+```
+
+Recommended `raspberrypi/.env` values:
+
+```env
+# Cloud broker, usually HiveMQ Cloud
+MQTT_BROKER_HOST=your-hivemq-cluster.s1.eu.hivemq.cloud
+MQTT_BROKER_PORT=8883
+MQTT_USERNAME=your-hivemq-username
+MQTT_PASSWORD=your-hivemq-password
+MQTT_USE_TLS=true
+
+# Local broker for ESP32 devices
+LOCAL_MQTT_HOST=127.0.0.1
+LOCAL_MQTT_PORT=1883
+START_MQTT_BRIDGE=true
+
+# Bridge directions
+MQTT_BRIDGE_CLOUD_TO_LOCAL_TOPICS=dispenser/feed,dispenser/water,dispenser/pump/off,dispenser/pump/speed,dispenser/tare,dispenser/weight/request
+MQTT_BRIDGE_LOCAL_TO_CLOUD_TOPICS=dispenser/status,dispenser/weight
+```
+
+ESP32 dispenser MQTT host:
+
+```text
+raspberrypi.local
+```
+
+The local Mosquitto broker must listen on `0.0.0.0:1883` so ESP32 can connect from Wi-Fi. `scripts/start-raspberrypi.sh` starts a temporary Mosquitto listener if one is not already running.
+
 ## MQTT 수신 테스트
 
 라즈베리파이에서 전체 MQTT 메시지를 확인하려면:

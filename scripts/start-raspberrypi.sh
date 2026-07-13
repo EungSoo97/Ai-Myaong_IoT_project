@@ -3,9 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$SCRIPT_DIR/../raspberrypi"
-PORT="${MQTT_BROKER_PORT:-1883}"
+PORT="${LOCAL_MQTT_PORT:-1883}"
 BIND_ADDRESS="${MQTT_BROKER_BIND_ADDRESS:-0.0.0.0}"
 BROKER_PID=""
+BRIDGE_PID=""
 STREAM_PID=""
 CONFIG_DIR=""
 
@@ -20,6 +21,12 @@ cleanup() {
     echo "[camera] stopping MJPEG stream server..."
     kill "$STREAM_PID" >/dev/null 2>&1 || true
     wait "$STREAM_PID" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$BRIDGE_PID" ]] && kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
+    echo "[mqtt-bridge] stopping HiveMQ/local bridge..."
+    kill "$BRIDGE_PID" >/dev/null 2>&1 || true
+    wait "$BRIDGE_PID" >/dev/null 2>&1 || true
   fi
 
   if [[ -n "$CONFIG_DIR" ]]; then
@@ -127,6 +134,12 @@ if [[ "${START_CAMERA_STREAM:-true}" != "false" ]]; then
   echo "[camera] starting MJPEG stream server on 0.0.0.0:$STREAM_PORT..."
   "$STREAM_PYTHON_BIN" ./camera/mjpeg_server.py &
   STREAM_PID="$!"
+fi
+
+if [[ "${START_MQTT_BRIDGE:-true}" != "false" ]]; then
+  echo "[mqtt-bridge] starting HiveMQ/local bridge..."
+  "$PYTHON_BIN" ./mqtt_bridge.py &
+  BRIDGE_PID="$!"
 fi
 
 if [[ -x ".venv/bin/python" ]]; then

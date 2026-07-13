@@ -9,4 +9,5 @@ void setup() {
 
 void loop() {
   loopMqtt();
+  serviceActuators();
 }
