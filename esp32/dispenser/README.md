@@ -13,7 +13,7 @@ Wi-Fi setup behavior:
 - starts the `ESP32_FEEDER_SETUP` access point if Wi-Fi fails
 - serves setup UI and JSON APIs at `http://192.168.4.1`
 - stores the MQTT broker host during Wi-Fi setup
-- defaults to MQTT broker `10.1.82.103:1883`
+- defaults to MQTT broker `raspberrypi.local:1883`
 - use the same real Wi-Fi SSID/password that the Raspberry Pi uses
 - hold the setup button on GPIO0 for 3 seconds to clear saved Wi-Fi/MQTT settings and reopen setup mode
 
@@ -41,3 +41,32 @@ Setup page:
 Arduino library requirement:
 
 - `PubSubClient`
+
+MQTT routing:
+
+- ESP32 connects only to the local Raspberry Pi broker: `raspberrypi.local:1883`.
+- Raspberry Pi runs Mosquitto for ESP32 devices on the same Wi-Fi.
+- Raspberry Pi bridge receives HiveMQ Cloud messages and republishes dispenser commands to local Mosquitto.
+- `dispenser/feed` and `dispenser/water`: HiveMQ Cloud -> Raspberry Pi bridge -> local Mosquitto -> ESP32.
+- `dispenser/status` and `dispenser/weight`: ESP32 -> local Mosquitto -> Raspberry Pi bridge -> HiveMQ Cloud.
+- If mDNS does not resolve `raspberrypi.local`, use the Raspberry Pi Wi-Fi IP in the ESP32 setup page.
+
+Food motor wiring:
+
+- Driver: TB6612FNG A channel
+- AIN1: GPIO25
+- AIN2: GPIO26
+- PWMA: GPIO27
+- STBY: GPIO23
+- Motor wires: A01 and A02
+- VCC: ESP32 3V3
+- VM: separate motor power supply, for example 12V if the motor is rated for 12V
+- GND: ESP32 GND, TB6612FNG GND, and motor supply GND must be shared
+
+Food dispense timing:
+
+- Frontend feed button sends the configured food amount to `/api/dispenser/feed`.
+- Backend publishes that amount to MQTT topic `dispenser/feed`.
+- ESP32 runs the food motor for `amount * FOOD_MOTOR_MS_PER_AMOUNT`.
+- Current calibration is `250 ms` per amount unit, clamped from `300 ms` to `8000 ms`.
+- Tune `FOOD_MOTOR_MS_PER_AMOUNT` in `AiMyaongDispenser/dispenser_actuators.h` after measuring real food output.

@@ -138,6 +138,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+  dispenserPumpOff: () =>
+    request("/api/dispenser/pump/off", {
+      method: "POST",
+    }),
+  dispenserPumpSpeed: (speed = 200) =>
+    request("/api/dispenser/pump/speed", {
+      method: "POST",
+      body: JSON.stringify({ speed }),
+    }),
+  dispenserTare: () =>
+    request("/api/dispenser/tare", {
+      method: "POST",
+    }),
+  requestDispenserWeight: () =>
+    request("/api/dispenser/weight/request", {
+      method: "POST",
+    }),
   // 배식/급수 기록 저장 (기존 FEED_LOGS / WATER_LOGS 테이블)
   createFeedLog: ({ amount_g, feed_type = "manual", pet_id } = {}) =>
     request("/api/dispenser/feed-log", {
