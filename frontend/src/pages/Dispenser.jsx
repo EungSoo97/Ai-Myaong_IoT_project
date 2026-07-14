@@ -343,7 +343,7 @@ export function Dispenser() {
         unitLabel="g"
         amount={foodAmount}
         min={5}
-        max={300}
+        max={50}
         step={5}
         onChange={setFoodAmount}
         onSubmit={doFeed}
@@ -357,9 +357,9 @@ export function Dispenser() {
         title="수동 급수"
         unitLabel="ml"
         amount={waterAmount}
-        min={20}
-        max={300}
-        step={20}
+        min={5}
+        max={50}
+        step={5}
         onChange={setWaterAmount}
         onSubmit={doWater}
         busy={busy}
@@ -753,7 +753,8 @@ function ScheduleModal({ initial, onClose, onSave }) {
   const isEdit = initial.id != null
   const [time, setTime] = useState(initial.time)
   const [type, setType] = useState(initial.type)
-  const [amount, setAmount] = useState(initial.amount)
+  // 기존에 300 등으로 저장된 스케줄을 편집해도 슬라이더가 어긋나지 않게 5~50 으로 clamp
+  const [amount, setAmount] = useState(() => Math.min(Math.max(Number(initial.amount) || 5, 5), 50))
   const [show, setShow] = useState(false) // 슬라이드 인/아웃 제어
 
   // 마운트 직후 풀스크린으로 슬라이드 업
@@ -770,9 +771,9 @@ function ScheduleModal({ initial, onClose, onSave }) {
 
   const isFood = type === 'food'
   const unit = isFood ? 'g' : 'ml'
-  const step = isFood ? 5 : 20
-  const min = isFood ? 5 : 20
-  const max = 300
+  const step = 5
+  const min = 5
+  const max = 50 // 수동 배식/급수 슬라이더와 동일한 1회 제공량 상한
   const accent = isFood ? COLORS.food : COLORS.water
   const ratio = (Number(amount) - min) / (max - min)
 
