@@ -288,10 +288,13 @@ class EmergencyTracker:
         self.cooldown_seconds = float(os.getenv("EMERGENCY_COOLDOWN_SECONDS", "60"))
         self.missing_grace_seconds = float(os.getenv("EMERGENCY_MISSING_GRACE_SECONDS", "2"))
 
-        self.fall_window_seconds = float(os.getenv("FALL_WINDOW_SECONDS", "0.7"))
-        self.fall_drop_ratio = float(os.getenv("FALL_DROP_RATIO", "0.10"))
-        self.fall_confirm_seconds = float(os.getenv("FALL_CONFIRM_SECONDS", "1.2"))
-        self.fall_still_threshold = float(os.getenv("FALL_STILL_THRESHOLD", "0.006"))
+        self.fall_window_seconds = float(os.getenv("FALL_WINDOW_SECONDS", "0.8"))
+        self.fall_drop_ratio = float(os.getenv("FALL_DROP_RATIO", "0.14"))
+        self.fall_confirm_seconds = float(os.getenv("FALL_CONFIRM_SECONDS", "2.5"))
+        self.fall_still_threshold = float(os.getenv("FALL_STILL_THRESHOLD", "0.004"))
+        self.fall_roi_still_threshold = float(os.getenv("FALL_ROI_STILL_THRESHOLD", "0.012"))
+        self.fall_scene_motion_threshold = float(os.getenv("FALL_SCENE_MOTION_THRESHOLD", "0.10"))
+        self.fall_box_area_change_threshold = float(os.getenv("FALL_BOX_AREA_CHANGE_THRESHOLD", "0.45"))
 
         legacy_no_motion_seconds = os.getenv("EMERGENCY_NO_MOTION_SECONDS", "600")
         self.no_motion_warning_seconds = float(
@@ -316,6 +319,8 @@ class EmergencyTracker:
         self.seizure_history = deque()
         self.last_center = None
         self.last_roi = None
+        self.last_scene = None
+        self.last_box_area = None
         self.last_seen_at = None
         self.fall_candidate_at = None
         self.fall_still_started_at = None
@@ -353,6 +358,11 @@ class EmergencyTracker:
         frame_h, frame_w = frame.shape[:2]
         center = box_center(pet)
         normalized_center = (center[0] / max(frame_w, 1), center[1] / max(frame_h, 1))
+        box_area = max(1, pet["w"] * pet["h"]) / max(1, frame_w * frame_h)
+        box_area_change = None
+        if self.last_box_area is not None:
+            box_area_change = abs(box_area - self.last_box_area) / max(self.last_box_area, 0.0001)
+
         center_motion = None
         if self.last_center is not None:
             center_motion = (
@@ -360,6 +370,7 @@ class EmergencyTracker:
                 + (normalized_center[1] - self.last_center[1]) ** 2
             ) ** 0.5
 
+        scene_motion = self._scene_motion(frame)
         roi_motion = self._roi_motion(frame, pet)
         self.last_center_motion = center_motion
         self.last_roi_motion = roi_motion
@@ -367,10 +378,18 @@ class EmergencyTracker:
         while self.center_history and now - self.center_history[0][0] > self.fall_window_seconds:
             self.center_history.popleft()
 
-        self._check_fall(now, normalized_center[1], center_motion)
+        self._check_fall(
+            now,
+            normalized_center[1],
+            center_motion,
+            roi_motion,
+            scene_motion,
+            box_area_change,
+        )
         self._check_no_motion(now, center_motion, roi_motion)
         self._check_seizure(now, center_motion, roi_motion)
         self.last_center = normalized_center
+        self.last_box_area = box_area
 
     def draw(self, frame, now):
         if not self.latest_alert or now - self.latest_alert["time"] > 5:
@@ -409,21 +428,48 @@ class EmergencyTracker:
         self.last_roi = gray
         return motion
 
-    def _check_fall(self, now, center_y, center_motion):
+    def _scene_motion(self, frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (96, 54), interpolation=cv2.INTER_AREA)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        motion = None
+        if self.last_scene is not None:
+            motion = float(np.mean(cv2.absdiff(gray, self.last_scene))) / 255.0
+        self.last_scene = gray
+        return motion
+
+    def _check_fall(self, now, center_y, center_motion, roi_motion, scene_motion, box_area_change):
+        unstable_scene = (
+            scene_motion is not None
+            and scene_motion >= self.fall_scene_motion_threshold
+        )
+        unstable_box = (
+            box_area_change is not None
+            and box_area_change >= self.fall_box_area_change_threshold
+        )
+        if unstable_scene or unstable_box:
+            self.fall_candidate_at = None
+            self.fall_still_started_at = None
+            return
+
         if len(self.center_history) >= 3:
             baseline_y = min(y for _, y in self.center_history)
             if center_y - baseline_y >= self.fall_drop_ratio and self.fall_candidate_at is None:
                 self.fall_candidate_at = now
                 self.fall_still_started_at = None
 
-        if self.fall_candidate_at is None or center_motion is None:
+        if self.fall_candidate_at is None or center_motion is None or roi_motion is None:
             return
         if now - self.fall_candidate_at > self.fall_confirm_seconds + 2:
             self.fall_candidate_at = None
             self.fall_still_started_at = None
             return
 
-        if center_motion <= self.fall_still_threshold:
+        still_after_drop = (
+            center_motion <= self.fall_still_threshold
+            and roi_motion <= self.fall_roi_still_threshold
+        )
+        if still_after_drop:
             if self.fall_still_started_at is None:
                 self.fall_still_started_at = now
             elif now - self.fall_still_started_at >= self.fall_confirm_seconds:
@@ -437,7 +483,7 @@ class EmergencyTracker:
                 self.fall_candidate_at = None
                 self.fall_still_started_at = None
                 self.center_history.clear()
-        elif center_motion > self.fall_still_threshold * 4:
+        elif center_motion > self.fall_still_threshold * 4 or roi_motion > self.fall_roi_still_threshold * 2:
             self.fall_still_started_at = None
 
     def _check_no_motion(self, now, center_motion, roi_motion):
@@ -541,6 +587,8 @@ class EmergencyTracker:
         self.seizure_history.clear()
         self.last_center = None
         self.last_roi = None
+        self.last_scene = None
+        self.last_box_area = None
         self.last_center_motion = None
         self.last_roi_motion = None
         self.last_seen_at = None

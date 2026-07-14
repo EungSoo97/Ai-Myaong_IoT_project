@@ -385,16 +385,37 @@ export function Dashboard() {
 
   // 활동량 통계 (일/주/월)
   const [actPeriod, setActPeriod] = useState("day");
+  const [activityMonth, setActivityMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [activityStats, setActivityStats] = useState(null);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityCriteriaOpen, setActivityCriteriaOpen] = useState(false);
+  const currentActivityMonth = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
+  const activityMonthLabel = useMemo(() => {
+    const [year, month] = activityMonth.split("-");
+    return `${year}년 ${Number(month)}월`;
+  }, [activityMonth]);
+  const canNextActivityMonth = activityMonth < currentActivityMonth;
+  const moveActivityMonth = (offset) => {
+    setActivityMonth((value) => {
+      const [year, month] = value.split("-").map(Number);
+      const next = new Date(year, month - 1 + offset, 1);
+      const nextValue = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+      return nextValue > currentActivityMonth ? currentActivityMonth : nextValue;
+    });
+  };
 
   useEffect(() => {
     let alive = true;
     const load = () => {
       setActivityLoading(true);
       api
-        .getActivityStats(actPeriod)
+        .getActivityStats(actPeriod, actPeriod === "month" ? activityMonth : undefined)
         .then((data) => {
           if (alive) setActivityStats(data);
         })
@@ -411,7 +432,7 @@ export function Dashboard() {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [actPeriod]);
+  }, [actPeriod, activityMonth]);
 
   const actData = useMemo(
     () =>
@@ -435,7 +456,7 @@ export function Dashboard() {
     if (actPeriod === "month" && monthScrollRef.current) {
       monthScrollRef.current.scrollLeft = monthScrollRef.current.scrollWidth;
     }
-  }, [actPeriod]);
+  }, [actPeriod, activityMonth]);
 
   // 마우스 휠 → 가로 스크롤
   const onMonthWheel = (e) => {
@@ -935,6 +956,30 @@ export function Dashboard() {
               </div>
             </div>
             {/* 일/주/월 탭 */}
+            {actPeriod === "month" && (
+              <div className="pointer-events-auto absolute right-5 top-16 z-20 inline-flex h-7 items-center rounded-full bg-brand-card/90 px-1 shadow-soft-inset border border-dashed border-brand-brown/15">
+                <button
+                  type="button"
+                  onClick={() => moveActivityMonth(-1)}
+                  className="h-6 w-6 rounded-full text-xs font-extrabold text-brand-brown touch-active"
+                  aria-label="previous month"
+                >
+                  {"<"}
+                </button>
+                <span className="min-w-[74px] px-1 text-center text-[11px] font-extrabold text-brand-brown">
+                  {activityMonthLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => moveActivityMonth(1)}
+                  disabled={!canNextActivityMonth}
+                  className="h-6 w-6 rounded-full text-xs font-extrabold text-brand-brown disabled:opacity-30 touch-active"
+                  aria-label="next month"
+                >
+                  {">"}
+                </button>
+              </div>
+            )}
             <div className="inline-flex bg-brand-cream rounded-full p-1 shadow-soft-inset">
               {[
                 ["day", "일간"],
@@ -958,6 +1003,7 @@ export function Dashboard() {
           {/* 영역(라인) 차트 — 월간은 가로 스크롤 */}
           {actPeriod === "month" ? (
             <div
+              key={activityMonth}
               ref={monthScrollRef}
               onWheel={onMonthWheel}
               onPointerDown={onMonthDown}
@@ -965,7 +1011,7 @@ export function Dashboard() {
               onPointerUp={onMonthUp}
               onPointerCancel={onMonthUp}
               tabIndex={-1}
-              className="mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
+              className="page-enter mt-4 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none"
             >
               <div style={{ width: Math.max(actData.length * 52, 320), height: 160 }}>
                 <ActivityArea data={actData} />

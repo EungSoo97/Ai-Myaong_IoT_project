@@ -4,8 +4,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import device, feed, network, robot, stream, ws, auth, settings, pets, vision, alerts,health_reports
+
 from app.mqtt.mqtt_client import MqttClient
+from app.routers import (
+    alerts,
+    auth,
+    device,
+    feed,
+    health_reports,
+    network,
+    pets,
+    robot,
+    settings,
+    stream,
+    vision,
+    ws,
+)
 from app.services.database import Database
 from app.services.feed_service import FeedService
 from app.services.retention import cleanup_old_records
@@ -13,6 +27,14 @@ from app.services.robot_service import RobotService
 from app.services.simulator import DeviceSimulator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 app = FastAPI(title="Ai-Myaong Backend", version="0.1.0")
 
@@ -30,12 +52,7 @@ cors_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=cors_origins,
     allow_origin_regex=r"http://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+):(?:3000|5173)",
     allow_credentials=True,
     allow_methods=["*"],
@@ -55,7 +72,7 @@ app.state.feed_service = FeedService(mqtt_client, database, simulator)
 app.include_router(robot.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
-app.include_router(ws.router)  
+app.include_router(ws.router)
 app.include_router(network.router)
 app.include_router(auth.router)
 app.include_router(pets.router)
@@ -73,22 +90,24 @@ def startup() -> None:
         cleanup_old_records()
     except Exception as error:
         print(f"[Retention] cleanup skipped: {error}", flush=True)
+
     mqtt_client.start()
-    # 백엔드 LAN 주소를 MQTT(system/backend/announce)로 알려 Pi가 자동 발견하도록 한다.
+
     from app.services.backend_announcer import start_backend_announcer
+
     start_backend_announcer(mqtt_client)
-    database.log_event("system", "FastAPI 서버 시작", simulator.status())
-    # 자동 배식/급수 스케줄러 시작 (settings.feed_schedule / water_schedule 기반)
-    # ⚠️ 여러 기계(PC 백엔드 + 라즈베리파이)가 같은 DB에 붙으면 스케줄러가 중복 실행되어
-    #    한 번 예약에 N번 배식/기록된다. → 스케줄러는 '한 곳'에서만 돌려야 한다.
-    #    스케줄러를 끌 기계의 .env 에  RUN_FEED_SCHEDULER=false  를 넣으면 그 기계는 실행 안 함.
-    import os
-    if os.getenv("RUN_FEED_SCHEDULER", "true").strip().lower() not in ("false", "0", "no"):
+    database.log_event("system", "FastAPI server started", simulator.status())
+
+    if env_bool("FEED_SCHEDULER_ENABLED", False):
         from app.services.feed_scheduler import start_feed_scheduler
-        start_feed_scheduler(app.state.feed_service)
-        print("[feed-scheduler] 시작됨 (이 기계에서 자동 배식 스케줄 실행)", flush=True)
+
+        thread = start_feed_scheduler(app.state.feed_service)
+        if thread is None:
+            print("[FeedScheduler] skipped: another local scheduler is already running", flush=True)
+        else:
+            print("[FeedScheduler] started", flush=True)
     else:
-        print("[feed-scheduler] RUN_FEED_SCHEDULER=false → 이 기계에서는 스케줄러 비활성", flush=True)
+        print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
 
 
 @app.on_event("shutdown")
