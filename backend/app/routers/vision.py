@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 import json
 from pathlib import Path
 import mimetypes
@@ -255,6 +255,29 @@ def _activity_point(label: str, rows: list[DailyActivitySummary]) -> dict:
         "status_label": ACTIVITY_STATUS_LABELS[status],
         "detected_minutes": detected_minutes,
     }
+
+
+def _month_range(month: str | None) -> tuple[date, date]:
+    if not month:
+        today = today_kst()
+        year = today.year
+        month_num = today.month
+    else:
+        try:
+            year_text, month_text = month.split("-", 1)
+            year = int(year_text)
+            month_num = int(month_text)
+            if month_num < 1 or month_num > 12:
+                raise ValueError
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="month must use YYYY-MM format") from error
+
+    start = date(year, month_num, 1)
+    if month_num == 12:
+        end = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end = date(year, month_num + 1, 1) - timedelta(days=1)
+    return start, end
 
 
 def _single_pet(db: Session, user_id: int | None = None) -> Pet:
@@ -527,15 +550,19 @@ def save_activity(payload: VisionActivityCreate, db: Session = Depends(get_db)):
 @router.get("/activity/stats")
 def activity_stats(
     period: Literal["day", "week", "month"] = Query("day"),
+    month: str | None = Query(None),
     authorization: str = Header(None),
     db: Session = Depends(get_db),
 ):
     user = _current_user(authorization, db)
     _remember_active_user(user, db)
     pet = _single_pet(db, user.user_id)
-    end_date = today_kst()
-    days = 1 if period == "day" else 7 if period == "week" else 30
-    start_date = end_date - timedelta(days=days - 1)
+    if period == "month":
+        start_date, end_date = _month_range(month)
+    else:
+        end_date = today_kst()
+        days = 1 if period == "day" else 7
+        start_date = end_date - timedelta(days=days - 1)
     rows = (
         db.query(DailyActivitySummary)
         .filter(
@@ -559,6 +586,8 @@ def activity_stats(
     else:
         weekday_labels = ("월", "화", "수", "목", "금", "토", "일")
         points = []
+        if period == "month":
+            days = (end_date - start_date).days + 1
         for offset in range(days):
             target_date = start_date + timedelta(days=offset)
             label = (
@@ -582,6 +611,7 @@ def activity_stats(
     status = _activity_status(average_percent)
     return {
         "period": period,
+        "month": start_date.strftime("%Y-%m") if period == "month" else None,
         "score_max": ACTIVITY_SCORE_MAX,
         "average_percent": average_percent,
         "status": status,
