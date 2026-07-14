@@ -7,8 +7,8 @@ Usage:
   bash ./scripts/setup-raspberrypi-wifi.sh "SSID" "PASSWORD"
 
 Optional environment variables:
-  MQTT_BROKER_HOST=auto
-  MQTT_BROKER_PORT=1883
+  LOCAL_MQTT_HOST=auto
+  LOCAL_MQTT_PORT=1883
   ESP32_SETUP_URL=http://192.168.4.1
   PI_AP_FALLBACK=false
   PI_AP_SSID=AiMyaong_PI_SETUP
@@ -33,8 +33,8 @@ fi
 
 SSID="$1"
 PASSWORD="$2"
-MQTT_HOST="${MQTT_BROKER_HOST:-auto}"
-MQTT_PORT="${MQTT_BROKER_PORT:-1883}"
+MQTT_HOST="${LOCAL_MQTT_HOST:-auto}"
+MQTT_PORT="${LOCAL_MQTT_PORT:-1883}"
 ESP32_SETUP_URL="${ESP32_SETUP_URL:-http://192.168.4.1}"
 PI_AP_FALLBACK="${PI_AP_FALLBACK:-false}"
 PI_AP_SSID="${PI_AP_SSID:-AiMyaong_PI_SETUP}"
@@ -214,7 +214,7 @@ fi
 if [[ "$MQTT_HOST" == "auto" ]]; then
   MQTT_HOST="$(detect_pi_ip)"
   if [[ -z "$MQTT_HOST" ]]; then
-    fail_with_rollback "failed to detect Raspberry Pi Wi-Fi IP for MQTT_BROKER_HOST. Rerun with MQTT_BROKER_HOST=<ip> if needed."
+    fail_with_rollback "failed to detect Raspberry Pi Wi-Fi IP for LOCAL_MQTT_HOST. Rerun with LOCAL_MQTT_HOST=<ip> if needed."
   fi
 fi
 
@@ -253,16 +253,14 @@ set_pi_env_value() {
   set_env_value "$PI_ENV" "$key" "$value"
 }
 
-set_pi_env_value MQTT_BROKER_HOST "$MQTT_HOST"
-set_pi_env_value MQTT_BROKER_PORT "$MQTT_PORT"
+set_pi_env_value LOCAL_MQTT_HOST "127.0.0.1"
+set_pi_env_value LOCAL_MQTT_PORT "$MQTT_PORT"
 set_pi_env_value MQTT_DISABLED false
 set_pi_env_value PI_AGENT_HTTP_HOST "${PI_AGENT_HTTP_HOST:-0.0.0.0}"
 set_pi_env_value PI_AGENT_HTTP_PORT "${PI_AGENT_HTTP_PORT:-8765}"
 set_pi_env_value PI_AGENT_HTTP_DISABLED false
 
 if [[ -f "$BACKEND_ENV" ]]; then
-  set_env_value "$BACKEND_ENV" MQTT_BROKER_HOST "$MQTT_HOST"
-  set_env_value "$BACKEND_ENV" MQTT_BROKER_PORT "$MQTT_PORT"
   set_env_value "$BACKEND_ENV" PI_AGENT_BASE_URL "http://$MQTT_HOST:${PI_AGENT_HTTP_PORT:-8765}"
   set_env_value "$BACKEND_ENV" CAMERA_STREAM_URL "http://$MQTT_HOST:${STREAM_PORT:-8081}/stream.mjpg"
   set_env_value "$BACKEND_ENV" CAMERA_PROXY false
@@ -314,5 +312,5 @@ push_esp32_setup() {
 push_esp32_setup
 
 echo "[wifi] Raspberry Pi Wi-Fi configured."
-echo "[wifi] raspberrypi/.env MQTT broker: $MQTT_HOST:$MQTT_PORT"
+echo "[wifi] local ESP32 MQTT broker: $MQTT_HOST:$MQTT_PORT"
 echo "[wifi] ESP32 default MQTT host updated to: $MQTT_HOST"

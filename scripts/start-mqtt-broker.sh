@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT="${MQTT_BROKER_PORT:-1883}"
+PORT="${LOCAL_MQTT_PORT:-1883}"
 BIND_ADDRESS="${MQTT_BROKER_BIND_ADDRESS:-0.0.0.0}"
 
 if ! command -v mosquitto >/dev/null 2>&1; then
