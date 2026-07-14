@@ -1,3 +1,5 @@
+import json
+
 import database.alerts
 import database.clips
 import database.detection_logs
@@ -18,6 +20,58 @@ from database.user import User
 from database.settings import Settings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+def _normalize_schedule(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+
+    try:
+        items = json.loads(raw or "[]")
+    except Exception:
+        return "[]"
+    if not isinstance(items, list):
+        return "[]"
+
+    by_time = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        schedule_time = str(item.get("time") or "").strip()
+        if not schedule_time:
+            continue
+
+        try:
+            amount = float(item.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+
+        by_time[schedule_time] = {
+            "time": schedule_time,
+            "amount": int(amount) if amount.is_integer() else amount,
+            "on": item.get("on") is not False,
+        }
+
+    normalized = [by_time[key] for key in sorted(by_time)]
+    return json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+
+
+def _normalize_settings_schedules(settings: Settings, db: Session) -> Settings:
+    changed = False
+    for field in ("feed_schedule", "water_schedule"):
+        raw = getattr(settings, field)
+        normalized = _normalize_schedule(raw)
+        if raw != normalized:
+            setattr(settings, field, normalized)
+            changed = True
+
+    if changed:
+        db.commit()
+        db.refresh(settings)
+    return settings
 
 
 def get_current_user_id(authorization: str = Header(None)) -> int:
@@ -41,7 +95,7 @@ def get_settings(
         db.add(settings)
         db.commit()
         db.refresh(settings)
-    return settings
+    return _normalize_settings_schedules(settings, db)
 
 
 @router.put("", response_model=SettingsResponse)
@@ -56,7 +110,13 @@ def update_settings(
         db.add(settings)
         db.flush()
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    if "feed_schedule" in updates:
+        updates["feed_schedule"] = _normalize_schedule(updates["feed_schedule"])
+    if "water_schedule" in updates:
+        updates["water_schedule"] = _normalize_schedule(updates["water_schedule"])
+
+    for field, value in updates.items():
         setattr(settings, field, value)
 
     db.commit()

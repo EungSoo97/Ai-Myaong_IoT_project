@@ -1,20 +1,19 @@
-"""자동 배식/급수 스케줄러.
+"""Automatic feed/water scheduler.
 
-settings.feed_schedule / water_schedule 에 저장된 일정(JSON)을 매 분 검사해서,
-현재 시각(HH:MM)과 일치하고 on=true 인 항목이 있으면:
-  1) 기기에 배식/급수 명령(MQTT) 시도
-  2) FEED_LOGS / WATER_LOGS 에 기록 (feed_type/water_type = "auto")
-을 수행한다. HTTP 의 amount<=20 제한과 무관하게 동작한다(서버측 직접 처리).
-
-별도 의존성 없이 데몬 스레드 + 분 단위 체크로 구현.
+Reads settings.feed_schedule and settings.water_schedule every minute.
+When a schedule item matches the current KST HH:MM and is enabled, it sends
+the dispenser command and stores one auto log in FEED_LOGS / WATER_LOGS.
 """
 
 import json
 import socket
 import threading
 import time
+from datetime import timedelta
 
-# ORM 매퍼가 관계(User/Pet 등)를 해석하도록 관련 모델을 모두 등록
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
 import database.alerts  # noqa: F401
 import database.clips  # noqa: F401
 import database.detection_logs  # noqa: F401
@@ -31,6 +30,11 @@ from database.settings import Settings
 from database.time_utils import now_kst_naive
 from database.water_logs import WaterLog
 
+_scheduler_lock = threading.Lock()
+_scheduler_thread = None
+_lock_socket = None
+_SCHED_LOCK_PORT = 8771
+
 
 def _parse(raw):
     try:
@@ -45,95 +49,198 @@ def _first_pet_id(db, user_id):
     return pet.pet_id if pet else None
 
 
+def _minute_window(now=None):
+    start = (now or now_kst_naive()).replace(second=0, microsecond=0)
+    return start, start + timedelta(minutes=1)
+
+
+def _normalize_amount(value):
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return float(int(amount)) if amount.is_integer() else amount
+
+
+def _has_feed_log_this_minute(db, user_id, pet_id, minute_start, minute_end):
+    return (
+        db.query(FeedLog.feed_id)
+        .filter(
+            FeedLog.user_id == user_id,
+            FeedLog.pet_id == pet_id,
+            FeedLog.feed_type == "auto",
+            FeedLog.created_at >= minute_start,
+            FeedLog.created_at < minute_end,
+        )
+        .first()
+        is not None
+    )
+
+
+def _has_water_log_this_minute(db, user_id, pet_id, minute_start, minute_end):
+    return (
+        db.query(WaterLog.water_log_id)
+        .filter(
+            WaterLog.user_id == user_id,
+            WaterLog.pet_id == pet_id,
+            WaterLog.water_type == "auto",
+            WaterLog.created_at >= minute_start,
+            WaterLog.created_at < minute_end,
+        )
+        .first()
+        is not None
+    )
+
+
+def _acquire_singleton_lock() -> bool:
+    """Allow only one scheduler process on the same PC."""
+    global _lock_socket
+    if _lock_socket is not None:
+        return True
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", _SCHED_LOCK_PORT))
+        sock.listen(1)
+        _lock_socket = sock
+        return True
+    except OSError:
+        sock.close()
+        return False
+
+
+def _iter_unique_settings(db):
+    seen_user_ids = set()
+    settings_rows = db.query(Settings).order_by(Settings.user_id.asc(), Settings.setting_id.desc()).all()
+    for row in settings_rows:
+        if row.user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(row.user_id)
+        yield row
+
+
+def _lock_log_tables(db):
+    # Serialize scheduler writes across backend instances sharing the Oracle DB.
+    db.execute(text("LOCK TABLE FEED_LOGS, WATER_LOGS IN EXCLUSIVE MODE"))
+
+
 def _run_once(feed_service, hhmm):
-    """현재 분(hhmm)과 일치하는 on=true 스케줄을 배식/급수 + DB 기록."""
     if SessionLocal is None:
         return
+
     db = SessionLocal()
     try:
-        for s in db.query(Settings).all():
-            pet_id = None  # 필요할 때 한 번만 조회
+        minute_start, minute_end = _minute_window()
+        handled_feed = set()
+        handled_water = set()
+        _lock_log_tables(db)
 
-            for item in _parse(s.feed_schedule):
-                if item.get("on", True) and str(item.get("time")) == hhmm:
-                    amount = float(item.get("amount") or 0)
-                    if amount <= 0:
-                        continue
-                    if feed_service:
-                        try:
-                            feed_service.feed(int(round(amount)))
-                        except Exception:
-                            pass
-                    if pet_id is None:
-                        pet_id = _first_pet_id(db, s.user_id)
-                    if pet_id:
-                        db.add(FeedLog(user_id=s.user_id, pet_id=pet_id, food_amount_g=amount, feed_type="auto"))
+        for settings in _iter_unique_settings(db):
+            pet_id = None
 
-            for item in _parse(s.water_schedule):
-                if item.get("on", True) and str(item.get("time")) == hhmm:
-                    amount = float(item.get("amount") or 0)
-                    if amount <= 0:
-                        continue
-                    if feed_service:
-                        try:
-                            feed_service.water(int(round(amount)))
-                        except Exception:
-                            pass
-                    if pet_id is None:
-                        pet_id = _first_pet_id(db, s.user_id)
-                    if pet_id:
-                        db.add(WaterLog(user_id=s.user_id, pet_id=pet_id, water_amount_ml=amount, water_type="auto"))
+            for item in _parse(settings.feed_schedule):
+                if item.get("on", True) is False or str(item.get("time")) != hhmm:
+                    continue
+
+                amount = _normalize_amount(item.get("amount"))
+                if amount <= 0:
+                    continue
+
+                if pet_id is None:
+                    pet_id = _first_pet_id(db, settings.user_id)
+                if not pet_id:
+                    continue
+
+                feed_key = (settings.user_id, pet_id, minute_start)
+                if feed_key in handled_feed:
+                    continue
+                if _has_feed_log_this_minute(db, settings.user_id, pet_id, minute_start, minute_end):
+                    continue
+
+                handled_feed.add(feed_key)
+                db.add(
+                    FeedLog(
+                        user_id=settings.user_id,
+                        pet_id=pet_id,
+                        food_amount_g=amount,
+                        feed_type="auto",
+                        created_at=minute_start,
+                    )
+                )
+                db.flush()
+                if feed_service:
+                    try:
+                        feed_service.feed(int(round(amount)))
+                    except Exception:
+                        pass
+
+            for item in _parse(settings.water_schedule):
+                if item.get("on", True) is False or str(item.get("time")) != hhmm:
+                    continue
+
+                amount = _normalize_amount(item.get("amount"))
+                if amount <= 0:
+                    continue
+
+                if pet_id is None:
+                    pet_id = _first_pet_id(db, settings.user_id)
+                if not pet_id:
+                    continue
+
+                water_key = (settings.user_id, pet_id, minute_start)
+                if water_key in handled_water:
+                    continue
+                if _has_water_log_this_minute(db, settings.user_id, pet_id, minute_start, minute_end):
+                    continue
+
+                handled_water.add(water_key)
+                db.add(
+                    WaterLog(
+                        user_id=settings.user_id,
+                        pet_id=pet_id,
+                        water_amount_ml=amount,
+                        water_type="auto",
+                        created_at=minute_start,
+                    )
+                )
+                db.flush()
+                if feed_service:
+                    try:
+                        feed_service.water(int(round(amount)))
+                    except Exception:
+                        pass
 
         db.commit()
-    except Exception:
+    except IntegrityError:
+        db.rollback()
+    except Exception as error:
         db.rollback()
     finally:
         db.close()
 
 
-_scheduler_thread = None  # 같은 프로세스 내 중복 시작 방지
-_lock_socket = None       # 프로세스 간 단일 실행 락 (소켓 점유 = 락 보유)
-_SCHED_LOCK_PORT = 8771   # 스케줄러 싱글톤 락 전용 포트 (서비스 포트 아님)
-
-
-def _acquire_singleton_lock() -> bool:
-    """프로세스 간 단일 스케줄러 보장.
-    고정 포트에 bind 성공한 1개 프로세스만 스케줄러를 돌린다.
-    (uvicorn --reload 가 만드는 여러 프로세스 중복 실행 차단. 프로세스 종료 시 OS가 포트 자동 해제)."""
-    global _lock_socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind(("127.0.0.1", _SCHED_LOCK_PORT))
-        s.listen(1)
-        _lock_socket = s  # 프로세스 살아있는 동안 점유 유지
-        return True
-    except OSError:
-        s.close()
-        return False  # 이미 다른 프로세스가 스케줄러 실행 중
-
-
 def start_feed_scheduler(feed_service=None):
-    """매 분 정각 근처에 스케줄을 검사하는 백그라운드 데몬 스레드 시작.
-    같은 프로세스에서 이미 실행 중이거나, 다른 프로세스가 락을 쥐고 있으면 새로 만들지 않는다."""
+    """Start one background scheduler thread per process and one per local PC."""
     global _scheduler_thread
-    if _scheduler_thread is not None and _scheduler_thread.is_alive():
+
+    with _scheduler_lock:
+        if _scheduler_thread is not None and _scheduler_thread.is_alive():
+            return _scheduler_thread
+        if not _acquire_singleton_lock():
+            return None
+
+        def loop():
+            last = None
+            while True:
+                hhmm = now_kst_naive().strftime("%H:%M")
+                if hhmm != last:
+                    last = hhmm
+                    try:
+                        _run_once(feed_service, hhmm)
+                    except Exception:
+                        pass
+                time.sleep(20)
+
+        _scheduler_thread = threading.Thread(target=loop, daemon=True, name="feed-scheduler")
+        _scheduler_thread.start()
         return _scheduler_thread
-    if not _acquire_singleton_lock():
-        return None  # 다른 프로세스가 이미 스케줄러를 돌리는 중 → 중복 실행 방지
-
-    def loop():
-        last = None
-        while True:
-            hhmm = now_kst_naive().strftime("%H:%M")
-            if hhmm != last:  # 같은 분에 중복 실행 방지
-                last = hhmm
-                try:
-                    _run_once(feed_service, hhmm)
-                except Exception:
-                    pass
-            time.sleep(20)  # 분 경계를 놓치지 않도록 20초마다 확인
-
-    thread = threading.Thread(target=loop, daemon=True, name="feed-scheduler")
-    thread.start()
-    _scheduler_thread = thread
-    return thread

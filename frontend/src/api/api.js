@@ -86,8 +86,11 @@ export const api = {
     }
   },
   getLatestDetections: () => request("/api/vision/detections/latest"),
-  getActivityStats: (period = "day") =>
-    request(`/api/vision/activity/stats?period=${encodeURIComponent(period)}`),
+  getActivityStats: (period = "day", month) => {
+    const params = new URLSearchParams({ period });
+    if (period === "month" && month) params.set("month", month);
+    return request(`/api/vision/activity/stats?${params.toString()}`);
+  },
   getVisionEvents: (limit = 20) =>
     request(`/api/vision/events/recent?limit=${encodeURIComponent(limit)}`),
   getVisionMediaUrl: (path) =>

@@ -12,14 +12,14 @@ pushd "%PROJECT_PATH%"
 set "PYTHONPATH=%SCRIPT_DIR%.."
 
 if exist ".venv\Scripts\python.exe" (
-  .venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+  .venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
   set "EXIT_CODE=%ERRORLEVEL%"
   popd
   goto finish
 )
 
 if exist ".venv\bin\python" (
-  .venv\bin\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+  .venv\bin\python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
   set "EXIT_CODE=%ERRORLEVEL%"
   popd
   goto finish
@@ -27,13 +27,13 @@ if exist ".venv\bin\python" (
 
 py -3.11 --version >nul 2>&1
 if not errorlevel 1 (
-  py -3.11 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+  py -3.11 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
   set "EXIT_CODE=%ERRORLEVEL%"
   popd
   goto finish
 )
 
-python3.11 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+python3.11 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 set "EXIT_CODE=%ERRORLEVEL%"
 popd
 goto finish
