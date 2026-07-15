@@ -69,6 +69,21 @@ app.state.simulator = simulator
 app.state.robot_service = RobotService(mqtt_client, database, simulator)
 app.state.feed_service = FeedService(mqtt_client, database, simulator)
 
+
+def _handle_sensor_message(payload: dict) -> None:
+    # 파이가 뿌리는 후방 센서값을 MQTT로 직접 받는다. HTTP POST(/api/robot/sensor)는
+    # announce로 '선택된' 백엔드 한 대만 받지만, 이 경로는 브로커에 붙은 모든 백엔드가
+    # 동시에 받는다. 알림 저장은 HTTP 경로에만 남겨 백엔드마다 중복 생성되지 않게 한다.
+    simulator.update_sensor(
+        distance_cm=payload.get("distance_cm"),
+        rear_obstacle=payload.get("rear_obstacle"),
+        threshold_cm=payload.get("threshold_cm"),
+        source=payload.get("source"),
+    )
+
+
+mqtt_client.on_topic("ai-myaong/robot/sensor", _handle_sensor_message)
+
 app.include_router(robot.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
