@@ -25,12 +25,9 @@ import { useTheme } from "../theme/ThemeProvider";
 import { api } from "../api/api";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
-const ESP32_MQTT_HOST_KEY = "aimyaong:esp32MqttHost";
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
 const DEFAULT_ESP32_SETUP_URL =
   import.meta.env.VITE_ESP32_SETUP_URL || "http://192.168.4.1";
-const DEFAULT_ESP32_MQTT_HOST =
-  import.meta.env.VITE_ESP32_MQTT_HOST || "10.1.82.103";
 
 // 카드 배경: 흰색 80% + 크림 20% (대시보드·마이페이지와 동일) / 정보·칩: 따뜻한 탄
 const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)";
@@ -95,9 +92,6 @@ export function Settings() {
   const [setupUrl, setSetupUrl] = useState(() =>
     readLocal(ESP32_SETUP_URL_KEY, DEFAULT_ESP32_SETUP_URL),
   );
-  const [mqttHost, setMqttHost] = useState(() =>
-    readLocal(ESP32_MQTT_HOST_KEY, DEFAULT_ESP32_MQTT_HOST),
-  );
   const [wifiStatus, setWifiStatus] = useState(null);
   const [networks, setNetworks] = useState([]);
   const [selectedNetwork, setSelectedNetwork] = useState(null);
@@ -112,9 +106,8 @@ export function Settings() {
   const [showAppInfo, setShowAppInfo] = useState(false); // 앱 정보(빌드 현황) 시트
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
-  useEffect(() => writeLocal(ESP32_MQTT_HOST_KEY, mqttHost), [mqttHost]);
 
-  // ESP32 주소 / MQTT 호스트 변경 시 디바운스 후 DB 저장 (초기/로드값은 건너뜀)
+  // ESP32 설정 주소 변경 시 디바운스 후 DB 저장 (초기/로드값은 건너뜀)
   const esp32Ready = useRef(false);
   useEffect(() => {
     if (!esp32Ready.current) {
@@ -122,11 +115,11 @@ export function Settings() {
       return;
     }
     const t = setTimeout(() => {
-      saveSettings({ esp32_setup_url: setupUrl, mqtt_host: mqttHost });
+      saveSettings({ esp32_setup_url: setupUrl });
     }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setupUrl, mqttHost]);
+  }, [setupUrl]);
 
   // 로봇 시리얼 번호 (기기 등록)
   const [serial, setSerial] = useState(() => readLocal(ROBOT_SERIAL_KEY, ""));
@@ -180,8 +173,6 @@ export function Settings() {
         const patch = {};
         if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
         else patch.esp32_setup_url = setupUrl;
-        if (s.mqtt_host) setMqttHost(s.mqtt_host);
-        else patch.mqtt_host = mqttHost;
         if (Object.keys(patch).length) saveSettings(patch);
       })
       .catch(() => {});
@@ -242,7 +233,6 @@ export function Settings() {
       if (!silent) setNetworkMessage("");
       const data = await esp32Request("/api/wifi/status");
       setWifiStatus(data);
-      if (data.mqttHost) setMqttHost(data.mqttHost);
     } catch {
       setWifiStatus(null);
       if (!silent) setNetworkMessage("ESP32 설정 주소에 연결할 수 없습니다.");
@@ -298,7 +288,6 @@ export function Settings() {
         body: JSON.stringify({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost,
           reboot: false,
         }),
       });
@@ -323,8 +312,6 @@ export function Settings() {
     try {
       const data = await api.getNetworkStatus();
       setPiNetworkStatus(data);
-      const host = data.raspberrypiEnv?.MQTT_BROKER_HOST;
-      if (host) setMqttHost(host);
     } catch {
       setPiNetworkStatus(null);
     }
@@ -350,23 +337,16 @@ export function Settings() {
         data = await api.configurePiWifi({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost: mqttHost.trim() || "auto",
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
           piApFallback,
         });
       } catch {
         data = await api.configureSharedWifi({
           ssid: selectedSsid,
           password: wifiPassword,
-          mqttHost: mqttHost.trim() || "auto",
-          mqttPort: 1883,
-          esp32SetupUrl: setupUrl,
           piApFallback,
         });
       }
       const nextHost = data.raspberrypiEnv?.MQTT_BROKER_HOST;
-      if (nextHost) setMqttHost(nextHost);
       setNetworkMessage(
         nextHost ? `적용 완료. MQTT ${nextHost}:1883` : "적용 완료.",
       );
@@ -529,7 +509,7 @@ export function Settings() {
           onClick={() => setShowAdvanced((v) => !v)}
           className="mt-3 w-full flex items-center justify-between px-1 text-xs font-bold text-brand-mute touch-active"
         >
-          <span>고급 설정 (ESP32 · MQTT)</span>
+          <span>고급 설정 (ESP32)</span>
           <ChevronRight
             className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-90" : ""}`}
           />
@@ -554,15 +534,6 @@ export function Settings() {
               </GhostButton>
             </div>
 
-            <label className="mt-3 block text-[11px] font-bold text-brand-mute pl-1">
-              MQTT 호스트
-            </label>
-            <input
-              value={mqttHost}
-              onChange={(event) => setMqttHost(event.target.value)}
-              className="mt-1 w-full rounded-2xl border border-brand-line bg-brand-card px-3 py-2 text-sm font-semibold text-brand-brown outline-none focus:border-brand-primary"
-              placeholder="IP 또는 비우면 자동"
-            />
 
             <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-brand-cream px-3 py-2.5">
               <span className="text-xs font-bold text-brand-brown">
