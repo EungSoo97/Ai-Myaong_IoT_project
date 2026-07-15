@@ -175,19 +175,17 @@ export function Dispenser() {
 
   const [busy, setBusy] = useState(false)
 
-  // 수동 배식 — 저장된 제공량으로 실제 배식 시도 + 토스트 + 알림
+  // 수동 배식 — 명령만 보낸다. 통계 기록은 백엔드가 한다.
+  // 실제 배출량은 ESP32 가 저울로 직접 재서(dispenser/dispensed) 백엔드에 알리고,
+  // 백엔드가 FEED_LOGS 에 쌓는다. 여기서 시간을 추측해 재려 하면 펌웨어의 오거 속도
+  // 상수를 프론트가 복제해야 하고, 그 값이 바뀌면 조용히 틀어진다.
+  // 자동 배식은 브라우저가 꺼져 있어도 돌아가므로 어차피 백엔드가 기록해야 한다.
   const doFeed = async () => {
     if (busy) return
     setBusy(true)
     try {
       await api.dispenserFeed(foodAmount)
-      api.createFeedLog({ amount_g: foodAmount, feed_type: 'manual' }).catch(() => {}) // DB 기록
-      // 오늘의 통계 즉시 반영 (새로고침 없이)
-      setLogs((prev) => ({
-        ...prev,
-        feed: [...prev.feed, { amount_g: foodAmount, feed_type: 'manual', created_at: new Date().toISOString() }],
-      }))
-      showToast(`🍚 사료 ${foodAmount}g 배식 완료`)
+      showToast(`🍚 ${foodAmount}g 배식 완료`)
       // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
     } catch {
       showToast('배식 실패 — 기기 연결을 확인해 주세요')
@@ -196,19 +194,16 @@ export function Dispenser() {
     }
   }
 
+  // 급수는 '몇 초 돌릴지'만 지시한다. 물통이 저수조 겸 음수대라 펌프를 돌려도 물이
+  // 통 밖으로 나가지 않아(순환) '이번에 몇 ml 급수했다'가 성립하지 않는다. 그래서
+  // 급수량은 기록하지 않는다 — 물이 실제로 줄어드는 건 고양이가 마셨을 때뿐이고,
+  // 그건 잔여량(water_ml) 이 시간에 따라 떨어지는 것으로 나타난다.
   const doWater = async () => {
     if (busy) return
     setBusy(true)
     try {
       await api.dispenserWater(waterAmount)
-      api.createWaterLog({ amount_ml: waterAmount, water_type: 'manual' }).catch(() => {}) // DB 기록
-      // 오늘의 통계 즉시 반영 (새로고침 없이)
-      setLogs((prev) => ({
-        ...prev,
-        water: [...prev.water, { amount_ml: waterAmount, water_type: 'manual', created_at: new Date().toISOString() }],
-      }))
-      showToast(`💧 물 ${waterAmount}ml 급수 완료`)
-      // 급수도 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
+      showToast(`💧 ${waterAmount}초 급수 완료`)
     } catch {
       showToast('급수 실패 — 기기 연결을 확인해 주세요')
     } finally {
@@ -244,12 +239,36 @@ export function Dispenser() {
   const toggleSchedule = (id) =>
     setSchedule((prev) => prev.map((x) => (x.id === id ? { ...x, on: !x.on } : x)))
 
-  const foodRemain = 28
-  const waterRemain = 62
-  const foodLow = foodRemain < 30
-  const waterLow = waterRemain < 25
+  // 잔여량 — 디스펜서 로드셀 실측값. 값이 끊기면(food_fresh/water_fresh=false) 숫자를 지어내지 않고
+  // '연결 안 됨'을 표시한다. ESP32 가 1초마다 발행하므로 3초 폴링이면 충분하다.
+  const [dispenser, setDispenser] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      api
+        .getDashboard()
+        .then((d) => { if (alive) setDispenser(d?.status?.dispenser ?? null) })
+        .catch(() => { if (alive) setDispenser(null) })
+    load()
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [])
 
-  // 잔여량 부족/없음 → 알림 (세션당 1회, 스팸 방지)
+  // 사료/물 로드셀은 따로 논다. 한쪽만 붙어 있어도 붙은 쪽은 정상 표시해야 한다.
+  const foodLive = !!dispenser?.food_fresh
+  const waterLive = !!dispenser?.water_fresh
+  const foodGrams = foodLive ? Math.round(dispenser.food_g ?? 0) : null
+  const waterMl = waterLive ? Math.round(dispenser.water_ml ?? 0) : null
+  const foodPercent = foodLive ? (dispenser.food_percent ?? 0) : 0
+  const waterPercent = waterLive ? (dispenser.water_percent ?? 0) : 0
+  // 센서가 죽었을 때는 '부족'이 아니라 '모름'이다. 함부로 부족 경고를 띄우지 않는다.
+  const foodLow = foodLive && foodPercent < 30
+  const waterLow = waterLive && waterPercent < 25
+
+  // 잔여량 부족 → 알림 (세션당 1회, 스팸 방지). 실측값이 들어온 뒤에만 판단한다.
   useEffect(() => {
     const notifyLow = (key, type, title, desc) => {
       const flag = `aimyaong:lowNotified:${key}`
@@ -259,14 +278,14 @@ export function Dispenser() {
     }
     if (foodLow) {
       notifyLow('food', 'food_low', '사료 부족',
-        foodRemain <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `남은 사료 ${foodRemain}% · 보충해주세요!`)
+        foodGrams <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `남은 사료 ${foodGrams}g · 보충해주세요!`)
     }
     if (waterLow) {
       notifyLow('water', 'water_low', '물 부족',
-        waterRemain <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `남은 물 ${waterRemain}% · 보충해주세요!`)
+        waterMl <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `남은 물 ${waterMl}ml · 보충해주세요!`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [foodLow, waterLow])
 
   // 오늘의 급여 통계 — DB 기록(feed_logs/water_logs)으로 시간대별 집계
   const { DAILY_FOOD, DAILY_WATER, todayTotal, todayWater, maxFood, maxWater } = useMemo(() => {
@@ -321,18 +340,22 @@ export function Dispenser() {
         <ResourceCard
           icon={<UtensilsCrossed className="w-4 h-4" />}
           label="남은 사료"
-          value={foodRemain}
-          unit="%"
+          value={foodGrams}
+          unit="g"
+          percent={foodPercent}
           color="primary"
           low={foodLow}
+          live={foodLive}
         />
         <ResourceCard
           icon={<Droplets className="w-4 h-4" />}
           label="남은 물"
-          value={waterRemain}
-          unit="%"
+          value={waterMl}
+          unit="ml"
+          percent={waterPercent}
           color="water"
           low={waterLow}
+          live={waterLive}
         />
       </section>
 
@@ -355,15 +378,15 @@ export function Dispenser() {
       <ManualCard
         kind="water"
         title="수동 급수"
-        unitLabel="ml"
+        unitLabel="초"
         amount={waterAmount}
-        min={5}
-        max={50}
-        step={5}
+        min={1}
+        max={10}
+        step={1}
         onChange={setWaterAmount}
         onSubmit={doWater}
         busy={busy}
-        button={`지금 ${waterAmount}ml 급수하기`}
+        button={`지금 ${waterAmount}초 급수하기`}
         icon={<Droplets className="w-4 h-4" />}
       />
       </div>
@@ -566,13 +589,14 @@ export function Dispenser() {
 
 /* ───── 보조 컴포넌트 ───── */
 
-function ResourceCard({ icon, label, value, unit, color, low }) {
+function ResourceCard({ icon, label, value, unit, percent, color, low, live = true }) {
   const accent = color === 'water' ? COLORS.water : COLORS.food
   const danger = 'rgb(var(--brand-danger))'
+  const tint = !live ? COLORS.mute : low ? danger : accent
   return (
     <div
       className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-4 flex flex-col h-full"
-      style={{ backgroundColor: withAlpha(low ? danger : accent, 0.12) }}
+      style={{ backgroundColor: withAlpha(tint, 0.12) }}
     >
       <Stitch className="border-brand-brown/15" />
       <div className="relative z-10 flex flex-col h-full">
@@ -581,13 +605,17 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
           <div className="flex items-center gap-1.5 min-w-0">
             <span
               className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center border border-dashed border-brand-brown/20"
-              style={{ background: withAlpha(low ? danger : accent, 0.2), color: low ? danger : accent }}
+              style={{ background: withAlpha(tint, 0.2), color: tint }}
             >
               {icon}
             </span>
             <p className="text-xs font-bold text-brand-brown/70 truncate">{label}</p>
           </div>
-          {low ? (
+          {!live ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-brand-brown/20 text-brand-mute" style={{ background: withAlpha(COLORS.mute, 0.15) }}>
+              <AlertTriangle className="w-3 h-3 shrink-0" /> 연결 안 됨
+            </span>
+          ) : low ? (
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-white/40 text-white animate-pulse" style={{ background: danger }}>
               <AlertTriangle className="w-3 h-3 shrink-0" /> 보충 필요
             </span>
@@ -598,18 +626,23 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
           )}
         </div>
 
-        {/* 잔여 수치 */}
-        <p className="font-display text-[34px] font-extrabold leading-none" style={{ color: low ? danger : COLORS.brown }}>
-          {value}
-          <span className="text-lg ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
+        {/* 잔여 수치 — 센서가 끊기면 숫자를 지어내지 않고 '—' 를 보여준다 */}
+        <p className="font-display text-[34px] font-extrabold leading-none" style={{ color: !live ? COLORS.mute : low ? danger : COLORS.brown }}>
+          {live ? value : '—'}
+          {live && (
+            <span className="text-lg ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
+          )}
         </p>
+        {live && (
+          <p className="text-[11px] font-bold mt-1" style={{ color: COLORS.mute }}>{percent}%</p>
+        )}
 
         {/* 게이지 (스티치 트랙) */}
         <div className="mt-auto pt-4">
           <div className="relative h-3 rounded-full overflow-hidden border border-dashed border-brand-brown/15" style={{ background: BG_INFO }}>
             <div
               className="h-full rounded-full transition-all"
-              style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: low ? danger : accent }}
+              style={{ width: `${live ? Math.max(0, Math.min(100, percent)) : 0}%`, background: low ? danger : accent }}
             />
           </div>
         </div>

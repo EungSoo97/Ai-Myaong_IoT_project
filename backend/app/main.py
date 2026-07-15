@@ -21,6 +21,7 @@ from app.routers import (
     ws,
 )
 from app.services.database import Database
+from app.services.dispenser_logger import DispenserLogger
 from app.services.feed_service import FeedService
 from app.services.retention import cleanup_old_records
 from app.services.robot_service import RobotService
@@ -82,7 +83,30 @@ def _handle_sensor_message(payload: dict) -> None:
     )
 
 
+dispenser_logger = DispenserLogger()
+app.state.dispenser_logger = dispenser_logger
+
+
+def _handle_dispenser_weight_message(payload: dict) -> None:
+    # 디스펜서 로드셀(사료통/물통) 무게. 잔여량 표시의 유일한 실제 소스다.
+    status = simulator.update_dispenser_weight(
+        food_g=payload.get("food_g"),
+        water_g=payload.get("water_g"),
+        source="esp32-loadcell",
+    )
+    # 물통 무게가 줄어든 만큼이 곧 고양이가 마신 양이다(순환이라 급수로는 안 줄어든다).
+    # 필터를 거친 값으로 판단해야 노이즈로 헛기록이 남지 않는다.
+    dispenser_logger.on_water_weight(status["dispenser"].get("water_ml"))
+
+
+def _handle_dispenser_dispensed_message(payload: dict) -> None:
+    # ESP32 가 저울로 직접 잰 1회 배출량. 통계에 남는 유일한 배식량 소스다.
+    dispenser_logger.on_food_dispensed(payload.get("food_g"))
+
+
 mqtt_client.on_topic("ai-myaong/robot/sensor", _handle_sensor_message)
+mqtt_client.on_topic("dispenser/weight", _handle_dispenser_weight_message)
+mqtt_client.on_topic("dispenser/dispensed", _handle_dispenser_dispensed_message)
 
 app.include_router(robot.router)
 app.include_router(feed.router)
