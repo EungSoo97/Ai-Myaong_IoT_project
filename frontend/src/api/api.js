@@ -201,6 +201,8 @@ export const api = {
     }),
   getNetworkStatus: () => request("/api/network/status"),
   scanPiWifi: () => request("/api/network/pi-wifi-scan"),
+  startEsp32SetupMode: () =>
+    request("/api/network/esp32/setup-mode", { method: "POST" }),
   configurePiWifi: ({
     ssid,
     password,
