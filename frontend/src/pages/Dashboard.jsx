@@ -568,19 +568,11 @@ export function Dashboard() {
     try {
       if (id === "feed") {
         await api.dispenserFeed(feed.food);
-        // 최근 활동에 즉시 반영(낙관적 추가) → 새로고침 없이 바로 보임
-        setRecentLogs((prev) => ({
-          ...prev,
-          feed: [
-            { created_at: new Date().toISOString(), amount_g: feed.food },
-            ...(prev.feed || []),
-          ],
-        }));
-        // DB 기록 후 서버 기준으로 재동기화(실제 created_at 등)
-        api
-          .createFeedLog({ amount_g: feed.food, feed_type: "quick" })
-          .then(() => refreshLogs())
-          .catch(() => {});
+        // 통계 기록은 백엔드가 한다 — ESP32 가 저울로 잰 실제 배출량이 도착하면
+        // 그때 FEED_LOGS 에 쌓인다. 여기서 지시값(feed.food)을 같이 남기면
+        // 가짜 기록과 실측 기록이 이중으로 쌓인다.
+        // 배출 + 저울 안정화가 끝나야 기록되므로 조금 뒤에 다시 불러온다.
+        window.setTimeout(() => refreshLogs(), 12000);
         showToast(`🍚 사료 ${feed.food}g를 배식했어요`);
         // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 최근 활동/통계로만 표현
       }

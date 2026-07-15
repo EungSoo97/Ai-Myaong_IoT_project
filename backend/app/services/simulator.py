@@ -13,7 +13,9 @@ class DeviceSimulator:
         self.last_command: str | None = None
         self.position = {"x": 0, "y": 0, "heading": 0}
         self.camera = {"pan": 90, "tilt": 90}
-        self.dispenser = {"food_remaining": 75, "water_remaining": 60, "last_feed_amount": 0}
+        # 잔여량은 로드셀 실측값(food_g / water_ml)만 쓴다. 가짜 기본값을 두면 센서가
+        # 없을 때 그 숫자가 그대로 화면에 나와 거짓말이 된다.
+        self.dispenser: dict[str, Any] = {"last_feed_amount": 0}
         self.sensor = {"distance": 30, "motion": False}
         self.sensor_updated_at = 0.0  # 후방 센서값 마지막 수신 시각(monotonic) — staleness 판정용
         # 후방 초음파 노이즈(스파이크) 제거용 중앙값 필터 상태
@@ -21,6 +23,18 @@ class DeviceSimulator:
         self._rear_window_size = max(1, int(os.getenv("REAR_FILTER_WINDOW", "5")))
         self._rear_obstacle = False                             # 필터값 기반 장애물 상태(히스테리시스) — UI 표시용
         self._rear_obstacle_immediate = False                   # 생(raw)값 기반 즉시 위험 — 안전 차단용(필터 우회)
+        # 디스펜서 로드셀(사료/물). 물은 1g = 1ml 이라 그램값을 그대로 ml로 쓴다.
+        # 채널을 따로 추적한다 — 한쪽 로드셀만 붙어 있거나 한쪽만 고장 나는 경우가 정상이라,
+        # 안 붙은 채널을 '0' 으로 표시하면 가득 찬 통을 비었다고 거짓말하게 된다.
+        self._food_weight_updated_at = 0.0                      # 마지막 수신 시각(monotonic)
+        self._water_weight_updated_at = 0.0
+        self._food_window: list[float] = []                     # 로드셀도 초음파처럼 튀므로 중앙값 필터
+        self._water_window: list[float] = []
+        self._weight_window_size = max(1, int(os.getenv("WEIGHT_FILTER_WINDOW", "5")))
+        # 통 용량 — % 게이지 계산용. 통을 바꾸면 이 값만 조정하면 된다.
+        self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "1000")))
+        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "1000")))
+        self._weight_stale_sec = float(os.getenv("DISPENSER_WEIGHT_STALE_SEC", "10"))
 
     def move(self, command: str) -> dict[str, Any]:
         self.last_command = command
@@ -65,14 +79,16 @@ class DeviceSimulator:
     def feed(self, amount: int) -> dict[str, Any]:
         self.last_command = "DISPENSER_FEED"
         self.dispenser["last_feed_amount"] = amount
-        self.dispenser["food_remaining"] = max(0, self.dispenser["food_remaining"] - amount)
+        # 잔여량은 깎지 않는다 — 로드셀이 실제로 줄어든 무게를 알려준다.
         self.sensor["motion"] = True
         self._drain_battery()
         return self.status()
 
-    def water(self, amount: int) -> dict[str, Any]:
+    def water(self, seconds: int) -> dict[str, Any]:
         self.last_command = "DISPENSER_WATER"
-        self.dispenser["water_remaining"] = max(0, self.dispenser["water_remaining"] - amount)
+        self.dispenser["last_water_seconds"] = seconds
+        # 잔여량은 깎지 않는다 — 순환 구조라 펌프를 돌려도 물이 통에서 줄지 않고,
+        # 실제로 줄어드는 건 고양이가 마셨을 때다. 그건 로드셀이 알려준다.
         self.sensor["motion"] = True
         self._drain_battery()
         return self.status()
@@ -86,10 +102,66 @@ class DeviceSimulator:
             "last_command": self.last_command,
             "position": self.position,
             "camera": self.camera,
-            "dispenser": self.dispenser,
+            "dispenser": self._dispenser_view(),
             "sensor": self.sensor,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    def _dispenser_view(self) -> dict[str, Any]:
+        # 무게는 '지금 살아있는 값'일 때만 잔여량으로 쓸 수 있다. 끊긴 옛 값을 그대로
+        # 보여주면 하드코딩과 다를 게 없으므로, 오래됐으면 *_fresh=False 로 내려
+        # UI가 '값 없음'을 표시하게 한다.
+        view = dict(self.dispenser)
+        now = time.monotonic()
+        view["food_fresh"] = (
+            self._food_weight_updated_at > 0
+            and now - self._food_weight_updated_at <= self._weight_stale_sec
+        )
+        view["water_fresh"] = (
+            self._water_weight_updated_at > 0
+            and now - self._water_weight_updated_at <= self._weight_stale_sec
+        )
+        return view
+
+    def update_dispenser_weight(
+        self,
+        *,
+        food_g: float | None = None,
+        water_g: float | None = None,
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        now = time.monotonic()
+        # 끊겼다 다시 들어오면 옛 버퍼는 버리고 새로 시작 (후방 센서와 같은 규칙)
+        if food_g is not None:
+            if self._food_weight_updated_at and now - self._food_weight_updated_at > 5.0:
+                self._food_window.clear()
+            grams = self._filtered_weight(self._food_window, food_g)
+            self.dispenser["food_g"] = round(grams, 1)
+            self.dispenser["food_percent"] = self._weight_percent(grams, self._food_capacity_g)
+            self._food_weight_updated_at = now
+        if water_g is not None:
+            # 물은 밀도가 1이라 1g = 1ml. 별도 유량계 없이 그램값을 그대로 ml로 쓴다.
+            if self._water_weight_updated_at and now - self._water_weight_updated_at > 5.0:
+                self._water_window.clear()
+            grams = self._filtered_weight(self._water_window, water_g)
+            self.dispenser["water_ml"] = round(grams, 1)
+            self.dispenser["water_percent"] = self._weight_percent(grams, self._water_capacity_ml)
+            self._water_weight_updated_at = now
+        if source and (food_g is not None or water_g is not None):
+            self.dispenser["weight_source"] = source
+        return self.status()
+
+    def _filtered_weight(self, window: list[float], value: float) -> float:
+        window.append(float(value))
+        if len(window) > self._weight_window_size:
+            window.pop(0)
+        median = sorted(window)[len(window) // 2]
+        # 로드셀은 tare 드리프트로 음수가 나올 수 있다. '남은 양'에 음수는 뜻이 없어 0으로 깎는다.
+        return max(0.0, median)
+
+    @staticmethod
+    def _weight_percent(grams: float, capacity: float) -> int:
+        return max(0, min(100, round(grams / capacity * 100)))
 
     def update_sensor(
         self,

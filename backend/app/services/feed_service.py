@@ -27,13 +27,14 @@ class FeedService:
             "simulated": self.mqtt.simulation_mode,
         }
 
-    def water(self, amount: int) -> dict[str, Any]:
+    def water(self, seconds: int) -> dict[str, Any]:
         request_id = str(uuid4())
-        payload = {"request_id": request_id, "amount": amount}
+        # amount 도 같이 실어 옛 펌웨어와도 물린다 (그쪽은 이 값을 초로 읽는다).
+        payload = {"request_id": request_id, "seconds": seconds, "amount": seconds}
         self.mqtt.publish("dispenser/water", payload)
-        status = self.simulator.water(amount)
+        status = self.simulator.water(seconds)
         self.database.log_command(request_id, "dispenser_water", "dispenser/water", payload, "accepted")
-        self.database.log_event("dispenser/status", f"dispenser water request: {amount}", status)
+        self.database.log_event("dispenser/status", f"dispenser water request: {seconds}s", status)
         return {
             "request_id": request_id,
             "status": "accepted",
