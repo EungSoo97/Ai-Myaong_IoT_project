@@ -9,7 +9,17 @@ import { api } from '../api/api'
  * localStorage·폴백 없음 → DB값 도착 전이나 미설정 시에는 아래 기본값으로 동작한다.
  * ─────────────────────────────────────────────────────────── */
 
-const DEFAULTS = { food: 150, water: 160 } // DB값 도착 전 / 미설정 시 기본값 (슬라이더 중앙값)
+// 1회 제공량 허용 범위 (슬라이더 min~max 와 일치). 기존 큰 값(예: 150)도 여기로 clamp.
+const LIMITS = { food: { min: 5, max: 50 }, water: { min: 5, max: 50 } }
+const DEFAULTS = { food: 25, water: 25 } // DB값 도착 전 / 미설정 시 기본값
+
+function clampAmount(kind, value) {
+  const { min, max } = LIMITS[kind]
+  const n = Number(value)
+  if (!Number.isFinite(n)) return DEFAULTS[kind]
+  return Math.min(Math.max(n, min), max)
+}
+
 let cache = { ...DEFAULTS }
 
 export function getFeedSettings() {
@@ -23,13 +33,15 @@ function setCache(next) {
 }
 
 export function setFoodAmount(food) {
-  setCache({ food: Number(food) })
-  api.updateSettings({ feed_amount: Number(food) }).catch(() => {}) // DB 저장
+  const v = clampAmount('food', food)
+  setCache({ food: v })
+  api.updateSettings({ feed_amount: v }).catch(() => {}) // DB 저장
 }
 
 export function setWaterAmount(water) {
-  setCache({ water: Number(water) })
-  api.updateSettings({ water_amount: Number(water) }).catch(() => {}) // DB 저장
+  const v = clampAmount('water', water)
+  setCache({ water: v })
+  api.updateSettings({ water_amount: v }).catch(() => {}) // DB 저장
 }
 
 /* DB(settings)에서 제공량을 불러와 캐시에 반영한다. */
@@ -38,8 +50,8 @@ export function hydrateFeedSettings() {
     .getSettings()
     .then((s) => {
       const next = {}
-      if (s.feed_amount != null) next.food = Number(s.feed_amount)
-      if (s.water_amount != null) next.water = Number(s.water_amount)
+      if (s.feed_amount != null) next.food = clampAmount('food', s.feed_amount)
+      if (s.water_amount != null) next.water = clampAmount('water', s.water_amount)
       if (Object.keys(next).length) setCache(next)
     })
     .catch(() => {})
