@@ -765,6 +765,7 @@ export function Dashboard() {
       {/* 1.5) AI 건강 분석 진입 — 고양이 배너 (public/ai-analysis/AICAT.png) */}
       <button
         type="button"
+        data-tour="dash-health"
         onClick={() => (pet ? navigate("/health-report/0") : showToast("🐾 반려동물을 먼저 등록해 주세요"))}
         className="group mt-4 block w-full text-left touch-active"
       >
