@@ -109,7 +109,6 @@ def startup() -> None:
     else:
         print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
 
-
 @app.on_event("shutdown")
 def shutdown() -> None:
     mqtt_client.stop()
