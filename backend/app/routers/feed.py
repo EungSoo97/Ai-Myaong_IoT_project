@@ -18,14 +18,41 @@ from database.water_logs import WaterLog
 router = APIRouter(prefix="/api/dispenser", tags=["dispenser"])
 
 
+def _claim_dispenser_owner(request: Request, authorization: Optional[str]) -> None:
+    """명령을 보낸 사용자의 펫을 이 디스펜서의 주인으로 기억해둔다.
+
+    ESP32 는 실측 배출량만 알려줄 뿐 '누구 것'인지 모른다. 기기↔사용자 매핑 테이블이
+    없어서, 실제로 이 기기에 명령을 보낸 사람이 가장 확실한 단서다.
+    인증은 선택 — 토큰이 없거나(스케줄러 등) DB가 없어도 배식 자체는 되어야 한다.
+    """
+    logger = getattr(request.app.state, "dispenser_logger", None)
+    if logger is None or not authorization:
+        return
+    try:
+        from database.base import SessionLocal
+
+        if SessionLocal is None:
+            return
+        db = SessionLocal()
+        try:
+            user = _current_user(authorization, db)
+            logger.remember_owner(_resolve_pet_id(user, None, db))
+        finally:
+            db.close()
+    except Exception:
+        pass  # 주인 판별 실패가 배식을 막아서는 안 된다
+
+
 @router.post("/feed", response_model=CommandResponse)
-def feed(payload: FeedRequest, request: Request):
+def feed(payload: FeedRequest, request: Request, authorization: str = Header(None)):
+    _claim_dispenser_owner(request, authorization)
     return request.app.state.feed_service.feed(payload.amount)
 
 
 @router.post("/water", response_model=CommandResponse)
-def water(payload: WaterRequest, request: Request):
-    return request.app.state.feed_service.water(payload.amount)
+def water(payload: WaterRequest, request: Request, authorization: str = Header(None)):
+    _claim_dispenser_owner(request, authorization)
+    return request.app.state.feed_service.water(payload.seconds)
 
 
 # ── 배식/급수 기록 (기존 FEED_LOGS / WATER_LOGS 테이블에 저장) ──
@@ -194,6 +221,16 @@ def pump_speed(payload: PumpSpeedRequest, request: Request):
 @router.post("/tare", response_model=CommandResponse)
 def tare_loadcells(request: Request):
     return _publish_dispenser_command(request, "dispenser/tare", {})
+
+
+@router.post("/tare/food", response_model=CommandResponse)
+def tare_food_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/food", {})
+
+
+@router.post("/tare/water", response_model=CommandResponse)
+def tare_water_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/water", {})
 
 
 @router.post("/weight/request", response_model=CommandResponse)

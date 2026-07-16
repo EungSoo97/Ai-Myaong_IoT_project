@@ -18,8 +18,11 @@ constexpr const char* WIFI_PASSWORD = "";
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_SETUP_PORTAL_DELAY_MS = 15000;
 constexpr unsigned long MQTT_RECONNECT_INTERVAL_MS = 5000;
+constexpr unsigned long MQTT_SETUP_PORTAL_DELAY_MS = 30000;
 constexpr unsigned long MQTT_WEIGHT_INTERVAL_MS = 3000;
 constexpr unsigned long NTP_SYNC_TIMEOUT_MS = 10000;
+// Verify the HiveMQ server certificate before sending MQTT credentials.
+constexpr bool MQTT_TLS_VERIFY_CA = true;
 constexpr const char* WIFI_SETUP_AP_SSID = "AiMyaong-Setup";
 constexpr const char* WIFI_SETUP_AP_PASSWORD = "aimyaong123";
 
@@ -29,10 +32,14 @@ WebServer wifiSetupServer(80);
 unsigned long lastWifiAttemptMs = 0;
 unsigned long wifiDisconnectedSinceMs = 0;
 unsigned long lastMqttAttemptMs = 0;
+unsigned long mqttDisconnectedSinceMs = 0;
 unsigned long lastMqttWeightPublishMs = 0;
 bool wifiSetupPortalRunning = false;
 bool wifiSetupConnectionPending = false;
 bool mqttTlsConfigured = false;
+String wifiScanCache = "{\"source\":\"esp32\",\"networks\":[]}";
+
+void startWifiSetupPortal();
 
 String mqttJsonEscape(const String& value) {
   String escaped;
@@ -51,6 +58,41 @@ String mqttJsonEscape(const String& value) {
     }
   }
   return escaped;
+}
+
+String jsonStringValue(const String& json, const char* key) {
+  String marker = String("\"") + key + "\"";
+  int keyIndex = json.indexOf(marker);
+  if (keyIndex < 0) return "";
+  int colonIndex = json.indexOf(':', keyIndex + marker.length());
+  int quoteIndex = json.indexOf('"', colonIndex + 1);
+  if (colonIndex < 0 || quoteIndex < 0) return "";
+
+  String value;
+  bool escaped = false;
+  for (int i = quoteIndex + 1; i < json.length(); i += 1) {
+    char c = json[i];
+    if (escaped) {
+      if (c == 'n') value += '\n';
+      else if (c == 'r') value += '\r';
+      else value += c;
+      escaped = false;
+    } else if (c == '\\') {
+      escaped = true;
+    } else if (c == '"') {
+      break;
+    } else {
+      value += c;
+    }
+  }
+  return value;
+}
+
+void sendSetupJson(int status, const String& payload) {
+  wifiSetupServer.sendHeader("Access-Control-Allow-Origin", "*");
+  wifiSetupServer.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  wifiSetupServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  wifiSetupServer.send(status, "application/json; charset=utf-8", payload);
 }
 
 int mqttExtractAmount(const String& payload) {
@@ -140,23 +182,117 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
     tareLoadCell();
     publishDispenserStatus("tare_done");
     publishDispenserWeight();
+  } else if (topic == "dispenser/tare/food") {
+    tareLoadCell1();
+    publishDispenserStatus("food_tare_done");
+    publishDispenserWeight();
+  } else if (topic == "dispenser/tare/water") {
+    tareLoadCell2();
+    publishDispenserStatus("water_tare_done");
+    publishDispenserWeight();
   } else if (topic == "dispenser/weight/request") {
     publishDispenserWeight();
+  } else if (topic == "dispenser/wifi/setup") {
+    startWifiSetupPortal();
+    publishDispenserStatus("wifi_setup");
   }
+}
+
+void handleWifiApiStatus() {
+  String payload = "{\"stationConnected\":";
+  payload += WiFi.status() == WL_CONNECTED ? "true" : "false";
+  payload += ",\"ssid\":\"" + mqttJsonEscape(WiFi.SSID()) + "\"";
+  payload += ",\"savedSsid\":\"" + mqttJsonEscape(WiFi.SSID()) + "\"";
+  payload += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  payload += ",\"apIp\":\"" + WiFi.softAPIP().toString() + "\"";
+  payload += ",\"apActive\":";
+  payload += wifiSetupPortalRunning ? "true" : "false";
+  payload += ",\"mqttConnected\":";
+  payload += mqttClient.connected() ? "true" : "false";
+  payload += ",\"mqttHost\":\"" + mqttJsonEscape(MQTT_BROKER_HOST) + "\"}";
+  sendSetupJson(200, payload);
+}
+
+void refreshWifiScanCache() {
+  Serial.println("[wifi] scanning 2.4GHz networks before setup portal...");
+  WiFi.scanDelete();
+  int count = WiFi.scanNetworks(false, true);
+  String payload = "{\"source\":\"esp32\",\"networks\":[";
+  bool first = true;
+  for (int i = 0; i < max(0, count); i += 1) {
+    int channel = WiFi.channel(i);
+    if (channel < 1 || channel > 14 || WiFi.SSID(i).length() == 0) continue;
+    if (!first) payload += ',';
+    first = false;
+    payload += "{\"ssid\":\"" + mqttJsonEscape(WiFi.SSID(i)) + "\"";
+    payload += ",\"rssi\":" + String(WiFi.RSSI(i));
+    payload += ",\"channel\":" + String(channel);
+    payload += ",\"band\":\"2.4GHz\",\"compatible\":true,\"esp32Compatible\":true";
+    payload += ",\"secure\":";
+    payload += WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true";
+    payload += '}';
+  }
+  WiFi.scanDelete();
+  payload += "]}";
+  wifiScanCache = payload;
+  Serial.print("[wifi] scan complete: ");
+  Serial.print(max(0, count));
+  Serial.println(" network entries checked");
+}
+
+void handleWifiApiScan() {
+  // ESP32 has one radio. Scanning while SoftAP is serving this request can
+  // disconnect the browser, so return the result captured before AP startup.
+  sendSetupJson(200, wifiScanCache);
+}
+
+void applyWifiCredentials(const String& ssid, const String& password) {
+  mqttClient.disconnect();
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  wifiSetupConnectionPending = true;
+  lastWifiAttemptMs = millis();
+  Serial.print("[wifi] setup requested for SSID: ");
+  Serial.println(ssid);
+}
+
+void handleWifiApiConnect() {
+  String body = wifiSetupServer.arg("plain");
+  String ssid = jsonStringValue(body, "ssid");
+  String password = jsonStringValue(body, "password");
+  ssid.trim();
+  if (ssid.length() == 0) {
+    sendSetupJson(400, "{\"error\":\"SSID is required.\"}");
+    return;
+  }
+  sendSetupJson(200, "{\"ok\":true,\"rebooting\":false,\"ssid\":\"" + mqttJsonEscape(ssid) + "\"}");
+  delay(100);
+  applyWifiCredentials(ssid, password);
+}
+
+void handleWifiApiOptions() {
+  sendSetupJson(204, "");
 }
 
 void sendWifiSetupPage() {
   const char* page = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AiMyaong Wi-Fi 설정</title>
-<style>body{font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 20px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:6px 0}button{cursor:pointer}</style>
-</head><body><h2>AiMyaong Wi-Fi 설정</h2>
-<p>ESP32가 연결할 2.4GHz Wi-Fi 정보를 입력하세요.</p>
-<form method="post" action="/configure">
-<label>Wi-Fi 이름(SSID)</label><input name="ssid" required maxlength="32">
-<label>비밀번호</label><input name="password" type="password" maxlength="64">
-<button type="submit">연결</button></form></body></html>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fff9f1"><title>Ai:Myaong Wi-Fi 설정</title>
+<style>
+:root{--primary:#f08d86;--deep:#d6814a;--brown:#4b3621;--muted:#9c8a78;--bg:#fff9f1;--card:#fff;--cream:#fbefdd;--line:#efe3d2;--success:#7fb77e;--danger:#e26d5c}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--brown);font-family:Pretendard,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}.page{width:min(100%,460px);min-height:100vh;margin:auto;padding:calc(24px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom))}.hero{position:relative;overflow:hidden;padding:24px;border-radius:30px;background:linear-gradient(135deg,#fff 0%,#fbefdd 100%);border:1px solid var(--line);box-shadow:0 16px 38px rgba(75,54,33,.09)}.paw{position:absolute;right:18px;top:14px;font-size:42px;opacity:.13;transform:rotate(18deg)}.brand{font-size:13px;font-weight:900;letter-spacing:.08em;color:var(--primary)}h1{margin:8px 0 6px;font-size:27px;line-height:1.2}.sub{margin:0;color:var(--muted);font-size:14px;line-height:1.55;font-weight:650}.status{display:flex;align-items:center;gap:9px;margin-top:18px;padding:11px 13px;border-radius:17px;background:rgba(255,255,255,.72);font-size:12px;font-weight:800}.dot{width:9px;height:9px;border-radius:50%;background:var(--success);box-shadow:0 0 0 5px rgba(127,183,126,.15)}.section{margin-top:18px}.section-head{margin:0 3px 9px}.section-title{font-size:15px;font-weight:900}.card{overflow:hidden;border:1px solid var(--line);border-radius:25px;background:var(--card);box-shadow:0 8px 22px rgba(75,54,33,.06)}.empty{padding:28px 18px;text-align:center;color:var(--muted);font-size:13px;font-weight:700;line-height:1.5}.network{width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border:0;border-bottom:1px solid var(--line);background:#fff;color:var(--brown);text-align:left;cursor:pointer}.network:last-child{border-bottom:0}.network.selected{background:#fff3ef}.card.collapsed .network:not(.selected){display:none}.wifi{display:grid;place-items:center;width:39px;height:39px;flex:0 0 39px;border-radius:15px;background:var(--cream);font-size:18px}.network-copy{min-width:0;flex:1}.ssid{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:900}.meta{display:block;margin-top:3px;color:var(--muted);font-size:11px;font-weight:700}.check{color:var(--primary);font-weight:1000}.form{margin-top:14px;padding:17px}.label{display:block;margin:0 2px 6px;color:var(--muted);font-size:11px;font-weight:900}.input{width:100%;margin-bottom:12px;padding:13px 14px;border:1px solid var(--line);border-radius:16px;background:#fff8ee;color:var(--brown);font:inherit;font-size:14px;font-weight:750;outline:0}.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(240,141,134,.13)}.primary{width:100%;padding:14px;border:0;border-radius:17px;background:linear-gradient(135deg,var(--primary),#f4a98c);color:#fff;font-size:14px;font-weight:950;cursor:pointer;box-shadow:0 10px 22px rgba(240,141,134,.28)}button:disabled{opacity:.55;cursor:default}.message{display:none;margin-top:13px;padding:12px 14px;border-radius:16px;background:var(--cream);font-size:12px;font-weight:800;line-height:1.5}.message.show{display:block}.message.error{background:#fff0ed;color:var(--danger)}.footer{margin-top:18px;text-align:center;color:var(--muted);font-size:11px;font-weight:650}
+</style></head><body><main class="page">
+<section class="hero"><span class="paw">🐾</span><div class="brand">AI:MYAONG</div><h1>ESP32 Wi-Fi 설정</h1><p class="sub">아이먀옹 기기가 사용할 2.4GHz 네트워크를 선택해 주세요.</p><div class="status"><span class="dot"></span><span>AiMyaong-Setup 설정 모드</span></div></section>
+<section class="section"><div class="section-head"><span class="section-title">사용 가능한 Wi-Fi</span></div><div id="networks" class="card"><div class="empty">주변 2.4GHz Wi-Fi를 찾고 있어요.</div></div></section>
+<form id="form" class="card form"><label class="label" for="ssid">Wi-Fi 이름</label><input id="ssid" class="input" maxlength="32" autocomplete="off" required placeholder="목록에서 선택하거나 직접 입력"><label class="label" for="password">비밀번호</label><input id="password" class="input" type="password" maxlength="64" placeholder="개방형 네트워크는 비워 두세요"><button id="connect" class="primary" type="submit">ESP32에 저장하고 연결</button><div id="message" class="message"></div></form>
+<p class="footer">연결이 완료되면 설정 AP가 자동으로 종료됩니다.</p></main>
+<script>
+const list=document.getElementById('networks'),ssid=document.getElementById('ssid'),password=document.getElementById('password'),message=document.getElementById('message'),connectButton=document.getElementById('connect');let selected='',collapsed=false;
+function notice(text,error=false){message.textContent=text;message.className='message show'+(error?' error':'')}function bars(rssi){return rssi>=-55?'▂▄▆█':rssi>=-70?'▂▄▆':rssi>=-82?'▂▄':'▂'}
+function draw(networks){list.innerHTML='';list.className='card'+(collapsed?' collapsed':'');if(!networks.length){list.innerHTML='<div class="empty">검색된 2.4GHz Wi-Fi가 없습니다.</div>';return}networks.sort((a,b)=>b.rssi-a.rssi).forEach(network=>{const isSelected=selected===network.ssid,button=document.createElement('button');button.type='button';button.className='network'+(isSelected?' selected':'');const icon=document.createElement('span');icon.className='wifi';icon.textContent=network.secure?'🔒':'◉';const copy=document.createElement('span');copy.className='network-copy';const name=document.createElement('span');name.className='ssid';name.textContent=network.ssid;const meta=document.createElement('span');meta.className='meta';meta.textContent=isSelected&&collapsed?'선택됨 · 눌러서 다시 선택':`${bars(network.rssi)}  ${network.rssi} dBm · CH ${network.channel} · 2.4GHz`;const check=document.createElement('span');check.className='check';check.textContent=isSelected?'✓':'';copy.append(name,meta);button.append(icon,copy,check);button.onclick=()=>{if(isSelected&&collapsed){collapsed=false}else{selected=network.ssid;ssid.value=network.ssid;if(!network.secure)password.value='';collapsed=true}draw(networks)};list.append(button)})}
+async function loadNetworks(){try{const response=await fetch('/api/wifi/scan');const data=await response.json();draw(data.networks||[])}catch(error){list.innerHTML='<div class="empty">Wi-Fi 목록을 불러오지 못했습니다.</div>'}}
+document.getElementById('form').onsubmit=async event=>{event.preventDefault();const target=ssid.value.trim();if(!target){notice('Wi-Fi 이름을 선택해 주세요.',true);return}connectButton.disabled=true;notice(`${target}에 연결을 시도합니다.`);try{const response=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:target,password:password.value})});const data=await response.json();if(!response.ok)throw new Error(data.error||'저장에 실패했습니다.');notice('저장했습니다. 연결이 완료되면 이 AP가 자동으로 종료됩니다.')}catch(error){notice(error.message||'ESP32 설정 저장에 실패했습니다.',true);connectButton.disabled=false}};loadNetworks();
+</script></body></html>
 )HTML";
   wifiSetupServer.send(200, "text/html; charset=utf-8", page);
 }
@@ -170,16 +306,9 @@ void handleWifiConfigure() {
     return;
   }
 
-  mqttClient.disconnect();
-
   wifiSetupServer.send(200, "text/html; charset=utf-8",
                        "<meta charset='utf-8'><p>연결을 시도합니다. 잠시 후 ESP32 시리얼 모니터에서 IP를 확인하세요.</p>");
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.begin(ssid.c_str(), password.c_str());
-  wifiSetupConnectionPending = true;
-  lastWifiAttemptMs = millis();
-  Serial.print("[wifi] setup requested for SSID: ");
-  Serial.println(ssid);
+  applyWifiCredentials(ssid, password);
 }
 
 void startWifiSetupPortal() {
@@ -187,10 +316,22 @@ void startWifiSetupPortal() {
     return;
   }
 
+  // A scan cannot start while the STA interface is still associating.
+  // Stop only the active attempt; keep saved credentials in flash.
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_STA);
+  delay(150);
+  refreshWifiScanCache();
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(WIFI_SETUP_AP_SSID, WIFI_SETUP_AP_PASSWORD);
   wifiSetupServer.on("/", HTTP_GET, sendWifiSetupPage);
   wifiSetupServer.on("/configure", HTTP_POST, handleWifiConfigure);
+  wifiSetupServer.on("/api/wifi/status", HTTP_GET, handleWifiApiStatus);
+  wifiSetupServer.on("/api/wifi/status", HTTP_OPTIONS, handleWifiApiOptions);
+  wifiSetupServer.on("/api/wifi/scan", HTTP_GET, handleWifiApiScan);
+  wifiSetupServer.on("/api/wifi/scan", HTTP_OPTIONS, handleWifiApiOptions);
+  wifiSetupServer.on("/api/wifi/connect", HTTP_POST, handleWifiApiConnect);
+  wifiSetupServer.on("/api/wifi/connect", HTTP_OPTIONS, handleWifiApiOptions);
   wifiSetupServer.onNotFound(sendWifiSetupPage);
   wifiSetupServer.begin();
   wifiSetupPortalRunning = true;
@@ -263,6 +404,8 @@ void connectWifiIfNeeded() {
   lastWifiAttemptMs = now;
 
   Serial.println("[wifi] connecting...");
+  WiFi.disconnect(false, false);
+  delay(50);
   WiFi.mode(WIFI_STA);
   if (String(WIFI_SSID).length() > 0) {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -283,12 +426,13 @@ void connectMqttIfNeeded() {
   lastMqttAttemptMs = now;
 
   if (String(MQTT_BROKER_HOST).length() == 0 || String(MQTT_USERNAME).length() == 0 ||
-      String(MQTT_PASSWORD).length() == 0 || String(MQTT_ROOT_CA).indexOf("PASTE_") >= 0) {
+      String(MQTT_PASSWORD).length() == 0 ||
+      (MQTT_TLS_VERIFY_CA && String(MQTT_ROOT_CA).indexOf("PASTE_") >= 0)) {
     Serial.println("[mqtt] configuration missing in mqtt_secrets.h");
     return;
   }
 
-  if (time(nullptr) < 1700000000) {
+  if (MQTT_TLS_VERIFY_CA && time(nullptr) < 1700000000) {
     Serial.println("[time] synchronizing for TLS certificate validation...");
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     unsigned long syncStartedAt = millis();
@@ -303,7 +447,12 @@ void connectMqttIfNeeded() {
   }
 
   if (!mqttTlsConfigured) {
-    mqttTlsClient.setCACert(MQTT_ROOT_CA);
+    if (MQTT_TLS_VERIFY_CA) {
+      mqttTlsClient.setCACert(MQTT_ROOT_CA);
+    } else {
+      mqttTlsClient.setInsecure();
+      Serial.println("[mqtt] WARNING: TLS certificate verification is disabled");
+    }
     mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
     mqttTlsConfigured = true;
   }
@@ -325,10 +474,30 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/pump/off");
   mqttClient.subscribe("dispenser/pump/speed");
   mqttClient.subscribe("dispenser/tare");
+  mqttClient.subscribe("dispenser/tare/food");
+  mqttClient.subscribe("dispenser/tare/water");
   mqttClient.subscribe("dispenser/weight/request");
+  mqttClient.subscribe("dispenser/wifi/setup");
   publishDispenserStatus("online");
   publishDispenserWeight();
   Serial.println("[mqtt] connected and subscribed");
+}
+
+void serviceMqttSetupFallback() {
+  if (WiFi.status() != WL_CONNECTED || mqttClient.connected()) {
+    mqttDisconnectedSinceMs = 0;
+    return;
+  }
+
+  if (mqttDisconnectedSinceMs == 0) {
+    mqttDisconnectedSinceMs = millis();
+    return;
+  }
+
+  if (!wifiSetupPortalRunning && millis() - mqttDisconnectedSinceMs >= MQTT_SETUP_PORTAL_DELAY_MS) {
+    Serial.println("[mqtt] connection unavailable; starting Wi-Fi setup portal");
+    startWifiSetupPortal();
+  }
 }
 
 void setupMqttControl() {
@@ -350,6 +519,7 @@ void loopMqttControl() {
   serviceWifiSetupPortal();
   connectWifiIfNeeded();
   connectMqttIfNeeded();
+  serviceMqttSetupFallback();
 
   if (mqttClient.connected()) {
     mqttClient.loop();

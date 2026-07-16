@@ -22,6 +22,7 @@ from app.routers import (
     ws,
 )
 from app.services.database import Database
+from app.services.dispenser_logger import DispenserLogger
 from app.services.feed_service import FeedService
 from app.services.retention import cleanup_old_records
 from app.services.robot_service import RobotService
@@ -69,6 +70,44 @@ app.state.mqtt_client = mqtt_client
 app.state.simulator = simulator
 app.state.robot_service = RobotService(mqtt_client, database, simulator)
 app.state.feed_service = FeedService(mqtt_client, database, simulator)
+
+
+def _handle_sensor_message(payload: dict) -> None:
+    # 파이가 뿌리는 후방 센서값을 MQTT로 직접 받는다. HTTP POST(/api/robot/sensor)는
+    # announce로 '선택된' 백엔드 한 대만 받지만, 이 경로는 브로커에 붙은 모든 백엔드가
+    # 동시에 받는다. 알림 저장은 HTTP 경로에만 남겨 백엔드마다 중복 생성되지 않게 한다.
+    simulator.update_sensor(
+        distance_cm=payload.get("distance_cm"),
+        rear_obstacle=payload.get("rear_obstacle"),
+        threshold_cm=payload.get("threshold_cm"),
+        source=payload.get("source"),
+    )
+
+
+dispenser_logger = DispenserLogger()
+app.state.dispenser_logger = dispenser_logger
+
+
+def _handle_dispenser_weight_message(payload: dict) -> None:
+    # 디스펜서 로드셀(사료통/물통) 무게. 잔여량 표시의 유일한 실제 소스다.
+    status = simulator.update_dispenser_weight(
+        food_g=payload.get("food_g"),
+        water_g=payload.get("water_g"),
+        source="esp32-loadcell",
+    )
+    # 물통 무게가 줄어든 만큼이 곧 고양이가 마신 양이다(순환이라 급수로는 안 줄어든다).
+    # 필터를 거친 값으로 판단해야 노이즈로 헛기록이 남지 않는다.
+    dispenser_logger.on_water_weight(status["dispenser"].get("water_ml"))
+
+
+def _handle_dispenser_dispensed_message(payload: dict) -> None:
+    # ESP32 가 저울로 직접 잰 1회 배출량. 통계에 남는 유일한 배식량 소스다.
+    dispenser_logger.on_food_dispensed(payload.get("food_g"))
+
+
+mqtt_client.on_topic("ai-myaong/robot/sensor", _handle_sensor_message)
+mqtt_client.on_topic("dispenser/weight", _handle_dispenser_weight_message)
+mqtt_client.on_topic("dispenser/dispensed", _handle_dispenser_dispensed_message)
 
 app.include_router(robot.router)
 app.include_router(robot_devices.router)
