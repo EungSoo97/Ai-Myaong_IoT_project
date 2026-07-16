@@ -168,6 +168,7 @@ export function RobotVision() {
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
   const [robotSerial, setRobotSerial] = useState(() => {
+    if (ROBOT_DEVICE_CLAIM_ENABLED) return "";
     try {
       return localStorage.getItem(ROBOT_SERIAL_KEY) || "";
     } catch {

@@ -250,6 +250,7 @@ export function Dispenser() {
    * 버튼을 disabled 로 막아두지만, 그래도 호출되는 경로(자동 스케줄 편집 등)가 있어
    * 동작 함수에서 한 번 더 확인한다. */
   const [robotSerial, setRobotSerial] = useState(() => {
+    if (ROBOT_DEVICE_CLAIM_ENABLED) return ''
     try {
       return localStorage.getItem(ROBOT_SERIAL_KEY) || ''
     } catch {
