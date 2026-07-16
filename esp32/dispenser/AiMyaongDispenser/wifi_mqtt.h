@@ -39,12 +39,7 @@ unsigned long rebootAt = 0;
 unsigned long lastMqttAttempt = 0;
 }
 
-inline void handleMqttMessage(const String& topic, int amount, int seconds);
-
-// Defined in dispenser_loadcell.h, which is included after this header.
-inline void tareLoadCells();
-inline void publishWeightNow();
-inline void markFoodDispenseStart();
+inline void handleMqttMessage(const String& topic, int amount);
 
 inline String jsonEscape(const String& value) {
   String escaped;
@@ -106,35 +101,6 @@ inline int extractAmount(const String& payload) {
 
   long plainAmount = payload.toInt();
   return plainAmount < 1 ? 1 : static_cast<int>(plainAmount);
-}
-
-// 키가 없으면 0. extractAmount 와 달리 1 로 올리지 않는다 — 호출부가 '안 왔음'을 구분해야 한다.
-inline int extractIntField(const String& payload, const char* key) {
-  String marker = String("\"") + key + "\"";
-  int keyIndex = payload.indexOf(marker);
-  if (keyIndex < 0) {
-    return 0;
-  }
-
-  int colonIndex = payload.indexOf(':', keyIndex + marker.length());
-  if (colonIndex < 0) {
-    return 0;
-  }
-
-  int start = colonIndex + 1;
-  while (start < payload.length() && !isDigit(payload[start]) && payload[start] != '-') {
-    start += 1;
-  }
-  int end = start;
-  while (end < payload.length() && (isDigit(payload[end]) || payload[end] == '-')) {
-    end += 1;
-  }
-  if (end == start) {
-    return 0;
-  }
-
-  long value = payload.substring(start, end).toInt();
-  return value < 0 ? 0 : static_cast<int>(value);
 }
 
 inline String extractJsonString(const String& body, const String& key) {
@@ -284,43 +250,19 @@ inline void publishStatus(const char* state) {
   mqttClient.publish("dispenser/status", payload.c_str(), true);
 }
 
-// 로드셀이 안 붙은 채널은 키 자체를 뺀다. 0 을 보내면 백엔드가 '물 0ml 보충필요'로
-// 읽어서 가득 찬 통을 비었다고 표시한다 — 모르는 것과 비어있는 것은 다르다.
-inline void publishDispenserWeight(bool hasFood, float foodGrams, bool hasWater, float waterGrams) {
-  if (!mqttClient.connected() || (!hasFood && !hasWater)) {
-    return;
-  }
-
-  String payload = "{";
-  if (hasFood) {
-    payload += "\"food_g\":";
-    payload += String(foodGrams, 1);
-    payload += ",";
-  }
-  if (hasWater) {
-    payload += "\"water_g\":";
-    payload += String(waterGrams, 1);
-    payload += ",";
-  }
-  payload += "\"ip\":\"";
-  payload += WiFi.localIP().toString();
-  payload += "\"}";
-  mqttClient.publish("dispenser/weight", payload.c_str(), false);
-}
-
-// 배식 1회의 실제 배출량. 저울이 잠잠해진 시점을 아는 건 이 기기뿐이라, 배출량은
-// 여기서 재서 알린다. 백엔드가 이걸 그대로 통계에 쌓는다.
-inline void publishFoodDispensed(float grams) {
+inline void publishDispenserWeight(float foodGrams, float waterGrams) {
   if (!mqttClient.connected()) {
     return;
   }
 
   String payload = "{\"food_g\":";
-  payload += String(grams, 1);
+  payload += String(foodGrams, 1);
+  payload += ",\"water_g\":";
+  payload += String(waterGrams, 1);
   payload += ",\"ip\":\"";
   payload += WiFi.localIP().toString();
   payload += "\"}";
-  mqttClient.publish("dispenser/dispensed", payload.c_str(), false);
+  mqttClient.publish("dispenser/weight", payload.c_str(), false);
 }
 
 inline void connectMqtt() {
@@ -338,8 +280,6 @@ inline void connectMqtt() {
   if (mqttClient.connect(clientId.c_str())) {
     mqttClient.subscribe("dispenser/feed");
     mqttClient.subscribe("dispenser/water");
-    mqttClient.subscribe("dispenser/tare");
-    mqttClient.subscribe("dispenser/weight/request");
     publishStatus("online");
   }
 }
@@ -608,7 +548,7 @@ inline void setupWifiAndMqtt() {
     for (unsigned int i = 0; i < length; i += 1) {
       body += static_cast<char>(payload[i]);
     }
-    handleMqttMessage(String(topic), extractAmount(body), extractIntField(body, "seconds"));
+    handleMqttMessage(String(topic), extractAmount(body));
   });
 
   if (!connectSavedWifi()) {
@@ -624,16 +564,11 @@ inline void setupWifiAndMqtt() {
   connectMqtt();
 }
 
-inline void handleMqttMessage(const String& topic, int amount, int seconds) {
+inline void handleMqttMessage(const String& topic, int amount) {
   if (topic == "dispenser/feed") {
     dispenseFood(amount);
   } else if (topic == "dispenser/water") {
-    // 물은 초 단위 지시. 옛 백엔드가 amount 만 보내면 그 값을 초로 읽는다.
-    dispenseWaterSeconds(seconds > 0 ? seconds : amount);
-  } else if (topic == "dispenser/tare") {
-    tareLoadCells();
-  } else if (topic == "dispenser/weight/request") {
-    publishWeightNow();
+    dispenseWater(amount);
   }
 }
 

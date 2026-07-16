@@ -31,9 +31,11 @@ class DeviceSimulator:
         self._food_window: list[float] = []                     # 로드셀도 초음파처럼 튀므로 중앙값 필터
         self._water_window: list[float] = []
         self._weight_window_size = max(1, int(os.getenv("WEIGHT_FILTER_WINDOW", "5")))
-        # 통 용량 — % 게이지 계산용. 통을 바꾸면 이 값만 조정하면 된다.
-        self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "1000")))
-        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "1000")))
+        # 게이지 100% 의 기준. 여기만 쓰인다 — 표시 숫자(g/ml)와 여유/보충 판정은
+        # 실측 무게 그대로라 이 값과 무관하다.
+        # 물통 자체는 300ml 보다 크지만 운용상 그 이상 채우지 않아 300 을 기준으로 잡는다.
+        self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "300")))
+        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "300")))
         self._weight_stale_sec = float(os.getenv("DISPENSER_WEIGHT_STALE_SEC", "10"))
 
     def move(self, command: str) -> dict[str, Any]:

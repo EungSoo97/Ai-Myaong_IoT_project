@@ -194,11 +194,16 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_water.add(water_key)
+                # 스케줄의 amount 는 '펌프를 몇 초 돌릴지'다(ml 이 아니다). 물통이 저수조 겸
+                # 음수대라 펌프를 돌려도 물이 통 밖으로 나가지 않아 급수량 ml 이 성립하지 않는다.
+                # 그래서 이 행은 '그 분에 이미 급수했다'는 중복 방지 기록으로만 쓰고,
+                # 양은 0 으로 둔다 — 초를 ml 칸에 적으면 통계·최근활동이 "물 10ml" 라고 거짓말한다.
+                # 실제로 마신 양은 물통 무게가 줄어든 만큼을 water_type='consumed' 로 따로 쌓는다.
                 db.add(
                     WaterLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        water_amount_ml=amount,
+                        water_amount_ml=0,
                         water_type="auto",
                         created_at=minute_start,
                     )
@@ -206,7 +211,7 @@ def _run_once(feed_service, hhmm):
                 db.flush()
                 if feed_service:
                     try:
-                        feed_service.water(int(round(amount)))
+                        feed_service.water(int(round(amount)))  # amount = 초
                     except Exception:
                         pass
 

@@ -23,6 +23,42 @@ import { useFeedSettings, setFoodAmount, setWaterAmount } from '../lib/dispenser
 import { addNotification } from '../lib/notificationRepository'
 
 // 브랜드 색 토큰(CSS 변수) 사용 → 다크모드에서 자동으로 차분한 톤으로 전환
+/* 잔량 기준 — 실제 양(g/ml)으로 본다. % 는 통 용량 설정에 따라 뜻이 달라지지만
+ * '50g 남았다'는 통이 뭐든 같은 뜻이다. 물은 밀도가 1이라 1g = 1ml 로 같은 눈금을 쓴다.
+ * 통 용량(게이지 100% 기준)은 백엔드의 DISPENSER_*_CAPACITY 가 정한다. */
+const FOOD_PLENTY_G = 150 // 이상이면 여유
+const FOOD_CAUTION_G = 50 // 이하면 '보충 필요' + 알림
+const WATER_PLENTY_ML = 150
+const WATER_CAUTION_ML = 50
+
+/* 지금 시각 'HH:MM'. 스케줄을 새로 추가할 때 기본값 — 08:00 고정에서 돌리는 것보다
+ * 지금 시각에서 출발하는 편이 손이 덜 간다. */
+function nowHHMM() {
+  const now = new Date()
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+/* '15:30' -> '오후 3시 30분'. 저장·정렬은 24시간(HH:MM) 그대로 두고 보여줄 때만 바꾼다.
+ * 형식이 이상하면 원본을 그대로 돌려준다 — 표시 때문에 값이 사라지면 안 된다. */
+function formatTimeKo(hhmm) {
+  const parsed = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? ''))
+  if (!parsed) return hhmm ?? ''
+  const hour24 = Number(parsed[1])
+  const minute = Number(parsed[2])
+  if (hour24 > 23 || minute > 59) return hhmm
+  const meridiem = hour24 < 12 ? '오전' : '오후'
+  const hour12 = hour24 % 12 || 12 // 0시·12시 -> 12
+  return minute === 0 ? `${meridiem} ${hour12}시` : `${meridiem} ${hour12}시 ${minute}분`
+}
+
+/* 여유 / 보통 / 보충 필요 — 값이 없으면(센서 끊김) null. 모르는 건 경고하지 않는다. */
+function remainLevel(live, amount, plentyAt, cautionAt) {
+  if (!live) return null
+  if (amount <= cautionAt) return 'low'
+  if (amount >= plentyAt) return 'plenty'
+  return 'normal'
+}
+
 const COLORS = {
   food: 'rgb(var(--brand-food))',
   water: 'rgb(var(--brand-water))',
@@ -122,8 +158,17 @@ export function Dispenser() {
         const parse = (raw, type) => {
           try {
             const arr = JSON.parse(raw || '[]')
+            // 물 스케줄은 예전에 ml(5~50)로 저장됐는데 지금은 '초'다. 범위 밖 값을 그대로
+            // 두면 리스트엔 "50초 급수"로 보이지만 펌웨어는 10초까지만 돌려 표시와 동작이
+            // 어긋난다. 불러올 때 종류별 범위로 맞춰 화면과 실제를 일치시킨다.
+            const r = SCHEDULE_RANGE[type] ?? SCHEDULE_RANGE.food
             return Array.isArray(arr)
-              ? arr.map((x) => ({ time: x.time, type, amount: Number(x.amount), on: x.on !== false }))
+              ? arr.map((x) => ({
+                  time: x.time,
+                  type,
+                  amount: Math.min(Math.max(Number(x.amount) || r.min, r.min), r.max),
+                  on: x.on !== false,
+                }))
               : []
           } catch {
             return []
@@ -211,7 +256,7 @@ export function Dispenser() {
     }
   }
 
-  const openAdd = () => setEditing({ time: '08:00', type: 'food', amount: 15 })
+  const openAdd = () => setEditing({ time: nowHHMM(), type: 'food', amount: SCHEDULE_RANGE.food.def })
   const openEdit = (s) => setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
 
   const saveSchedule = (form) => {
@@ -240,20 +285,41 @@ export function Dispenser() {
     setSchedule((prev) => prev.map((x) => (x.id === id ? { ...x, on: !x.on } : x)))
 
   // 잔여량 — 디스펜서 로드셀 실측값. 값이 끊기면(food_fresh/water_fresh=false) 숫자를 지어내지 않고
-  // '연결 안 됨'을 표시한다. ESP32 가 1초마다 발행하므로 3초 폴링이면 충분하다.
+  // '연결 안 됨'을 표시한다.
+  //
+  // ESP32 가 무게를 3초마다 발행하므로 폴링도 3초다. 더 자주 물어봐야 같은 값을 다시
+  // 받을 뿐이라 서버만 때린다. 값이 툭툭 튀어 보이는 건 폴링을 조여서가 아니라,
+  // 받은 값 사이를 useCountUp 이 애니메이션으로 메워서 해결한다.
+  // 탭이 숨겨져 있으면 아예 멈춘다 — 안 보이는 화면 때문에 서버를 때릴 이유가 없다.
   const [dispenser, setDispenser] = useState(null)
   useEffect(() => {
     let alive = true
+    let timer = null
+
     const load = () =>
       api
         .getDashboard()
         .then((d) => { if (alive) setDispenser(d?.status?.dispenser ?? null) })
         .catch(() => { if (alive) setDispenser(null) })
-    load()
-    const timer = window.setInterval(load, 3000)
+
+    const start = () => {
+      if (timer) return
+      load()
+      timer = window.setInterval(load, 3000)
+    }
+    const stop = () => {
+      if (!timer) return
+      window.clearInterval(timer)
+      timer = null
+    }
+    const onVisibility = () => (document.hidden ? stop() : start())
+
+    start()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       alive = false
-      window.clearInterval(timer)
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 
@@ -264,9 +330,13 @@ export function Dispenser() {
   const waterMl = waterLive ? Math.round(dispenser.water_ml ?? 0) : null
   const foodPercent = foodLive ? (dispenser.food_percent ?? 0) : 0
   const waterPercent = waterLive ? (dispenser.water_percent ?? 0) : 0
-  // 센서가 죽었을 때는 '부족'이 아니라 '모름'이다. 함부로 부족 경고를 띄우지 않는다.
-  const foodLow = foodLive && foodPercent < 30
-  const waterLow = waterLive && waterPercent < 25
+
+  const foodLevel = remainLevel(foodLive, foodGrams, FOOD_PLENTY_G, FOOD_CAUTION_G)
+  const waterLevel = remainLevel(waterLive, waterMl, WATER_PLENTY_ML, WATER_CAUTION_ML)
+
+  // 센서가 죽었을 때는 '보충 필요'가 아니라 '모름'이다. 함부로 경고를 띄우지 않는다.
+  const foodLow = foodLevel === 'low'
+  const waterLow = waterLevel === 'low'
 
   // 잔여량 부족 → 알림 (세션당 1회, 스팸 방지). 실측값이 들어온 뒤에만 판단한다.
   useEffect(() => {
@@ -277,11 +347,11 @@ export function Dispenser() {
       addNotification({ type, title, desc, link: '/dispenser' })
     }
     if (foodLow) {
-      notifyLow('food', 'food_low', '사료 부족',
+      notifyLow('food', 'food_low', '사료 보충 필요',
         foodGrams <= 0 ? '사료가 비었어요. 지금 보충해주세요!' : `남은 사료 ${foodGrams}g · 보충해주세요!`)
     }
     if (waterLow) {
-      notifyLow('water', 'water_low', '물 부족',
+      notifyLow('water', 'water_low', '물 보충 필요',
         waterMl <= 0 ? '물이 비었어요. 지금 보충해주세요!' : `남은 물 ${waterMl}ml · 보충해주세요!`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,7 +414,7 @@ export function Dispenser() {
           unit="g"
           percent={foodPercent}
           color="primary"
-          low={foodLow}
+          level={foodLevel}
           live={foodLive}
         />
         <ResourceCard
@@ -354,7 +424,7 @@ export function Dispenser() {
           unit="ml"
           percent={waterPercent}
           color="water"
-          low={waterLow}
+          level={waterLevel}
           live={waterLive}
         />
       </section>
@@ -456,7 +526,7 @@ export function Dispenser() {
                 {/* 시간 + 종류 배지 + 양 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-display text-lg font-bold text-brand-brown leading-none">{s.time}</p>
+                    <p className="font-display text-lg font-bold text-brand-brown leading-none">{formatTimeKo(s.time)}</p>
                     <span
                       className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
                       style={{ background: withAlpha(isFood ? COLORS.food : COLORS.water, 0.1), color: isFood ? COLORS.food : COLORS.water }}
@@ -466,7 +536,7 @@ export function Dispenser() {
                     {!s.on && <span className="text-[10px] font-bold text-brand-mute">꺼짐</span>}
                   </div>
                   <p className="text-xs text-brand-mute mt-1 font-semibold">
-                    {isFood ? `${s.amount}g` : `${s.amount}ml`}
+                    {isFood ? `${s.amount}g` : `${s.amount}초 급수`}
                   </p>
                 </div>
 
@@ -589,10 +659,59 @@ export function Dispenser() {
 
 /* ───── 보조 컴포넌트 ───── */
 
-function ResourceCard({ icon, label, value, unit, percent, color, low, live = true }) {
+/* 숫자가 이전 값에서 새 값으로 굴러가게 한다.
+ *
+ * 로드셀 값은 3초마다 한 번만 온다. 그대로 꽂으면 3초마다 숫자가 툭 튄다.
+ * 받은 값 사이를 애니메이션으로 메워서, 실제로 무게가 오르내리는 것처럼 보이게 한다.
+ * 폴링을 조이는 것보다 이쪽이 서버·기기에 부담이 없다 — 어차피 원본이 3초마다만 바뀐다.
+ *
+ * duration 은 폴링 주기(3초)보다 살짝 짧게. 더 길면 다음 값이 올 때까지 못 따라잡아
+ * 계속 뒤처지고, 너무 짧으면 굴러가다 멈춰서 오히려 끊겨 보인다.
+ * target 이 null(센서 끊김)이면 애니메이션하지 않는다 — 없는 값을 지어내면 안 된다. */
+function useCountUp(target, duration = 2200) {
+  const [shown, setShown] = useState(target ?? 0)
+  const shownRef = useRef(target ?? 0)
+  const rafRef = useRef(null)
+
+  useEffect(() => {
+    if (target == null) return undefined
+
+    const from = shownRef.current
+    const delta = target - from
+    // 반올림하면 어차피 같은 숫자 → 애니메이션할 이유가 없다
+    if (Math.abs(delta) < 0.5) {
+      shownRef.current = target
+      setShown(target)
+      return undefined
+    }
+
+    const startedAt = performance.now()
+    const tick = (now) => {
+      const t = Math.min(1, (now - startedAt) / duration)
+      const eased = 1 - Math.pow(1 - t, 3) // ease-out — 빠르게 출발해 끝에서 부드럽게 선다
+      const next = from + delta * eased
+      shownRef.current = next
+      setShown(next)
+      if (t < 1) rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+
+    // 새 값이 오면 진행 중이던 애니메이션은 현재 위치에서 이어받는다(shownRef 유지)
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [target, duration])
+
+  return target == null ? null : shown
+}
+
+function ResourceCard({ icon, label, value, unit, percent, color, level, live = true }) {
   const accent = color === 'water' ? COLORS.water : COLORS.food
   const danger = 'rgb(var(--brand-danger))'
+  const low = level === 'low'
   const tint = !live ? COLORS.mute : low ? danger : accent
+  const shownValue = useCountUp(live ? value : null)
+  const shownPercent = useCountUp(live ? percent : null)
   return (
     <div
       className="relative overflow-hidden rounded-3xl shadow-soft px-4 py-4 flex flex-col h-full"
@@ -619,30 +738,44 @@ function ResourceCard({ icon, label, value, unit, percent, color, low, live = tr
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-white/40 text-white animate-pulse" style={{ background: danger }}>
               <AlertTriangle className="w-3 h-3 shrink-0" /> 보충 필요
             </span>
+          ) : level === 'normal' ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed" style={{ background: withAlpha(accent, 0.18), color: accent, borderColor: withAlpha(accent, 0.4) }}>
+              보통
+            </span>
           ) : (
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-brand-success/40 bg-brand-success/20 text-[rgb(var(--brand-success-ink))]">
-              <Check className="w-3 h-3 shrink-0" /> 충분
+              <Check className="w-3 h-3 shrink-0" /> 여유
             </span>
           )}
         </div>
 
-        {/* 잔여 수치 — 센서가 끊기면 숫자를 지어내지 않고 '—' 를 보여준다 */}
-        <p className="font-display text-[34px] font-extrabold leading-none" style={{ color: !live ? COLORS.mute : low ? danger : COLORS.brown }}>
-          {live ? value : '—'}
+        {/* 잔여 수치 — 센서가 끊기면 숫자를 지어내지 않고 '—' 를 보여준다.
+         * tabular-nums: 자릿수가 바뀌어도 숫자 폭이 고정돼 카운팅 중 글자가 덜컹거리지 않는다. */}
+        <p
+          className="font-display text-[34px] font-extrabold leading-none tabular-nums transition-colors duration-500"
+          style={{ color: !live ? COLORS.mute : low ? danger : COLORS.brown }}
+        >
+          {live ? Math.round(shownValue) : '—'}
           {live && (
             <span className="text-lg ml-0.5 font-bold" style={{ color: low ? danger : COLORS.mute }}>{unit}</span>
           )}
         </p>
         {live && (
-          <p className="text-[11px] font-bold mt-1" style={{ color: COLORS.mute }}>{percent}%</p>
+          <p className="text-[11px] font-bold mt-1 tabular-nums" style={{ color: COLORS.mute }}>
+            {Math.round(shownPercent)}%
+          </p>
         )}
 
-        {/* 게이지 (스티치 트랙) */}
+        {/* 게이지 (스티치 트랙) — 폭은 rAF 가 매 프레임 갱신하므로 CSS transition 을 걸지
+         * 않는다. 둘이 겹치면 애니메이션이 서로 밀려 늘어진다. 색만 전환한다. */}
         <div className="mt-auto pt-4">
           <div className="relative h-3 rounded-full overflow-hidden border border-dashed border-brand-brown/15" style={{ background: BG_INFO }}>
             <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${live ? Math.max(0, Math.min(100, percent)) : 0}%`, background: low ? danger : accent }}
+              className="h-full rounded-full transition-colors duration-500"
+              style={{
+                width: `${live ? Math.max(0, Math.min(100, shownPercent)) : 0}%`,
+                background: low ? danger : accent,
+              }}
             />
           </div>
         </div>
@@ -782,12 +915,36 @@ function FeltLabel({ children, icon, className = '' }) {
   )
 }
 
+/* 사료는 양(g), 물은 시간(초). 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통 밖으로
+ * 나가지 않아(순환) 'ml 급수'가 성립하지 않는다. 수동 급수와 같은 눈금을 쓴다.
+ * 물의 상한 10초는 펌웨어가 자르는 값(WATER_PUMP_MAX_RUN_MS)과 맞춘 것이다. */
+const SCHEDULE_RANGE = {
+  food: { min: 5, max: 50, step: 5, unit: 'g', def: 25 },
+  water: { min: 1, max: 10, step: 1, unit: '초', def: 5 },
+}
+
 function ScheduleModal({ initial, onClose, onSave }) {
   const isEdit = initial.id != null
   const [time, setTime] = useState(initial.time)
   const [type, setType] = useState(initial.type)
-  // 기존에 300 등으로 저장된 스케줄을 편집해도 슬라이더가 어긋나지 않게 5~50 으로 clamp
-  const [amount, setAmount] = useState(() => Math.min(Math.max(Number(initial.amount) || 5, 5), 50))
+  // 사료(g)와 물(초)은 서로 다른 값이다. 종류를 오가도 각자 값을 그대로 들고 있어야
+  // 사료 30g 보다가 물 봤다가 돌아왔을 때 30g 이 살아있다. 편집 중인 종류만 저장값을
+  // 쓰고, 반대쪽은 기본값(사료 25g / 물 5초)으로 시작한다.
+  const [amounts, setAmounts] = useState(() => {
+    const next = { food: SCHEDULE_RANGE.food.def, water: SCHEDULE_RANGE.water.def }
+    const t = SCHEDULE_RANGE[initial.type] ? initial.type : 'food'
+    const r = SCHEDULE_RANGE[t]
+    // 예전에 ml(5~50)로 저장된 물 스케줄을 열어도 슬라이더가 어긋나지 않게 범위로 clamp
+    next[t] = Math.min(Math.max(Number(initial.amount) || r.def, r.min), r.max)
+    return next
+  })
+  const amount = amounts[type] ?? SCHEDULE_RANGE.food.def
+  // useState 처럼 값/함수 둘 다 받는다 (+/- 버튼은 함수형, 슬라이더는 값)
+  const setAmount = (next) =>
+    setAmounts((prev) => ({
+      ...prev,
+      [type]: typeof next === 'function' ? next(prev[type]) : next,
+    }))
   const [show, setShow] = useState(false) // 슬라이드 인/아웃 제어
 
   // 마운트 직후 풀스크린으로 슬라이드 업
@@ -803,12 +960,13 @@ function ScheduleModal({ initial, onClose, onSave }) {
   }
 
   const isFood = type === 'food'
-  const unit = isFood ? 'g' : 'ml'
-  const step = 5
-  const min = 5
-  const max = 50 // 수동 배식/급수 슬라이더와 동일한 1회 제공량 상한
+  const { min, max, step, unit } = SCHEDULE_RANGE[type] ?? SCHEDULE_RANGE.food
   const accent = isFood ? COLORS.food : COLORS.water
   const ratio = (Number(amount) - min) / (max - min)
+
+  // 종류만 바꾼다. 양은 amounts 가 종류별로 따로 들고 있어서 clamp 할 필요가 없다 —
+  // 여기서 값을 옮기면 반대쪽에 있던 값을 덮어써버린다.
+  const switchType = (next) => setType(next)
 
   const submit = (e) => {
     e.preventDefault()
@@ -855,10 +1013,10 @@ function ScheduleModal({ initial, onClose, onSave }) {
           {/* 종류 */}
           <div><FeltLabel className="!mt-3">종류</FeltLabel></div>
           <div className="mt-2 grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setType('food')} className={segBase} style={isFood ? segOn(COLORS.food) : segOff}>
+            <button type="button" onClick={() => switchType('food')} className={segBase} style={isFood ? segOn(COLORS.food) : segOff}>
               <UtensilsCrossed className="w-5 h-5" /> 사료
             </button>
-            <button type="button" onClick={() => setType('water')} className={segBase} style={!isFood ? segOn(COLORS.water) : segOff}>
+            <button type="button" onClick={() => switchType('water')} className={segBase} style={!isFood ? segOn(COLORS.water) : segOff}>
               <Droplets className="w-5 h-5" /> 물
             </button>
           </div>
