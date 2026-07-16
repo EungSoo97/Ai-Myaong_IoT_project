@@ -31,6 +31,24 @@ const FOOD_CAUTION_G = 50 // 이하면 '보충 필요' + 알림
 const WATER_PLENTY_ML = 150
 const WATER_CAUTION_ML = 50
 
+/* 정지 버튼을 언제 내릴지 정하는 '예상 구동 시간'.
+ *
+ * 정확한 신호는 ESP32 가 보내는 dispenser.busy 이고 오면 그쪽이 항상 이긴다. 이 값은
+ * 신호가 늦거나(폴링 3초) 아직 펌웨어를 안 구운 기기일 때만 쓰는 폴백이다.
+ * 그래서 여기가 틀려도 버튼이 잠깐 더/덜 보일 뿐, 통계나 실제 동작에는 영향이 없다.
+ * (배출량은 이 값으로 재지 않는다 — 그건 ESP32 가 저울로 직접 잰다)
+ *
+ * 물은 사용자가 고른 초 그대로라 정확하다. 사료만 펌웨어 상수를 따라간다. */
+const FOOD_MOTOR_MS_PER_AMOUNT = 250 // esp32/main/motor_control.h 와 같은 값
+const FOOD_MOTOR_MIN_RUN_MS = 300
+const FOOD_MOTOR_MAX_RUN_MS = 8000
+const WATER_PUMP_MAX_RUN_MS = 10000
+const RUN_MARGIN_MS = 400 // 명령이 기기까지 가는 시간
+
+const foodRunMs = (g) =>
+  Math.min(FOOD_MOTOR_MAX_RUN_MS, Math.max(FOOD_MOTOR_MIN_RUN_MS, g * FOOD_MOTOR_MS_PER_AMOUNT))
+const waterRunMs = (sec) => Math.min(WATER_PUMP_MAX_RUN_MS, Math.max(300, sec * 1000))
+
 /* 지금 시각 'HH:MM'. 스케줄을 새로 추가할 때 기본값 — 08:00 고정에서 돌리는 것보다
  * 지금 시각에서 출발하는 편이 손이 덜 간다. */
 function nowHHMM() {
@@ -230,7 +248,8 @@ export function Dispenser() {
     setBusy(true)
     try {
       await api.dispenserFeed(foodAmount)
-      showToast(`🍚 ${foodAmount}g 배식 완료`)
+      startRun(foodRunMs(foodAmount) + RUN_MARGIN_MS) // 기기 신호를 기다리지 않고 바로 정지 버튼
+      showToast(`🍚 ${foodAmount}g 배식 시작 — 버튼을 눌러 멈출 수 있어요`)
       // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
     } catch {
       showToast('배식 실패 — 기기 연결을 확인해 주세요')
@@ -248,7 +267,8 @@ export function Dispenser() {
     setBusy(true)
     try {
       await api.dispenserWater(waterAmount)
-      showToast(`💧 ${waterAmount}초 급수 완료`)
+      startRun(waterRunMs(waterAmount) + RUN_MARGIN_MS)
+      showToast(`💧 ${waterAmount}초 급수 시작 — 버튼을 눌러 멈출 수 있어요`)
     } catch {
       showToast('급수 실패 — 기기 연결을 확인해 주세요')
     } finally {
@@ -322,6 +342,56 @@ export function Dispenser() {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
+
+  /* ── 긴급 정지 ──
+   * 구동 중인지는 ESP32 가 dispenser/status 로 알려주고 백엔드가 dispenser.busy 로 내려준다.
+   * 그게 유일하게 정확한 신호라 오면 무조건 그쪽을 따른다.
+   *
+   * 다만 두 경우에 기기 신호만으로는 부족하다:
+   *  - 폴링이 3초라 신호가 최대 3초 늦게 온다. 사료 3초 배식이면 그때는 이미 끝났다.
+   *  - 아직 펌웨어를 안 구운 기기는 상태를 아예 안 보낸다.
+   * 그래서 '방금 내가 눌렀고, 이만큼 걸릴 것'이라는 예상으로 버튼을 띄우고,
+   * 기기 신호가 오면 그 즉시 예상을 버리고 기기를 따른다. */
+  const [pendingUntil, setPendingUntil] = useState(0) // 예상 종료 시각(ms), 0 = 대기 아님
+  const [now, setNow] = useState(() => Date.now())
+  const deviceBusy = !!dispenser?.busy
+  const running = deviceBusy || pendingUntil > now
+
+  // 예상으로 띄운 버튼은 예상 종료 시각이 되면 스스로 내려간다.
+  // 기기가 상태를 보내오면 예상은 버린다 — 실제 신호가 항상 이긴다.
+  useEffect(() => {
+    if (deviceBusy && pendingUntil) setPendingUntil(0)
+  }, [deviceBusy, pendingUntil])
+
+  // 경과 시간 표시 + 예상 종료 판정을 같은 틱으로 굴린다.
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return undefined
+    }
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+      setElapsed((Date.now() - startedAt) / 1000)
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [running])
+
+  const startRun = (ms) => {
+    setNow(Date.now())
+    setPendingUntil(Date.now() + ms)
+  }
+
+  const doStop = async () => {
+    setPendingUntil(0) // 누른 즉시 버튼이 내려간다 — 응답을 기다리면 멈춘 느낌이 안 난다
+    try {
+      await api.dispenserStop()
+      showToast('⏹ 정지했어요')
+    } catch {
+      showToast('정지 실패 — 기기 연결을 확인해 주세요')
+    }
+  }
 
   // 사료/물 로드셀은 따로 논다. 한쪽만 붙어 있어도 붙은 쪽은 정상 표시해야 한다.
   const foodLive = !!dispenser?.food_fresh
@@ -443,6 +513,9 @@ export function Dispenser() {
         busy={busy}
         button={`지금 ${foodAmount}g 배식하기`}
         icon={<UtensilsCrossed className="w-4 h-4" />}
+        running={running}
+        elapsed={elapsed}
+        onStop={doStop}
       />
 
       <ManualCard
@@ -458,6 +531,9 @@ export function Dispenser() {
         busy={busy}
         button={`지금 ${waterAmount}초 급수하기`}
         icon={<Droplets className="w-4 h-4" />}
+        running={running}
+        elapsed={elapsed}
+        onStop={doStop}
       />
       </div>
 
@@ -784,10 +860,11 @@ function ResourceCard({ icon, label, value, unit, percent, color, level, live = 
   )
 }
 
-function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon }) {
+function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon, running = false, elapsed = 0, onStop }) {
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
   const ratio = (amount - min) / (max - min)
+  const [pressed, setPressed] = useState(false)
   return (
     <div className="relative overflow-hidden rounded-3xl shadow-soft mt-4 px-5 py-5" style={{ backgroundColor: BG_CARD }}>
       <Stitch />
@@ -843,16 +920,40 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy}
-          className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-colors disabled:opacity-60"
-          style={{ background: accent }}
-        >
-          <Play className="w-4 h-4" />
-          {button}
-        </button>
+        {/* 구동 중에는 같은 자리에서 정지 버튼이 된다 — 방금 배식을 누른 손가락이 이미 여기 있다.
+         * 오거는 최대 8초라 다른 화면으로 옮겨가 찾을 시간이 없다. 평소엔 없어서 오발도 없다.
+         * 확인창은 두지 않는다: 긴급인데 한 번 더 물으면 그 사이에 끝나고,
+         * 잘못 눌러도 다시 배식하면 그만이라 피해가 없다. */}
+        {running ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPressed(true)
+              window.setTimeout(() => setPressed(false), 450)
+              onStop?.()
+            }}
+            // 누르면 한 번 쿵 눌렸다 돌아온다 — '눌렀다'가 아니라 '멈췄다'가 느껴져야 한다
+            className={`mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-extrabold py-3.5 border-2 border-dashed border-white/40 transition-all duration-150 ${
+              pressed ? 'scale-95 shadow-none brightness-75' : 'shadow-soft animate-pulse'
+            }`}
+            style={{ background: 'rgb(var(--brand-danger))' }}
+          >
+            <X className="w-5 h-5" />
+            정지
+            <span className="text-sm font-bold tabular-nums opacity-90">{Math.floor(elapsed)}초</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={busy}
+            className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-colors disabled:opacity-60"
+            style={{ background: accent }}
+          >
+            <Play className="w-4 h-4" />
+            {button}
+          </button>
+        )}
       </div>
     </div>
   )

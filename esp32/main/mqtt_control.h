@@ -199,6 +199,28 @@ void publishDispenserWeight() {
   mqttClient.publish("dispenser/weight", payload.c_str(), false);
 }
 
+// 지금 사료 오거나 물 펌프가 도는 중인가. 앱의 '정지' 버튼은 이 상태로만 뜬다.
+bool dispenserBusy() {
+  return motorStopAt != 0 || waterPumpStopAt != 0;
+}
+
+// 구동이 끝났을 때 idle 을 알린다.
+//
+// feed_running / water_running 은 명령을 받을 때 발행되는데 '끝났다'는 신호가 없었다.
+// dispenser/status 는 retain 이라 상태가 feed_running 에 박힌 채 남고, 앱은 영원히
+// 배식 중으로 본다. 상태가 바뀌는 순간에만 발행해 브로커를 도배하지 않는다.
+void publishDispenserBusyChange() {
+  static bool lastBusy = false;
+  bool busy = dispenserBusy();
+  if (busy == lastBusy) {
+    return;
+  }
+  lastBusy = busy;
+  if (!busy) {
+    publishDispenserStatus("idle");
+  }
+}
+
 // 이번 배식이 실제로 몇 g 나갔는지. 저울이 잠잠해지는 시점은 이 기기만 알기 때문에
 // 여기서 재서 알린다. 백엔드가 이걸 그대로 통계에 쌓는다.
 void publishFoodDispensedIfDone() {
@@ -230,6 +252,15 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
     // 물은 초 단위. 옛 백엔드가 amount 만 보내면 그 값을 초로 읽는다.
     dispenseWaterSeconds(seconds > 0 ? seconds : amount);
     publishDispenserStatus("water_running");
+  } else if (topic == "dispenser/stop") {
+    // 긴급 정지: 사료 오거와 물 펌프를 동시에 즉시 끈다.
+    // 오거는 최대 8초 도는데 지금까지 이걸 멈출 방법이 없었다(pump/off 는 물만 껐다).
+    // 중간에 멈춰도 foodDispensePending 은 살아있어서, 저울이 잠잠해지면
+    // '실제로 나간 만큼'이 dispenser/dispensed 로 나간다 — 통계는 여전히 정확하다.
+    stopMotors();
+    stopWaterPump();
+    publishDispenserStatus("stopped");
+    Serial.println("ACK DISPENSER_STOP");
   } else if (topic == "dispenser/pump/off") {
     stopWaterPump();
     publishDispenserStatus("water_stopped");
@@ -531,6 +562,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/water");
   mqttClient.subscribe("dispenser/pump/off");
   mqttClient.subscribe("dispenser/pump/speed");
+  mqttClient.subscribe("dispenser/stop");
   mqttClient.subscribe("dispenser/tare");
   mqttClient.subscribe("dispenser/tare/food");
   mqttClient.subscribe("dispenser/tare/water");
@@ -588,6 +620,8 @@ void loopMqttControl() {
   if (mqttClient.connected()) {
     mqttClient.loop();
 
+    // 구동 시작/종료는 앱의 '정지' 버튼이 뜨고 지는 근거라 즉시 알린다.
+    publishDispenserBusyChange();
     // 배출량은 저울이 잠잠해지는 즉시 한 번 나간다 — 주기 발행을 기다리지 않는다.
     publishFoodDispensedIfDone();
 

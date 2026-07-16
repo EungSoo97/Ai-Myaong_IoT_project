@@ -111,6 +111,14 @@ const SHORTCUTS = [
     icon: ShieldAlert,
     tone: "bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))] border-[rgb(var(--brand-warning-ink)/0.3)]",
   },
+  // 디스펜서 긴급 정지 — 사료 오거는 최대 8초 돌기 때문에 디스펜서 화면까지 이동할
+  // 시간이 없다. 여기서 바로 멈출 수 있어야 한다. 구동 중이 아니면 눌러도 무해하다.
+  {
+    id: "dispenser-stop",
+    label: "디스펜서 정지",
+    icon: X,
+    tone: "bg-brand-danger/15 text-brand-danger border-brand-danger/40",
+  },
 ];
 
 const ACT_PRIMARY = "#F08D86";
@@ -505,6 +513,8 @@ export function Dashboard() {
   });
   const [abnormalDetection, setAbnormalDetection] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  // 정지 버튼이 눌린 직후 잠깐 켜지는 표시 (id | null)
+  const [stopFlash, setStopFlash] = useState(null);
 
   // settings DB 에서 외출모드 동기화 (로그인 상태면 DB값으로 반영)
   useEffect(() => {
@@ -572,6 +582,21 @@ export function Dashboard() {
   const handleShortcut = async (id) => {
     if (id === "away") return toggleAway();
     if (id === "abnormal") return toggleAbnormalDetection();
+    // 긴급 정지는 busyId 가드를 타지 않는다 — 배식 요청이 진행 중이라는 이유로
+    // 정지가 막히면 정작 멈춰야 할 순간에 못 멈춘다.
+    if (id === "dispenser-stop") {
+      // 서버 응답을 기다리지 않고 바로 반응한다 — 눌렀는데 아무 일도 안 일어나는
+      // 순간이 있으면 급한 상황에 연타하게 된다.
+      setStopFlash(id);
+      window.setTimeout(() => setStopFlash(null), 450);
+      try {
+        await api.dispenserStop();
+        showToast("⏹ 디스펜서를 정지했어요");
+      } catch {
+        showToast("정지 실패 — 기기 연결을 확인해 주세요");
+      }
+      return;
+    }
     if (busyId) return;
     setBusyId(id);
     try {
@@ -828,7 +853,8 @@ export function Dashboard() {
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-3">
           빠른 작업
         </h3>
-        <div className="grid grid-cols-3 gap-3">
+        {/* 4개가 한 줄에 — 아이콘/글씨를 살짝 줄여 좁은 화면에서도 안 접힌다 */}
+        <div className="grid grid-cols-4 gap-2">
           {SHORTCUTS.map(({ id, label, icon: Icon, tone }) => {
             const active =
               (id === "away" && awayMode) ||
@@ -844,11 +870,15 @@ export function Dashboard() {
                 className="flex flex-col items-center gap-2 touch-active disabled:opacity-60"
               >
                 <span
-                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-colors ${toneCls} ${isBusy ? "animate-pulse" : ""}`}
+                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-all ${toneCls} ${isBusy ? "animate-pulse" : ""} ${
+                    // 정지를 누른 순간 — 빨갛게 차오르며 한 번 쿵 하고 눌린다.
+                    // '눌렀다'가 아니라 '멈췄다'가 몸으로 느껴져야 한다.
+                    stopFlash === id ? "!bg-brand-danger !text-white !border-white/50 scale-90 shadow-none" : ""
+                  }`}
                 >
                   <Icon className="w-6 h-6" />
                 </span>
-                <span className="text-[11px] font-semibold text-brand-brown text-center leading-tight">
+                <span className="text-[10px] font-semibold text-brand-brown text-center leading-tight">
                   {id === "away"
                     ? awayMode
                       ? "외출 모드 ON"

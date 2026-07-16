@@ -37,6 +37,13 @@ class DeviceSimulator:
         self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "300")))
         self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "300")))
         self._weight_stale_sec = float(os.getenv("DISPENSER_WEIGHT_STALE_SEC", "10"))
+        # 디스펜서 구동 상태 — ESP32 가 dispenser/status 로 알려준다. 앱의 '정지' 버튼은
+        # 이 값으로만 뜬다. 프론트가 시간을 추측하지 않도록(펌웨어 상수 복제) 기기가 직접 알린다.
+        self._dispenser_state: str | None = None
+        self._dispenser_state_at = 0.0
+        # 오거 최대 8초, 펌프 최대 10초. 그보다 오래 '구동 중'이면 기기가 죽었거나 상태를
+        # 놓친 것이라 idle 로 본다 — 정지 버튼이 영영 안 사라지는 것보다 낫다.
+        self._busy_max_sec = float(os.getenv("DISPENSER_BUSY_MAX_SEC", "13"))
 
     def move(self, command: str) -> dict[str, Any]:
         self.last_command = command
@@ -123,7 +130,27 @@ class DeviceSimulator:
             self._water_weight_updated_at > 0
             and now - self._water_weight_updated_at <= self._weight_stale_sec
         )
+        # 지금 사료/물이 나오는 중인지. 앱의 '정지' 버튼이 이 값으로 뜨고 진다.
+        view["busy"] = self._dispenser_busy()
+        view["state"] = self._dispenser_state
         return view
+
+    # ESP32 가 구동 중일 때 알리는 상태값. 그 외(online/tare_done/...)는 구동과 무관하다.
+    _BUSY_STATES = {"feed_running", "water_running"}
+
+    def update_dispenser_state(self, state: str | None) -> dict[str, Any]:
+        """ESP32 의 dispenser/status 를 반영한다."""
+        if not state:
+            return self.status()
+        self._dispenser_state = state
+        self._dispenser_state_at = time.monotonic()
+        return self.status()
+
+    def _dispenser_busy(self) -> bool:
+        if self._dispenser_state not in self._BUSY_STATES:
+            return False
+        # 구동 상태가 너무 오래 붙어 있으면 종료 신호를 놓친 것으로 본다.
+        return time.monotonic() - self._dispenser_state_at <= self._busy_max_sec
 
     def update_dispenser_weight(
         self,
