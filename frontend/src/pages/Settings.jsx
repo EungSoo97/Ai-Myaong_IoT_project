@@ -104,6 +104,8 @@ export function Settings() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sheetNetwork, setSheetNetwork] = useState(null); // 연결하려는 네트워크
   const [showAppInfo, setShowAppInfo] = useState(false); // 앱 정보(빌드 현황) 시트
+  const [tareBusy, setTareBusy] = useState("");
+  const [tareMessage, setTareMessage] = useState("");
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
 
@@ -359,6 +361,23 @@ export function Settings() {
     }
   }
 
+  async function tareDispenser(target) {
+    setTareBusy(target);
+    setTareMessage("");
+    try {
+      if (target === "food") await api.dispenserTareFood();
+      else if (target === "water") await api.dispenserTareWater();
+      else await api.dispenserTare();
+      window.setTimeout(() => api.requestDispenserWeight().catch(() => {}), 700);
+      const label = target === "food" ? "사료" : target === "water" ? "물" : "전체";
+      setTareMessage(`${label} 영점 조정 명령을 전송했습니다. 영점은 ESP32에 저장됩니다.`);
+    } catch (error) {
+      setTareMessage(error.message || "영점 조정 명령 전송에 실패했습니다.");
+    } finally {
+      setTareBusy("");
+    }
+  }
+
   // 네트워크 행 탭 → 연결 시트 열기
   const openWifiSheet = (network) => {
     setSelectedSsid(network.ssid);
@@ -571,6 +590,53 @@ export function Settings() {
             {networkMessage}
           </p>
         )}
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
+          디스펜서 무게 영점
+        </h3>
+        <FeltCard innerClassName="p-4">
+          <div className="flex items-start gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+              <Cpu className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">용기를 완전히 비운 뒤 실행하세요</p>
+              <p className="mt-1 text-xs font-semibold text-brand-mute">
+                조정한 영점은 ESP32에 저장되어 재부팅 후에도 유지됩니다.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <GhostButton
+              className="rounded-2xl py-2.5 text-sm"
+              onClick={() => tareDispenser("food")}
+              disabled={Boolean(tareBusy)}
+            >
+              {tareBusy === "food" ? "조정 중…" : "사료 영점"}
+            </GhostButton>
+            <GhostButton
+              className="rounded-2xl py-2.5 text-sm"
+              onClick={() => tareDispenser("water")}
+              disabled={Boolean(tareBusy)}
+            >
+              {tareBusy === "water" ? "조정 중…" : "물 영점"}
+            </GhostButton>
+          </div>
+          <PrimaryButton
+            className="mt-2 w-full rounded-2xl py-2.5 text-sm"
+            onClick={() => tareDispenser("all")}
+            disabled={Boolean(tareBusy)}
+          >
+            {tareBusy === "all" ? "조정 중…" : "사료 + 물 전체 영점"}
+          </PrimaryButton>
+          {tareMessage && (
+            <p className="mt-3 rounded-2xl bg-brand-cream px-3 py-2.5 text-xs font-semibold text-brand-brown">
+              {tareMessage}
+            </p>
+          )}
+        </FeltCard>
       </section>
 
       <section className="mt-6">

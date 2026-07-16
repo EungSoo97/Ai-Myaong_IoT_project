@@ -152,6 +152,14 @@ export const api = {
     request("/api/dispenser/tare", {
       method: "POST",
     }),
+  dispenserTareFood: () =>
+    request("/api/dispenser/tare/food", {
+      method: "POST",
+    }),
+  dispenserTareWater: () =>
+    request("/api/dispenser/tare/water", {
+      method: "POST",
+    }),
   requestDispenserWeight: () =>
     request("/api/dispenser/weight/request", {
       method: "POST",

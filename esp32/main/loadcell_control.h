@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "HX711.h"
 
 // Two HX711 load cell channels for dispenser weight tests.
@@ -9,24 +10,58 @@ constexpr uint8_t LOADCELL_1_DOUT_PIN = 34;
 constexpr uint8_t LOADCELL_1_SCK_PIN = 33;
 constexpr uint8_t LOADCELL_2_DOUT_PIN = 35;
 constexpr uint8_t LOADCELL_2_SCK_PIN = 22;
-constexpr float LOADCELL_DEFAULT_SCALE = -7050.0f;
+// Calibrated from a 40 g reference: reading changed -5.18 g with the old
+// -7050 factor, so raw delta / 40 g gives a corrected factor of +912.98.
+constexpr float LOADCELL_1_DEFAULT_SCALE = 913.0f;
+constexpr float LOADCELL_2_DEFAULT_SCALE = -7050.0f;
 constexpr unsigned long LOADCELL_PRINT_INTERVAL_MS = 1000;
 
 HX711 loadCell1;
 HX711 loadCell2;
-float loadCell1Scale = LOADCELL_DEFAULT_SCALE;
-float loadCell2Scale = LOADCELL_DEFAULT_SCALE;
+float loadCell1Scale = LOADCELL_1_DEFAULT_SCALE;
+float loadCell2Scale = LOADCELL_2_DEFAULT_SCALE;
 unsigned long lastLoadCellPrintMs = 0;
 
-void setupOneLoadCell(HX711& scale, float scaleFactor, const char* label, uint8_t doutPin, uint8_t sckPin) {
+constexpr const char* LOADCELL_PREFS_NAMESPACE = "aimyaong-load";
+
+void saveLoadCellOffset(const char* key, long offset) {
+  Preferences preferences;
+  if (!preferences.begin(LOADCELL_PREFS_NAMESPACE, false)) {
+    Serial.println("ERR LOADCELL_OFFSET_SAVE_FAILED");
+    return;
+  }
+  preferences.putLong(key, offset);
+  preferences.end();
+}
+
+bool restoreLoadCellOffset(HX711& scale, const char* key) {
+  Preferences preferences;
+  if (!preferences.begin(LOADCELL_PREFS_NAMESPACE, true)) {
+    return false;
+  }
+  bool saved = preferences.isKey(key);
+  long offset = saved ? preferences.getLong(key, 0) : 0;
+  preferences.end();
+  if (saved) {
+    scale.set_offset(offset);
+  }
+  return saved;
+}
+
+void setupOneLoadCell(HX711& scale, float scaleFactor, const char* label, const char* offsetKey, uint8_t doutPin, uint8_t sckPin) {
   scale.begin(doutPin, sckPin);
   scale.set_scale(scaleFactor);
 
   if (scale.is_ready()) {
-    scale.tare();
     Serial.print("ACK ");
     Serial.print(label);
-    Serial.println("_READY tare=done");
+    if (restoreLoadCellOffset(scale, offsetKey)) {
+      Serial.println("_READY offset=restored");
+    } else {
+      scale.tare();
+      saveLoadCellOffset(offsetKey, scale.get_offset());
+      Serial.println("_READY tare=done offset=saved");
+    }
   } else {
     Serial.print("WARN ");
     Serial.print(label);
@@ -35,11 +70,11 @@ void setupOneLoadCell(HX711& scale, float scaleFactor, const char* label, uint8_
 }
 
 void setupLoadCell() {
-  setupOneLoadCell(loadCell1, loadCell1Scale, "LOADCELL1", LOADCELL_1_DOUT_PIN, LOADCELL_1_SCK_PIN);
-  setupOneLoadCell(loadCell2, loadCell2Scale, "LOADCELL2", LOADCELL_2_DOUT_PIN, LOADCELL_2_SCK_PIN);
+  setupOneLoadCell(loadCell1, loadCell1Scale, "LOADCELL1", "offset1", LOADCELL_1_DOUT_PIN, LOADCELL_1_SCK_PIN);
+  setupOneLoadCell(loadCell2, loadCell2Scale, "LOADCELL2", "offset2", LOADCELL_2_DOUT_PIN, LOADCELL_2_SCK_PIN);
 }
 
-void tareOneLoadCell(HX711& scale, const char* label) {
+void tareOneLoadCell(HX711& scale, const char* label, const char* offsetKey) {
   if (!scale.is_ready()) {
     Serial.print("ERR ");
     Serial.print(label);
@@ -48,14 +83,15 @@ void tareOneLoadCell(HX711& scale, const char* label) {
   }
 
   scale.tare();
+  saveLoadCellOffset(offsetKey, scale.get_offset());
   Serial.print("ACK ");
   Serial.print(label);
-  Serial.println("_TARE");
+  Serial.println("_TARE offset=saved");
 }
 
 void tareLoadCell() {
-  tareOneLoadCell(loadCell1, "LOADCELL1");
-  tareOneLoadCell(loadCell2, "LOADCELL2");
+  tareOneLoadCell(loadCell1, "LOADCELL1", "offset1");
+  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2");
 }
 
 void setOneLoadCellScale(HX711& scale, float& scaleFactor, const char* label, float newScaleFactor) {
@@ -161,11 +197,11 @@ void printLoadCell2Count() {
 }
 
 void tareLoadCell1() {
-  tareOneLoadCell(loadCell1, "LOADCELL1");
+  tareOneLoadCell(loadCell1, "LOADCELL1", "offset1");
 }
 
 void tareLoadCell2() {
-  tareOneLoadCell(loadCell2, "LOADCELL2");
+  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2");
 }
 
 void setLoadCell1Scale(float scale) {
@@ -177,8 +213,27 @@ void setLoadCell2Scale(float scale) {
 }
 
 void serviceLoadCell() {
-  // Periodic serial output is intentionally disabled. MQTT weight publishing
-  // and the explicit LOAD/LOAD1/LOAD2 serial commands remain available.
+  unsigned long now = millis();
+  if (now - lastLoadCellPrintMs < LOADCELL_PRINT_INTERVAL_MS) {
+    return;
+  }
+  lastLoadCellPrintMs = now;
+
+  Serial.print("[loadcell] food=");
+  if (loadCell1.is_ready()) {
+    Serial.print(loadCell1.get_units(1), 2);
+    Serial.print("g");
+  } else {
+    Serial.print("NOT_READY");
+  }
+
+  Serial.print(" water=");
+  if (loadCell2.is_ready()) {
+    Serial.print(loadCell2.get_units(1), 2);
+    Serial.println("g");
+  } else {
+    Serial.println("NOT_READY");
+  }
 }
 
 void printLoadCellPinout() {

@@ -182,6 +182,14 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
     tareLoadCell();
     publishDispenserStatus("tare_done");
     publishDispenserWeight();
+  } else if (topic == "dispenser/tare/food") {
+    tareLoadCell1();
+    publishDispenserStatus("food_tare_done");
+    publishDispenserWeight();
+  } else if (topic == "dispenser/tare/water") {
+    tareLoadCell2();
+    publishDispenserStatus("water_tare_done");
+    publishDispenserWeight();
   } else if (topic == "dispenser/weight/request") {
     publishDispenserWeight();
   } else if (topic == "dispenser/wifi/setup") {
@@ -466,6 +474,8 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/pump/off");
   mqttClient.subscribe("dispenser/pump/speed");
   mqttClient.subscribe("dispenser/tare");
+  mqttClient.subscribe("dispenser/tare/food");
+  mqttClient.subscribe("dispenser/tare/water");
   mqttClient.subscribe("dispenser/weight/request");
   mqttClient.subscribe("dispenser/wifi/setup");
   publishDispenserStatus("online");
