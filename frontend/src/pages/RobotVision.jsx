@@ -140,6 +140,8 @@ const MOVE_COMMANDS = {
 const MOVE_HOLD_REPEAT_MS = 300;
 const CAMERA_HOLD_REPEAT_MS = 180;
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
+const ROBOT_DEVICE_CLAIM_ENABLED =
+  import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
 
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
@@ -165,7 +167,7 @@ export function RobotVision() {
   const [selectedClip, setSelectedClip] = useState(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
-  const [robotSerial] = useState(() => {
+  const [robotSerial, setRobotSerial] = useState(() => {
     try {
       return localStorage.getItem(ROBOT_SERIAL_KEY) || "";
     } catch {
@@ -196,6 +198,41 @@ export function RobotVision() {
     setRobotNotice("로봇을 사용하려면 설정에서 시리얼 번호를 먼저 등록해 주세요.");
     return true;
   };
+
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) return;
+    let alive = true;
+    const syncRobotAccess = () => {
+      api
+        .getMyRobotDevices()
+        .then((result) => {
+          if (!alive) return;
+          const nextSerial = result.devices?.[0]?.robot_serial || "";
+          setRobotSerial(nextSerial);
+          try {
+            if (nextSerial) localStorage.setItem(ROBOT_SERIAL_KEY, nextSerial);
+            else localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {
+          if (!alive) return;
+          setRobotSerial("");
+          try {
+            localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        });
+    };
+    syncRobotAccess();
+    window.addEventListener("focus", syncRobotAccess);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", syncRobotAccess);
+    };
+  }, []);
 
   useEffect(() => {
     api

@@ -96,6 +96,7 @@ const withAlpha = (c, a) => `${c.slice(0, -1)} / ${a})`
 // 카드 배경: 흰색 80% + 크림 20% (은은) / 정보·칩: 따뜻한 탄
 const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)"
 const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)"
+const ROBOT_DEVICE_CLAIM_ENABLED = import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true"
 
 /* 안쪽 점선 바느질 테두리 (펠트 느낌) */
 function Stitch({ className = '' }) {
@@ -248,7 +249,7 @@ export function Dispenser() {
   /* 시리얼 번호를 등록해야 디스펜서를 쓸 수 있다. 등록 전에는 배식·급수·스케줄을 막는다.
    * 버튼을 disabled 로 막아두지만, 그래도 호출되는 경로(자동 스케줄 편집 등)가 있어
    * 동작 함수에서 한 번 더 확인한다. */
-  const [robotSerial] = useState(() => {
+  const [robotSerial, setRobotSerial] = useState(() => {
     try {
       return localStorage.getItem(ROBOT_SERIAL_KEY) || ''
     } catch {
@@ -261,6 +262,41 @@ export function Dispenser() {
     showToast('로봇 시리얼 번호를 먼저 등록해 주세요')
     return true
   }
+
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) return;
+    let alive = true;
+    const syncRobotAccess = () => {
+      api
+        .getMyRobotDevices()
+        .then((result) => {
+          if (!alive) return;
+          const nextSerial = result.devices?.[0]?.robot_serial || "";
+          setRobotSerial(nextSerial);
+          try {
+            if (nextSerial) localStorage.setItem(ROBOT_SERIAL_KEY, nextSerial);
+            else localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {
+          if (!alive) return;
+          setRobotSerial("");
+          try {
+            localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        });
+    };
+    syncRobotAccess();
+    window.addEventListener("focus", syncRobotAccess);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", syncRobotAccess);
+    };
+  }, []);
 
   // 수동 배식 — 명령만 보낸다. 통계 기록은 백엔드가 한다.
   // 실제 배출량은 ESP32 가 저울로 직접 재서(dispenser/dispensed) 백엔드에 알리고,

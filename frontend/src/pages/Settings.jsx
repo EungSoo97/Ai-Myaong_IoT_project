@@ -133,6 +133,7 @@ export function Settings() {
   const [memberEmail, setMemberEmail] = useState("");
   const [memberBusy, setMemberBusy] = useState(false);
   const [memberMessage, setMemberMessage] = useState("");
+  const [robotRole, setRobotRole] = useState("");
   const [serialPanelOpen, setSerialPanelOpen] = useState(false);
   const [memberPanelOpen, setMemberPanelOpen] = useState(false);
   const [robotActionBusy, setRobotActionBusy] = useState("");
@@ -175,13 +176,33 @@ export function Settings() {
   useEffect(() => {
     api
       .getSettings()
-      .then((s) => {
+      .then(async (s) => {
         setPushOn(s.push_enabled !== "N");
         setMotionAlert(s.motion_alert !== "N");
         setStrangerAlert(s.stranger_alert !== "N");
         setFeedAlert(s.feed_alert === "Y");
         if (s.dark_mode) setTheme(s.dark_mode); // DB 테마 → 화면 반영
-        if (s.robot_serial) setSerial(s.robot_serial);
+        if (ROBOT_DEVICE_CLAIM_ENABLED) {
+          try {
+            const result = await api.getMyRobotDevices();
+            const authorizedDevice = result.devices?.[0] || null;
+            const authorizedSerial = authorizedDevice?.robot_serial || "";
+            setSerial(authorizedSerial);
+            setRobotRole(authorizedDevice?.role || "");
+            if (authorizedSerial && s.robot_serial !== authorizedSerial) {
+              saveSettings({ robot_serial: authorizedSerial });
+            }
+            if (!authorizedSerial && s.robot_serial) {
+              saveSettings({ robot_serial: "" });
+            }
+          } catch {
+            setSerial("");
+            setRobotRole("");
+          }
+        } else if (s.robot_serial) {
+          setSerial(s.robot_serial);
+          setRobotRole("OWNER");
+        }
         // esp32/mqtt: DB에 있으면 반영, 없으면(null) 현재 기본값을 DB에 자동 저장
         const patch = {};
         if (s.esp32_setup_url) setSetupUrl(s.esp32_setup_url);
@@ -226,6 +247,7 @@ export function Settings() {
   };
   const unregisterSerial = () => {
     setSerial("");
+    setRobotRole("");
     setSerialMessage("");
     setMemberEmail("");
     setMemberMessage("");
@@ -915,7 +937,7 @@ export function Settings() {
             <span className="min-w-0 text-left">
               <span className="block text-xs font-bold text-brand-mute">로봇 권한 관리</span>
               <span className="block text-sm font-bold text-brand-brown truncate">
-                다른 사용자 권한 부여
+                {robotRole === "MEMBER" ? "권한 받은 상태" : "다른 사용자 권한 부여"}
               </span>
             </span>
           </span>
@@ -931,18 +953,30 @@ export function Settings() {
             <div className="min-w-0">
               <p className="text-xs font-bold text-brand-mute">로봇 권한 관리</p>
               <p className="text-sm font-bold text-brand-brown">
-                다른 사용자 권한 부여
+                {robotRole === "MEMBER" ? "권한 받은 상태" : "다른 사용자 권한 부여"}
               </p>
             </div>
           </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-brand-mute">
-            최초 등록자만 다른 사용자에게 로봇과 디스펜서 사용 권한을 줄 수 있습니다.
-          </p>
+          {robotRole === "MEMBER" ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-brand-success/35 bg-brand-success/10 px-3 py-2.5">
+              <p className="text-xs font-bold text-brand-success flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> 로봇 사용 권한을 받았습니다.
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-brand-mute">
+                소유자가 부여한 권한으로 로봇비전과 디스펜서 기능을 사용할 수 있습니다.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-[11px] leading-relaxed text-brand-mute">
+              최초 등록자만 다른 사용자에게 로봇과 디스펜서 사용 권한을 줄 수 있습니다.
+            </p>
+          )}
           {!serial && (
             <p className="mt-2 text-[11px] font-semibold text-brand-primary">
               시리얼 번호를 먼저 등록하면 권한 부여를 사용할 수 있습니다.
             </p>
           )}
+          {serial && robotRole === "OWNER" && (
           <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
             <input
               value={memberEmail}
@@ -960,6 +994,12 @@ export function Settings() {
               {memberBusy ? "처리 중" : "권한 부여"}
             </PrimaryButton>
           </div>
+          )}
+          {serial && !robotRole && (
+            <p className="mt-2 text-[11px] font-semibold text-brand-primary">
+              권한 정보를 확인하는 중입니다.
+            </p>
+          )}
           {memberMessage && (
             <p className="mt-2 text-[11px] font-semibold text-brand-primary">
               {memberMessage}
