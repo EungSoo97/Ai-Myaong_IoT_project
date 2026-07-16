@@ -37,7 +37,7 @@ import {
 import { Card, CreamCard, PageHeader, Badge } from "../components/ui";
 import { useAccount, petAgeLabel, speciesLabel, addPet, getAccount, saveAccount } from "../lib/accountRepository";
 import { AddPetModal } from "../components/AddPetModal";
-import { useNotifications, unreadCount, timeAgo } from "../lib/notificationRepository";
+import { useNotifications, unreadCount, timeAgo, addNotification } from "../lib/notificationRepository";
 import { useFeedSettings } from "../lib/dispenserSettings";
 import { toApiPet, fromApiPet } from "../lib/petMap";
 import { mapVisionEventForList } from "../lib/visionEventMapper";
@@ -593,6 +593,13 @@ export function Dashboard() {
       try {
         await api.dispenserStop();
         showToast("⏹ 디스펜서를 정지했어요");
+        // 명령이 실제로 나간 뒤에만 남긴다 — 실패했는데 '정지됨'이 기록되면 안 된다
+        addNotification({
+          type: "dispenser_stopped",
+          title: "디스펜서 정지",
+          desc: "배식/급수를 중간에 멈췄어요.",
+          link: "/dispenser",
+        });
       } catch {
         showToast("정지 실패 — 기기 연결을 확인해 주세요");
       }
