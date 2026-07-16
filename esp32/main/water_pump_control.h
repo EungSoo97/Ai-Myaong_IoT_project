@@ -8,7 +8,9 @@ constexpr uint8_t WATER_PUMP_GATE_PIN = 32;
 constexpr uint8_t WATER_PUMP_DEFAULT_SPEED = 200;
 constexpr unsigned long WATER_PUMP_DEFAULT_RUN_MS = 1000;
 constexpr unsigned long WATER_PUMP_MAX_RUN_MS = 10000;
-constexpr unsigned long WATER_PUMP_MS_PER_AMOUNT = 50;
+// 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통 밖으로 나가지 않는다(순환).
+// 'ml 급수'가 성립하지 않아 '몇 초 돌릴지'로만 지시한다.
+constexpr unsigned long WATER_PUMP_MS_PER_SECOND = 1000;
 constexpr unsigned long WATER_PUMP_MIN_RUN_MS = 300;
 
 unsigned long waterPumpStopAt = 0;
@@ -45,19 +47,19 @@ void startWaterPumpFor(unsigned long runMs) {
   Serial.println();
 }
 
-unsigned long waterRunMsForAmount(int amount) {
-  long safeAmount = amount < 1 ? 1 : amount;
-  unsigned long runMs = static_cast<unsigned long>(safeAmount) * WATER_PUMP_MS_PER_AMOUNT;
+unsigned long waterRunMsForSeconds(int seconds) {
+  long safeSeconds = seconds < 1 ? 1 : seconds;
+  unsigned long runMs = static_cast<unsigned long>(safeSeconds) * WATER_PUMP_MS_PER_SECOND;
   return constrain(runMs, WATER_PUMP_MIN_RUN_MS, WATER_PUMP_MAX_RUN_MS);
 }
 
-void dispenseWaterAmount(int amount) {
-  unsigned long runMs = waterRunMsForAmount(amount);
+void dispenseWaterSeconds(int seconds) {
+  unsigned long runMs = waterRunMsForSeconds(seconds);
   waterPumpStopAt = millis() + runMs;
   runWaterPumpOutput();
 
-  Serial.print("ACK WATER_PUMP_ON amount=");
-  Serial.print(amount);
+  Serial.print("ACK WATER_PUMP_ON seconds=");
+  Serial.print(seconds);
   Serial.print(" run_ms=");
   Serial.print(runMs);
   Serial.print(" speed=");

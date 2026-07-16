@@ -16,12 +16,37 @@ constexpr float LOADCELL_1_DEFAULT_SCALE = 913.0f;
 constexpr float LOADCELL_2_DEFAULT_SCALE = -7050.0f;
 constexpr unsigned long LOADCELL_PRINT_INTERVAL_MS = 1000;
 
+// 배출/급수 중에는 저울이 흔들려 값이 튄다. 액추에이터가 멈추고 이만큼 지나야 믿는다.
+constexpr unsigned long LOADCELL_SETTLE_MS = 1500;
+
 HX711 loadCell1;
 HX711 loadCell2;
 float loadCell1Scale = LOADCELL_1_DEFAULT_SCALE;
 float loadCell2Scale = LOADCELL_2_DEFAULT_SCALE;
 unsigned long lastLoadCellPrintMs = 0;
 
+// 마지막으로 '실제로 읽은' 값. HX711 은 약 10Hz 라 대부분의 순간에 is_ready() 가 false 인데,
+// 그때 0 을 내보내면 진짜 값과 가짜 0 이 번갈아 나가서 잔여량이 튄다. 그래서 마지막 값을 들고 있는다.
+bool loadCell1HasValue = false;
+bool loadCell2HasValue = false;
+float loadCell1Grams = 0.0f;
+float loadCell2Grams = 0.0f;
+unsigned long loadCellSettleUntilMs = 0;
+
+// 배식 1회의 실제 배출량을 재기 위한 표식.
+bool foodDispensePending = false;
+float foodGramsBeforeDispense = 0.0f;
+
+inline bool loadCellSettled() {
+  return static_cast<long>(millis() - loadCellSettleUntilMs) >= 0;
+}
+
+inline void holdLoadCellSettle() {
+  loadCellSettleUntilMs = millis() + LOADCELL_SETTLE_MS;
+}
+
+// tare 영점을 NVS 에 저장해 재부팅 후에도 유지한다. 안 그러면 껐다 켤 때마다
+// 통을 비우고 다시 영점을 잡아야 한다.
 constexpr const char* LOADCELL_PREFS_NAMESPACE = "aimyaong-load";
 
 void saveLoadCellOffset(const char* key, long offset) {
@@ -212,24 +237,69 @@ void setLoadCell2Scale(float scale) {
   setOneLoadCellScale(loadCell2, loadCell2Scale, "LOADCELL2", scale);
 }
 
+// 오거를 돌리기 직전 무게를 적어둔다. 로드셀 값을 아직 한 번도 못 읽었으면 잴 수가 없으니
+// 표식을 세우지 않는다 — 그 경우 배출량은 기록되지 않는다(지어내는 것보다 낫다).
+void markFoodDispenseStart() {
+  if (!loadCell1HasValue) {
+    return;
+  }
+  foodGramsBeforeDispense = loadCell1Grams;
+  foodDispensePending = true;
+}
+
+// 오거가 멈추고 저울이 잠잠해졌으면 이번 배식의 실제 배출량을 돌려준다.
+// 아직 잴 때가 아니거나 잴 게 없으면 -1. (mqtt_control.h 가 이 값을 발행한다)
+float takeFoodDispensedGrams() {
+  if (!foodDispensePending || !loadCellSettled() || !loadCell1HasValue) {
+    return -1.0f;
+  }
+  foodDispensePending = false;
+
+  float grams = foodGramsBeforeDispense - loadCell1Grams;
+  return grams < 0.0f ? 0.0f : grams;  // 사람이 통을 채웠거나 저울이 흔들린 경우
+}
+
+// 배식/급수 중이면 밖에서 이걸 불러 측정을 미룬다. (mqtt_control.h 가 호출)
+void sampleLoadCells() {
+  if (!loadCellSettled()) {
+    return;
+  }
+  // is_ready() 로 막지 않으면 read() 가 변환을 기다리며 루프를 붙잡는다 —
+  // 그동안 serviceMotors()/serviceWaterPump() 가 밀려 모터가 더 돈다.
+  if (loadCell1.is_ready()) {
+    loadCell1Grams = loadCell1.get_units(1);
+    loadCell1HasValue = true;
+  }
+  if (loadCell2.is_ready()) {
+    loadCell2Grams = loadCell2.get_units(1);
+    loadCell2HasValue = true;
+  }
+}
+
 void serviceLoadCell() {
+  // MQTT 주기 발행은 loopMqttControl() 이 한다. 여기서는 값만 최신으로 유지한다.
+  sampleLoadCells();
+
   unsigned long now = millis();
   if (now - lastLoadCellPrintMs < LOADCELL_PRINT_INTERVAL_MS) {
     return;
   }
   lastLoadCellPrintMs = now;
 
+  // 보정용 시리얼 출력. get_units() 를 다시 부르지 않고 sampleLoadCells() 가 읽어둔 값을 쓴다 —
+  // get_units() 는 HX711 변환값을 소비해서, 여기서 또 부르면 샘플러와 변환을 서로 뺏는다.
+  // 같은 값을 쓰므로 시리얼에 찍히는 무게가 앱에 보이는 무게와 항상 일치한다.
   Serial.print("[loadcell] food=");
-  if (loadCell1.is_ready()) {
-    Serial.print(loadCell1.get_units(1), 2);
+  if (loadCell1HasValue) {
+    Serial.print(loadCell1Grams, 2);
     Serial.print("g");
   } else {
     Serial.print("NOT_READY");
   }
 
   Serial.print(" water=");
-  if (loadCell2.is_ready()) {
-    Serial.print(loadCell2.get_units(1), 2);
+  if (loadCell2HasValue) {
+    Serial.print(loadCell2Grams, 2);
     Serial.println("g");
   } else {
     Serial.println("NOT_READY");

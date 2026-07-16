@@ -139,6 +139,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ seconds }),
     }),
+  // 긴급 정지 — 사료 오거 + 물 펌프 즉시 정지. 중간에 멈춰도 ESP32 가 실제로 나간 양을
+  // 재서 알리므로 통계는 정확히 남는다.
+  dispenserStop: () =>
+    request("/api/dispenser/stop", {
+      method: "POST",
+    }),
   dispenserPumpOff: () =>
     request("/api/dispenser/pump/off", {
       method: "POST",
