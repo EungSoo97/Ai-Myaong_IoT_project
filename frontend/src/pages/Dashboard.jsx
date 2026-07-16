@@ -588,7 +588,8 @@ export function Dashboard() {
       // 서버 응답을 기다리지 않고 바로 반응한다 — 눌렀는데 아무 일도 안 일어나는
       // 순간이 있으면 급한 상황에 연타하게 된다.
       setStopFlash(id);
-      window.setTimeout(() => setStopFlash(null), 450);
+      // animate-ping 이 1초 주기라, 파형이 한 번 온전히 퍼지고 사라질 만큼 유지한다
+      window.setTimeout(() => setStopFlash(null), 1000);
       try {
         await api.dispenserStop();
         showToast("⏹ 디스펜서를 정지했어요");
@@ -869,14 +870,22 @@ export function Dashboard() {
                 disabled={isBusy}
                 className="flex flex-col items-center gap-2 touch-active disabled:opacity-60"
               >
-                <span
-                  className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-all ${toneCls} ${isBusy ? "animate-pulse" : ""} ${
-                    // 정지를 누른 순간 — 빨갛게 차오르며 한 번 쿵 하고 눌린다.
-                    // '눌렀다'가 아니라 '멈췄다'가 몸으로 느껴져야 한다.
-                    stopFlash === id ? "!bg-brand-danger !text-white !border-white/50 scale-90 shadow-none" : ""
-                  }`}
-                >
-                  <Icon className="w-6 h-6" />
+                {/* 정지를 누르면 파형이 퍼져나가고 꽉 찬 빨강으로 차오르며 눌린다.
+                 * 여기는 자르는 컨테이너가 없어서 파형이 온전히 퍼진다. */}
+                <span className="relative">
+                  {stopFlash === id && (
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 rounded-3xl bg-brand-danger animate-ping"
+                    />
+                  )}
+                  <span
+                    className={`relative w-14 h-14 rounded-3xl flex items-center justify-center shadow-soft border border-dashed transition-all duration-300 ${toneCls} ${isBusy ? "animate-pulse" : ""} ${
+                      stopFlash === id ? "!bg-brand-danger !text-white !border-white/50 scale-90" : ""
+                    }`}
+                  >
+                    <Icon className="w-6 h-6" />
+                  </span>
                 </span>
                 <span className="text-[10px] font-semibold text-brand-brown text-center leading-tight">
                   {id === "away"

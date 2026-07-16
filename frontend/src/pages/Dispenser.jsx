@@ -45,6 +45,10 @@ const FOOD_MOTOR_MAX_RUN_MS = 8000
 const WATER_PUMP_MAX_RUN_MS = 10000
 const RUN_MARGIN_MS = 400 // 명령이 기기까지 가는 시간
 
+/* 정지를 누른 뒤 눌림 표시를 유지하는 시간. 이 시간이 지나야 배식 버튼으로 넘어간다 —
+ * 즉시 넘기면 눌린 걸 보기도 전에 바뀐다. */
+const STOP_FLASH_MS = 300
+
 const foodRunMs = (g) =>
   Math.min(FOOD_MOTOR_MAX_RUN_MS, Math.max(FOOD_MOTOR_MIN_RUN_MS, g * FOOD_MOTOR_MS_PER_AMOUNT))
 const waterRunMs = (sec) => Math.min(WATER_PUMP_MAX_RUN_MS, Math.max(300, sec * 1000))
@@ -384,7 +388,9 @@ export function Dispenser() {
   }
 
   const doStop = async () => {
-    setPendingUntil(0) // 누른 즉시 버튼이 내려간다 — 응답을 기다리면 멈춘 느낌이 안 난다
+    // 눌림 반응이 다 보인 뒤에 버튼을 내린다. 즉시 내리면 running 이 false 가 되면서
+    // 버튼이 통째로 사라져 애니메이션이 재생될 틈이 없다 — 그냥 뚝 꺼지는 느낌이 된다.
+    window.setTimeout(() => setPendingUntil(0), STOP_FLASH_MS)
     try {
       await api.dispenserStop()
       showToast('⏹ 정지했어요')
@@ -864,7 +870,13 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
   const ratio = (amount - min) / (max - min)
+  // 정지를 누른 직후 눌림 표시. 버튼이 사라지면 같이 정리된다.
   const [pressed, setPressed] = useState(false)
+  useEffect(() => {
+    if (!pressed) return undefined
+    const timer = window.setTimeout(() => setPressed(false), STOP_FLASH_MS)
+    return () => window.clearTimeout(timer)
+  }, [pressed])
   return (
     <div className="relative overflow-hidden rounded-3xl shadow-soft mt-4 px-5 py-5" style={{ backgroundColor: BG_CARD }}>
       <Stitch />
@@ -924,36 +936,62 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
          * 오거는 최대 8초라 다른 화면으로 옮겨가 찾을 시간이 없다. 평소엔 없어서 오발도 없다.
          * 확인창은 두지 않는다: 긴급인데 한 번 더 물으면 그 사이에 끝나고,
          * 잘못 눌러도 다시 배식하면 그만이라 피해가 없다. */}
-        {running ? (
-          <button
-            type="button"
-            onClick={() => {
-              setPressed(true)
-              window.setTimeout(() => setPressed(false), 450)
-              onStop?.()
-            }}
-            // 누르면 한 번 쿵 눌렸다 돌아온다 — '눌렀다'가 아니라 '멈췄다'가 느껴져야 한다
-            className={`mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-extrabold py-3.5 border-2 border-dashed border-white/40 transition-all duration-150 ${
-              pressed ? 'scale-95 shadow-none brightness-75' : 'shadow-soft animate-pulse'
-            }`}
-            style={{ background: 'rgb(var(--brand-danger))' }}
-          >
-            <X className="w-5 h-5" />
-            정지
-            <span className="text-sm font-bold tabular-nums opacity-90">{Math.floor(elapsed)}초</span>
-          </button>
-        ) : (
+        {/* 두 버튼을 같은 칸에 겹쳐두고 투명도로 교차시킨다. 조건부로 갈아끼우면
+         * 하나가 사라지고 하나가 튀어나와서 뚝 끊기는 느낌이 난다. */}
+        <div className="mt-4 grid">
+          {/* disabled:opacity-60 을 쓰면 안 된다 — :disabled 의사클래스가 명시도가 높아
+           * opacity-0 을 이겨서, 숨겨야 할 버튼이 60% 로 남아 정지 버튼과 겹쳐 보인다.
+           * 투명도는 전부 여기서 직접 정한다. */}
           <button
             type="button"
             onClick={onSubmit}
-            disabled={busy}
-            className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-colors disabled:opacity-60"
+            disabled={busy || running}
+            className={`col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-all duration-300 ${
+              running ? 'opacity-0 pointer-events-none' : busy ? 'opacity-60' : 'opacity-100'
+            }`}
             style={{ background: accent }}
           >
             <Play className="w-4 h-4" />
             {button}
           </button>
-        )}
+
+          {/* 누르면 콱 눌리며 안쪽이 어두워지고 흰 테두리가 조여든다.
+           *
+           * 지난번에 아무것도 안 보였던 이유 세 가지를 전부 피한다:
+           *  - 카드가 overflow-hidden 이라 밖으로 퍼지는 파형(animate-ping)은 잘린다
+           *    -> ring-inset 으로 안쪽에 그린다
+           *  - filter:brightness 는 링·테두리까지 같이 어둡게 만든다
+           *    -> 자식으로 검은 막을 덮어 배경만 어둡게 한다
+           *  - 빨강 버튼에 빨강 링은 안 보인다
+           *    -> 흰색으로 그린다 */}
+          <button
+            type="button"
+            onClick={() => {
+              setPressed(true)
+              onStop?.()
+            }}
+            aria-hidden={!running}
+            className={`relative overflow-hidden col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-extrabold py-3.5 border-2 border-dashed transition-all duration-200 ${
+              running ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            } ${
+              pressed
+                ? 'scale-95 shadow-none border-white/90 ring-4 ring-inset ring-white/60'
+                : 'shadow-soft border-white/40'
+            }`}
+            style={{ background: 'rgb(var(--brand-danger))' }}
+          >
+            {/* 배경만 어둡게 — 테두리/링은 밝게 남는다 */}
+            <span
+              aria-hidden
+              className={`absolute inset-0 bg-black transition-opacity duration-200 ${
+                pressed ? 'opacity-40' : 'opacity-0'
+              }`}
+            />
+            <X className="relative w-5 h-5" />
+            <span className="relative">정지</span>
+            <span className="relative text-sm font-bold tabular-nums opacity-90">{Math.floor(elapsed)}초</span>
+          </button>
+        </div>
       </div>
     </div>
   )
