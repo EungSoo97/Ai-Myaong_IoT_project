@@ -223,6 +223,16 @@ def tare_loadcells(request: Request):
     return _publish_dispenser_command(request, "dispenser/tare", {})
 
 
+@router.post("/tare/food", response_model=CommandResponse)
+def tare_food_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/food", {})
+
+
+@router.post("/tare/water", response_model=CommandResponse)
+def tare_water_loadcell(request: Request):
+    return _publish_dispenser_command(request, "dispenser/tare/water", {})
+
+
 @router.post("/weight/request", response_model=CommandResponse)
 def request_weight(request: Request):
     return _publish_dispenser_command(request, "dispenser/weight/request", {})
