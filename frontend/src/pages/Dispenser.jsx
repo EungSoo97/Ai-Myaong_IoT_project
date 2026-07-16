@@ -35,6 +35,7 @@ const withAlpha = (c, a) => `${c.slice(0, -1)} / ${a})`
 // 카드 배경: 흰색 80% + 크림 20% (은은) / 정보·칩: 따뜻한 탄
 const BG_CARD = "color-mix(in srgb, rgb(var(--brand-card)) 80%, rgb(var(--brand-cream)) 20%)"
 const BG_INFO = "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)"
+const ROBOT_SERIAL_KEY = 'aimyaong:robotSerial'
 
 /* 안쪽 점선 바느질 테두리 (펠트 느낌) */
 function Stitch({ className = '' }) {
@@ -174,10 +175,24 @@ export function Dispenser() {
   }
 
   const [busy, setBusy] = useState(false)
+  const [robotSerial] = useState(() => {
+    try {
+      return localStorage.getItem(ROBOT_SERIAL_KEY) || ''
+    } catch {
+      return ''
+    }
+  })
+  const hasRobotSerial = !!robotSerial.trim()
+  const requireRobotSerial = () => {
+    if (hasRobotSerial) return false
+    showToast('로봇 시리얼 번호를 먼저 등록해 주세요')
+    return true
+  }
 
   // 수동 배식 — 저장된 제공량으로 실제 배식 시도 + 토스트 + 알림
   const doFeed = async () => {
     if (busy) return
+    if (requireRobotSerial()) return
     setBusy(true)
     try {
       await api.dispenserFeed(foodAmount)
@@ -198,6 +213,7 @@ export function Dispenser() {
 
   const doWater = async () => {
     if (busy) return
+    if (requireRobotSerial()) return
     setBusy(true)
     try {
       await api.dispenserWater(waterAmount)
@@ -216,10 +232,17 @@ export function Dispenser() {
     }
   }
 
-  const openAdd = () => setEditing({ time: '08:00', type: 'food', amount: 15 })
-  const openEdit = (s) => setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
+  const openAdd = () => {
+    if (requireRobotSerial()) return
+    setEditing({ time: '08:00', type: 'food', amount: 15 })
+  }
+  const openEdit = (s) => {
+    if (requireRobotSerial()) return
+    setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
+  }
 
   const saveSchedule = (form) => {
+    if (requireRobotSerial()) return
     if (form.id) {
       setSchedule((prev) => prev.map((x) => (x.id === form.id ? { ...x, ...form } : x)))
       showToast('스케줄이 수정되었어요')
@@ -317,6 +340,22 @@ export function Dispenser() {
       </header>
 
       {/* 잔여량 (사료 + 물) */}
+      {!hasRobotSerial && (
+        <div className="mb-3 rounded-3xl border border-dashed border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 w-4 h-4 text-brand-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">
+                시리얼 번호 등록이 필요합니다.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                수동 급식, 수동 급수와 자동 스케줄은 설정에서 로봇 시리얼 번호를 등록한 뒤 사용할 수 있습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className="grid grid-cols-2 gap-3">
         <ResourceCard
           icon={<UtensilsCrossed className="w-4 h-4" />}
@@ -348,6 +387,7 @@ export function Dispenser() {
         onChange={setFoodAmount}
         onSubmit={doFeed}
         busy={busy}
+        disabled={!hasRobotSerial}
         button={`지금 ${foodAmount}g 배식하기`}
         icon={<UtensilsCrossed className="w-4 h-4" />}
       />
@@ -363,6 +403,7 @@ export function Dispenser() {
         onChange={setWaterAmount}
         onSubmit={doWater}
         busy={busy}
+        disabled={!hasRobotSerial}
         button={`지금 ${waterAmount}ml 급수하기`}
         icon={<Droplets className="w-4 h-4" />}
       />
@@ -618,7 +659,7 @@ function ResourceCard({ icon, label, value, unit, color, low }) {
   )
 }
 
-function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon }) {
+function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, disabled = false, button, icon }) {
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
   const ratio = (amount - min) / (max - min)
@@ -680,7 +721,7 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
         <button
           type="button"
           onClick={onSubmit}
-          disabled={busy}
+          disabled={busy || disabled}
           className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-colors disabled:opacity-60"
           style={{ background: accent }}
         >

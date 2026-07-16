@@ -15,6 +15,7 @@ from app.routers import (
     network,
     pets,
     robot,
+    robot_devices,
     settings,
     stream,
     vision,
@@ -70,6 +71,7 @@ app.state.robot_service = RobotService(mqtt_client, database, simulator)
 app.state.feed_service = FeedService(mqtt_client, database, simulator)
 
 app.include_router(robot.router)
+app.include_router(robot_devices.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
 app.include_router(ws.router)
