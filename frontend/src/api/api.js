@@ -201,6 +201,13 @@ export const api = {
   // 양방향 음성 호출 시작
   voiceCall: () =>
     request("/api/robot/voice-call", { method: "POST" }),
+  rebootRobot: () =>
+    request("/api/robot/reboot", { method: "POST" }),
+  setRobotPower: (on) =>
+    request("/api/robot/power", {
+      method: "POST",
+      body: JSON.stringify({ on }),
+    }),
   // 외출 모드 on/off 서버 동기화
   setAwayMode: (on) =>
     request("/api/robot/away-mode", {
@@ -283,6 +290,22 @@ export const api = {
   getSettings: () => request("/api/settings"),
   updateSettings: (body) =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+  claimRobotDevice: (robotSerial) =>
+    request("/api/robot-devices/claim", {
+      method: "POST",
+      body: JSON.stringify({ robot_serial: robotSerial }),
+    }),
+  getMyRobotDevices: () => request("/api/robot-devices/me"),
+  getRobotDeviceMembers: (robotSerial) =>
+    request(`/api/robot-devices/${encodeURIComponent(robotSerial)}/members`),
+  grantRobotDeviceMember: ({ robotSerial, userEmail }) =>
+    request("/api/robot-devices/members/grant", {
+      method: "POST",
+      body: JSON.stringify({
+        robot_serial: robotSerial,
+        user_email: userEmail,
+      }),
+    }),
 
   // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
   getPets: () => request("/api/pets"),

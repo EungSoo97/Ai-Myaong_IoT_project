@@ -15,6 +15,7 @@ from app.routers import (
     network,
     pets,
     robot,
+    robot_devices,
     settings,
     stream,
     vision,
@@ -109,6 +110,7 @@ mqtt_client.on_topic("dispenser/weight", _handle_dispenser_weight_message)
 mqtt_client.on_topic("dispenser/dispensed", _handle_dispenser_dispensed_message)
 
 app.include_router(robot.router)
+app.include_router(robot_devices.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
 app.include_router(ws.router)
@@ -147,7 +149,6 @@ def startup() -> None:
             print("[FeedScheduler] started", flush=True)
     else:
         print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
-
 
 @app.on_event("shutdown")
 def shutdown() -> None:

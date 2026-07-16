@@ -213,7 +213,7 @@ def _sync_backend_env_from_pi_ip(pi_ip: str) -> None:
         return
 
     pi_agent_port = runtime_env("PI_AGENT_HTTP_PORT", "8765").strip() or "8765"
-    stream_port = runtime_env("STREAM_PORT", "1").strip() or "8081"
+    stream_port = runtime_env("STREAM_PORT", "8081").strip() or "8081"
     _set_env_value(BACKEND_ENV, "PI_AGENT_BASE_URL", f"http://{pi_ip}:{pi_agent_port}")
     _set_env_value(BACKEND_ENV, "CAMERA_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
     _set_env_value(DESKTOP_ENV, "MJPEG_STREAM_URL", f"http://{pi_ip}:{stream_port}/stream.mjpg")
