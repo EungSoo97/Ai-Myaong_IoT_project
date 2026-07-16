@@ -42,6 +42,8 @@ const BG_CARD =
 const BG_INFO =
   "color-mix(in srgb, rgb(var(--brand-cream)) 78%, rgb(var(--brand-mute)) 22%)";
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
+const ROBOT_DEVICE_CLAIM_ENABLED =
+  import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
 
 /* 안쪽 점선 바느질 테두리 (펠트 느낌) */
 function Stitch({ className = "" }) {
@@ -200,7 +202,7 @@ export function Dispenser() {
   };
 
   const [busy, setBusy] = useState(false);
-  const [robotSerial] = useState(() => {
+  const [robotSerial, setRobotSerial] = useState(() => {
     try {
       return localStorage.getItem(ROBOT_SERIAL_KEY) || "";
     } catch {
@@ -213,6 +215,41 @@ export function Dispenser() {
     showToast("로봇 시리얼 번호를 먼저 등록해 주세요");
     return true;
   };
+
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) return;
+    let alive = true;
+    const syncRobotAccess = () => {
+      api
+        .getMyRobotDevices()
+        .then((result) => {
+          if (!alive) return;
+          const nextSerial = result.devices?.[0]?.robot_serial || "";
+          setRobotSerial(nextSerial);
+          try {
+            if (nextSerial) localStorage.setItem(ROBOT_SERIAL_KEY, nextSerial);
+            else localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {
+          if (!alive) return;
+          setRobotSerial("");
+          try {
+            localStorage.removeItem(ROBOT_SERIAL_KEY);
+          } catch {
+            /* ignore */
+          }
+        });
+    };
+    syncRobotAccess();
+    window.addEventListener("focus", syncRobotAccess);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", syncRobotAccess);
+    };
+  }, []);
 
   // 수동 배식 — 명령만 보낸다. 통계 기록은 백엔드가 한다.
   // 실제 배출량은 ESP32 가 저울로 직접 재서(dispenser/dispensed) 백엔드에 알리고,
