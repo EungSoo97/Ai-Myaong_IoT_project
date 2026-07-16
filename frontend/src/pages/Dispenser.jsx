@@ -53,6 +53,9 @@ const foodRunMs = (g) =>
   Math.min(FOOD_MOTOR_MAX_RUN_MS, Math.max(FOOD_MOTOR_MIN_RUN_MS, g * FOOD_MOTOR_MS_PER_AMOUNT))
 const waterRunMs = (sec) => Math.min(WATER_PUMP_MAX_RUN_MS, Math.max(300, sec * 1000))
 
+/* 로봇 시리얼 번호 — 설정에서 등록하면 저장된다. 등록 전에는 디스펜서를 못 쓴다. */
+const ROBOT_SERIAL_KEY = 'aimyaong:robotSerial'
+
 /* 지금 시각 'HH:MM'. 스케줄을 새로 추가할 때 기본값 — 08:00 고정에서 돌리는 것보다
  * 지금 시각에서 출발하는 편이 손이 덜 간다. */
 function nowHHMM() {
@@ -242,12 +245,30 @@ export function Dispenser() {
 
   const [busy, setBusy] = useState(false)
 
+  /* 시리얼 번호를 등록해야 디스펜서를 쓸 수 있다. 등록 전에는 배식·급수·스케줄을 막는다.
+   * 버튼을 disabled 로 막아두지만, 그래도 호출되는 경로(자동 스케줄 편집 등)가 있어
+   * 동작 함수에서 한 번 더 확인한다. */
+  const [robotSerial] = useState(() => {
+    try {
+      return localStorage.getItem(ROBOT_SERIAL_KEY) || ''
+    } catch {
+      return ''
+    }
+  })
+  const hasRobotSerial = !!robotSerial.trim()
+  const requireRobotSerial = () => {
+    if (hasRobotSerial) return false
+    showToast('로봇 시리얼 번호를 먼저 등록해 주세요')
+    return true
+  }
+
   // 수동 배식 — 명령만 보낸다. 통계 기록은 백엔드가 한다.
   // 실제 배출량은 ESP32 가 저울로 직접 재서(dispenser/dispensed) 백엔드에 알리고,
   // 백엔드가 FEED_LOGS 에 쌓는다. 여기서 시간을 추측해 재려 하면 펌웨어의 오거 속도
   // 상수를 프론트가 복제해야 하고, 그 값이 바뀌면 조용히 틀어진다.
   // 자동 배식은 브라우저가 꺼져 있어도 돌아가므로 어차피 백엔드가 기록해야 한다.
   const doFeed = async () => {
+    if (requireRobotSerial()) return
     if (busy) return
     setBusy(true)
     try {
@@ -267,6 +288,7 @@ export function Dispenser() {
   // 급수량은 기록하지 않는다 — 물이 실제로 줄어드는 건 고양이가 마셨을 때뿐이고,
   // 그건 잔여량(water_ml) 이 시간에 따라 떨어지는 것으로 나타난다.
   const doWater = async () => {
+    if (requireRobotSerial()) return
     if (busy) return
     setBusy(true)
     try {
@@ -280,8 +302,14 @@ export function Dispenser() {
     }
   }
 
-  const openAdd = () => setEditing({ time: nowHHMM(), type: 'food', amount: SCHEDULE_RANGE.food.def })
-  const openEdit = (s) => setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
+  const openAdd = () => {
+    if (requireRobotSerial()) return
+    setEditing({ time: nowHHMM(), type: 'food', amount: SCHEDULE_RANGE.food.def })
+  }
+  const openEdit = (s) => {
+    if (requireRobotSerial()) return
+    setEditing({ id: s.id, time: s.time, type: s.type, amount: s.amount })
+  }
 
   const saveSchedule = (form) => {
     if (form.id) {
@@ -305,8 +333,10 @@ export function Dispenser() {
       showToast('스케줄이 삭제되었어요')
     }, 320)
   }
-  const toggleSchedule = (id) =>
+  const toggleSchedule = (id) => {
+    if (requireRobotSerial()) return
     setSchedule((prev) => prev.map((x) => (x.id === id ? { ...x, on: !x.on } : x)))
+  }
 
   // 잔여량 — 디스펜서 로드셀 실측값. 값이 끊기면(food_fresh/water_fresh=false) 숫자를 지어내지 않고
   // '연결 안 됨'을 표시한다.
@@ -489,6 +519,23 @@ export function Dispenser() {
         </div>
       </header>
 
+      {!hasRobotSerial && (
+        <div className="mb-3 rounded-3xl border border-dashed border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 w-4 h-4 text-brand-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-brown">
+                시리얼 번호 등록이 필요합니다.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                수동 급식, 수동 급수와 자동 스케줄은 설정에서 로봇 시리얼 번호를
+                등록한 뒤 사용할 수 있습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 잔여량 (사료 + 물) */}
       <section className="grid grid-cols-2 gap-3">
         <ResourceCard
@@ -530,6 +577,7 @@ export function Dispenser() {
         running={running}
         elapsed={elapsed}
         onStop={doStop}
+        disabled={!hasRobotSerial}
       />
 
       <ManualCard
@@ -548,6 +596,7 @@ export function Dispenser() {
         running={running}
         elapsed={elapsed}
         onStop={doStop}
+        disabled={!hasRobotSerial}
       />
       </div>
 
@@ -874,7 +923,7 @@ function ResourceCard({ icon, label, value, unit, percent, color, level, live = 
   )
 }
 
-function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon, running = false, elapsed = 0, onStop }) {
+function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon, running = false, elapsed = 0, onStop, disabled = false }) {
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
   const ratio = (amount - min) / (max - min)
@@ -953,9 +1002,9 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
           <button
             type="button"
             onClick={onSubmit}
-            disabled={busy || running}
+            disabled={busy || running || disabled}
             className={`col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-2 rounded-2xl text-white font-bold py-3.5 shadow-soft border border-dashed border-white/30 transition-all duration-300 ${
-              running ? 'opacity-0 pointer-events-none' : busy ? 'opacity-60' : 'opacity-100'
+              running ? 'opacity-0 pointer-events-none' : busy || disabled ? 'opacity-60' : 'opacity-100'
             }`}
             style={{ background: accent }}
           >

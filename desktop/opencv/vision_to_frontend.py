@@ -36,10 +36,13 @@ CLIP_DIR.mkdir(exist_ok=True)
 EMERGENCY_CLIP_DIR.mkdir(exist_ok=True)
 
 DEFAULT_CLASS_LABELS = {
+    
+    
     0: "Person",
     15: "Cat",
     16: "Dog",
 }
+
 
 DB_API_TIMEOUT = max(0.5, float(os.getenv("VISION_DB_API_TIMEOUT", "3")))
 
@@ -58,7 +61,7 @@ def resolve_capture_source():
 
 
 def resolve_backend_url():
-    return os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").strip().rstrip("/")
+    return os.getenv("BACKEND_API_URL", "https://astonishing-wonder-production-a2e3.up.railway.app/").strip().rstrip("/")
 
 
 def resolve_model_path():
