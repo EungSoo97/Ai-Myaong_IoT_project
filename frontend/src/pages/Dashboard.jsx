@@ -250,22 +250,31 @@ export function Dashboard() {
   }, [refreshLogs]);
 
   const recentActivity = useMemo(() => {
-    const feed = (recentLogs.feed || []).map((x) => ({
-      key: `f-${x.created_at}-${x.amount_g}`,
-      icon: UtensilsCrossed,
-      tone: "primary",
-      title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
-      desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
-      t: new Date(x.created_at).getTime(),
-    }));
-    const water = (recentLogs.water || []).map((x) => ({
-      key: `w-${x.created_at}-${x.amount_ml}`,
-      icon: Droplets,
-      tone: "brown",
-      title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
-      desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
-      t: new Date(x.created_at).getTime(),
-    }));
+    // 0g 행은 자동 배식 스케줄러가 남기는 '이 분에 이미 배식함' 잠금 기록이라 보여줄 게 없다.
+    // 실제 배식량은 ESP32 가 저울로 잰 값이 별도 행으로 들어온다. (물 0ml 도 같은 이유)
+    const feed = (recentLogs.feed || [])
+      .filter((x) => (Number(x.amount_g) || 0) > 0)
+      .map((x) => ({
+        key: `f-${x.created_at}-${x.amount_g}`,
+        icon: UtensilsCrossed,
+        tone: "primary",
+        title: FEED_TYPE_LABEL[x.feed_type] || "배식 완료",
+        desc: `사료 ${Math.round(Number(x.amount_g) || 0)}g`,
+        t: new Date(x.created_at).getTime(),
+      }));
+    // 0ml 행은 자동 급수 스케줄러가 '이 분에 이미 급수했다'를 표시하려고 남기는 잠금 기록이다.
+    // 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통에서 줄지 않아 급수량 ml 이 없다.
+    // 활동 기록에 "물 0ml" 로 띄울 내용이 아니라 걸러낸다. (실제 마신 양은 water_type='consumed')
+    const water = (recentLogs.water || [])
+      .filter((x) => (Number(x.amount_ml) || 0) > 0)
+      .map((x) => ({
+        key: `w-${x.created_at}-${x.amount_ml}`,
+        icon: Droplets,
+        tone: "brown",
+        title: WATER_TYPE_LABEL[x.water_type] || "급수 완료",
+        desc: `물 ${Math.round(Number(x.amount_ml) || 0)}ml`,
+        t: new Date(x.created_at).getTime(),
+      }));
     return [...feed, ...water]
       .sort((a, b) => b.t - a.t)
       .slice(0, 30)

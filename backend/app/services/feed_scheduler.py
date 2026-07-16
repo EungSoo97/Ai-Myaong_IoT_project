@@ -158,11 +158,17 @@ def _run_once(feed_service, hhmm):
                     continue
 
                 handled_feed.add(feed_key)
+                # 이 행은 '그 분에 이미 배식했다'는 중복 방지 기록이다(_has_feed_log_this_minute).
+                # 실제 배식량은 ESP32 가 오거 정지 후 저울로 재서 dispenser/dispensed 로 알리고,
+                # DispenserLogger 가 그 실측값을 FEED_LOGS 에 따로 쌓는다. 여기서 지시값(amount)을
+                # 같이 적으면 배식 1회에 행이 2개 생겨 통계가 2배로 뜬다.
+                # 지시값은 어차피 허구다 — 펌웨어는 amount×250ms 로 오거를 돌릴 뿐이라
+                # 25g 을 지시해도 실제로 몇 g 이 나갔는지는 저울만 안다.
                 db.add(
                     FeedLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        food_amount_g=amount,
+                        food_amount_g=0,
                         feed_type="auto",
                         created_at=minute_start,
                     )
