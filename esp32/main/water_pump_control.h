@@ -5,7 +5,7 @@
 // One-direction water pump control through a logic-level N-channel MOSFET.
 // GPIO32 drives the MOSFET gate through a small resistor.
 constexpr uint8_t WATER_PUMP_GATE_PIN = 32;
-constexpr uint8_t WATER_PUMP_DEFAULT_SPEED = 200;
+constexpr uint8_t WATER_PUMP_DEFAULT_SPEED = 150;
 constexpr unsigned long WATER_PUMP_DEFAULT_RUN_MS = 1000;
 constexpr unsigned long WATER_PUMP_MAX_RUN_MS = 10000;
 // 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통 밖으로 나가지 않는다(순환).

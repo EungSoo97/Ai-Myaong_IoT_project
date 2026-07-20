@@ -10,11 +10,19 @@ constexpr uint8_t LOADCELL_1_DOUT_PIN = 34;
 constexpr uint8_t LOADCELL_1_SCK_PIN = 33;
 constexpr uint8_t LOADCELL_2_DOUT_PIN = 35;
 constexpr uint8_t LOADCELL_2_SCK_PIN = 22;
+constexpr uint8_t LOADCELL_1_GAIN = 128;
+// 물통의 기본 하중에서 gain 128 원시값이 24비트 한계에 가까워 포화되므로
+// gain 64를 사용해 측정 가능한 하중 범위를 넓힌다.
+constexpr uint8_t LOADCELL_2_GAIN = 64;
 // Calibrated from a 40 g reference: reading changed -5.18 g with the old
 // -7050 factor, so raw delta / 40 g gives a corrected factor of +912.98.
 constexpr float LOADCELL_1_DEFAULT_SCALE = 913.0f;
-constexpr float LOADCELL_2_DEFAULT_SCALE = -7050.0f;
+// 영점 설정 후 물 500 ml(약 500 g)를 올렸을 때 1165.06 g로 측정된 값을
+// 실제 영점 저장 후 물 500 ml에서 측정된 85,969 카운트로 최종 보정:
+// 85,969 / 500 = 171.938.
+constexpr float LOADCELL_2_DEFAULT_SCALE = 171.938f;
 constexpr unsigned long LOADCELL_PRINT_INTERVAL_MS = 1000;
+constexpr unsigned long LOADCELL_TARE_READY_TIMEOUT_MS = 2000;
 
 // 배출/급수 중에는 저울이 흔들려 값이 튄다. 액추에이터가 멈추고 이만큼 지나야 믿는다.
 constexpr unsigned long LOADCELL_SETTLE_MS = 1500;
@@ -73,37 +81,78 @@ bool restoreLoadCellOffset(HX711& scale, const char* key) {
   return saved;
 }
 
-void setupOneLoadCell(HX711& scale, float scaleFactor, const char* label, const char* offsetKey, uint8_t doutPin, uint8_t sckPin) {
+bool waitForLoadCellReady(HX711& scale, unsigned long timeoutMs) {
+  const unsigned long waitStartedAt = millis();
+  while (!scale.is_ready() && millis() - waitStartedAt < timeoutMs) {
+    delay(10);
+  }
+  return scale.is_ready();
+}
+
+// 현재 HX711 라이브러리는 양의 부호 경계(2^23)를 지날 때 RAW가 8,388,607
+// 다음에 0부터 다시 증가한다. 저장된 영점과의 차이를 원형 카운터처럼 펼쳐
+// 기본 구조물이 경계 근처에 있어도 추가된 물의 무게를 연속적으로 계산한다.
+long wrappedLoadCellDelta(long raw, long offset) {
+  constexpr long HX711_WRAP = 8388608L;
+  constexpr long HX711_HALF_WRAP = HX711_WRAP / 2L;
+  long delta = raw - offset;
+  if (delta < -HX711_HALF_WRAP) {
+    delta += HX711_WRAP;
+  } else if (delta > HX711_HALF_WRAP) {
+    delta -= HX711_WRAP;
+  }
+  return delta;
+}
+
+float readWaterLoadCellUnits() {
+  const long raw = loadCell2.read();
+  return static_cast<float>(
+      wrappedLoadCellDelta(raw, loadCell2.get_offset())) / loadCell2Scale;
+}
+
+void setupOneLoadCell(HX711& scale, float scaleFactor, const char* label, const char* offsetKey, uint8_t doutPin, uint8_t sckPin, uint8_t gain) {
   scale.begin(doutPin, sckPin);
+  scale.set_gain(gain);
   scale.set_scale(scaleFactor);
 
-  if (scale.is_ready()) {
+  // 저장된 오프셋 적용에는 HX711 샘플 준비가 필요하지 않다. 부팅 직후
+  // DOUT이 아직 준비되지 않았더라도 먼저 복원해야 이후 측정값에 영점이 유지된다.
+  if (restoreLoadCellOffset(scale, offsetKey)) {
     Serial.print("ACK ");
     Serial.print(label);
-    if (restoreLoadCellOffset(scale, offsetKey)) {
-      Serial.println("_READY offset=restored");
-    } else {
-      scale.tare();
-      saveLoadCellOffset(offsetKey, scale.get_offset());
-      Serial.println("_READY tare=done offset=saved");
-    }
-  } else {
+    Serial.println("_READY offset=restored");
+    return;
+  }
+
+  // 저장값이 없는 최초 부팅만 센서 준비를 기다린 뒤 현재 하중으로 영점을 잡는다.
+  if (!waitForLoadCellReady(scale, LOADCELL_TARE_READY_TIMEOUT_MS)) {
     Serial.print("WARN ");
     Serial.print(label);
-    Serial.println("_NOT_READY");
+    Serial.println("_NOT_READY offset=missing");
+    return;
   }
+
+  scale.tare();
+  saveLoadCellOffset(offsetKey, scale.get_offset());
+  Serial.print("ACK ");
+  Serial.print(label);
+  Serial.println("_READY tare=done offset=saved");
 }
 
 void setupLoadCell() {
-  setupOneLoadCell(loadCell1, loadCell1Scale, "LOADCELL1", "offset1", LOADCELL_1_DOUT_PIN, LOADCELL_1_SCK_PIN);
-  setupOneLoadCell(loadCell2, loadCell2Scale, "LOADCELL2", "offset2", LOADCELL_2_DOUT_PIN, LOADCELL_2_SCK_PIN);
+  setupOneLoadCell(loadCell1, loadCell1Scale, "LOADCELL1", "offset1", LOADCELL_1_DOUT_PIN, LOADCELL_1_SCK_PIN, LOADCELL_1_GAIN);
+  // gain 128에서 저장한 기존 offset2는 gain 64에서 유효하지 않으므로 새 키를 쓴다.
+  setupOneLoadCell(loadCell2, loadCell2Scale, "LOADCELL2", "offset2g64", LOADCELL_2_DOUT_PIN, LOADCELL_2_SCK_PIN, LOADCELL_2_GAIN);
 }
 
 void tareOneLoadCell(HX711& scale, const char* label, const char* offsetKey) {
-  if (!scale.is_ready()) {
+  // HX711은 보통 10Hz로 샘플을 내므로 MQTT 명령이 샘플 사이에 도착하면
+  // is_ready() 한 번만 확인해서는 정상 연결된 로드셀도 NOT_READY가 된다.
+  // 설치된 HX711 라이브러리 버전과 무관하게 다음 샘플을 직접 기다린다.
+  if (!waitForLoadCellReady(scale, LOADCELL_TARE_READY_TIMEOUT_MS)) {
     Serial.print("ERR ");
     Serial.print(label);
-    Serial.println("_NOT_READY");
+    Serial.println("_NOT_READY timeout=2000ms");
     return;
   }
 
@@ -116,7 +165,7 @@ void tareOneLoadCell(HX711& scale, const char* label, const char* offsetKey) {
 
 void tareLoadCell() {
   tareOneLoadCell(loadCell1, "LOADCELL1", "offset1");
-  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2");
+  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2g64");
 }
 
 void setOneLoadCellScale(HX711& scale, float& scaleFactor, const char* label, float newScaleFactor) {
@@ -139,10 +188,10 @@ void setLoadCellScale(float scale) {
 }
 
 void printOneLoadCellValue(HX711& scale, const char* label, uint8_t samples) {
-  if (!scale.is_ready()) {
+  if (!waitForLoadCellReady(scale, LOADCELL_TARE_READY_TIMEOUT_MS)) {
     Serial.print("ERR ");
     Serial.print(label);
-    Serial.println("_NOT_READY");
+    Serial.println("_NOT_READY timeout=2000ms");
     return;
   }
 
@@ -162,10 +211,10 @@ void printLoadCellValue() {
 }
 
 void printOneLoadCellRaw(HX711& scale, const char* label) {
-  if (!scale.is_ready()) {
+  if (!waitForLoadCellReady(scale, LOADCELL_TARE_READY_TIMEOUT_MS)) {
     Serial.print("ERR ");
     Serial.print(label);
-    Serial.println("_NOT_READY");
+    Serial.println("_NOT_READY timeout=2000ms");
     return;
   }
 
@@ -175,10 +224,10 @@ void printOneLoadCellRaw(HX711& scale, const char* label) {
 }
 
 void printOneLoadCellCount(HX711& scale, const char* label) {
-  if (!scale.is_ready()) {
+  if (!waitForLoadCellReady(scale, LOADCELL_TARE_READY_TIMEOUT_MS)) {
     Serial.print("ERR ");
     Serial.print(label);
-    Serial.println("_NOT_READY");
+    Serial.println("_NOT_READY timeout=2000ms");
     return;
   }
 
@@ -202,7 +251,16 @@ void printLoadCell1Value() {
 }
 
 void printLoadCell2Value() {
-  printOneLoadCellValue(loadCell2, "LOADCELL2", 3);
+  if (!waitForLoadCellReady(loadCell2, LOADCELL_TARE_READY_TIMEOUT_MS)) {
+    Serial.println("ERR LOADCELL2_NOT_READY timeout=2000ms");
+    return;
+  }
+  const long raw = loadCell2.read();
+  const long count = wrappedLoadCellDelta(raw, loadCell2.get_offset());
+  Serial.print("LOADCELL2 unit=");
+  Serial.println(static_cast<float>(count) / loadCell2Scale, 2);
+  Serial.print("LOADCELL2_COUNT ");
+  Serial.println(count);
 }
 
 void printLoadCell1Raw() {
@@ -218,7 +276,13 @@ void printLoadCell1Count() {
 }
 
 void printLoadCell2Count() {
-  printOneLoadCellCount(loadCell2, "LOADCELL2");
+  if (!waitForLoadCellReady(loadCell2, LOADCELL_TARE_READY_TIMEOUT_MS)) {
+    Serial.println("ERR LOADCELL2_NOT_READY timeout=2000ms");
+    return;
+  }
+  const long raw = loadCell2.read();
+  Serial.print("LOADCELL2_COUNT ");
+  Serial.println(wrappedLoadCellDelta(raw, loadCell2.get_offset()));
 }
 
 void tareLoadCell1() {
@@ -226,7 +290,7 @@ void tareLoadCell1() {
 }
 
 void tareLoadCell2() {
-  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2");
+  tareOneLoadCell(loadCell2, "LOADCELL2", "offset2g64");
 }
 
 void setLoadCell1Scale(float scale) {
@@ -271,7 +335,7 @@ void sampleLoadCells() {
     loadCell1HasValue = true;
   }
   if (loadCell2.is_ready()) {
-    loadCell2Grams = loadCell2.get_units(1);
+    loadCell2Grams = readWaterLoadCellUnits();
     loadCell2HasValue = true;
   }
 }
