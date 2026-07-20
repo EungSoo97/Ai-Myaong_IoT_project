@@ -202,7 +202,7 @@ void publishDispenserWeight() {
 
 // 지금 사료 오거나 물 펌프가 도는 중인가. 앱의 '정지' 버튼은 이 상태로만 뜬다.
 bool dispenserBusy() {
-  return motorStopAt != 0 || waterPumpStopAt != 0;
+  return motorStopAt != 0 || waterPumpRunning;
 }
 
 // 구동이 끝났을 때 idle 을 알린다.
@@ -271,6 +271,9 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
   } else if (topic == "dispenser/pump/off") {
     stopWaterPump();
     publishDispenserStatus("water_stopped");
+  } else if (topic == "dispenser/pump/on") {
+    startWaterPump();
+    publishDispenserStatus("water_pump_on");
   } else if (topic == "dispenser/pump/speed") {
     setWaterPumpSpeed(amount);
     publishDispenserStatus("water_speed_set");
@@ -573,6 +576,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/feed");
   mqttClient.subscribe("dispenser/water");
   mqttClient.subscribe("dispenser/pump/off");
+  mqttClient.subscribe("dispenser/pump/on");
   mqttClient.subscribe("dispenser/pump/speed");
   mqttClient.subscribe("dispenser/stop");
   mqttClient.subscribe("dispenser/tare");

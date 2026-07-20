@@ -134,7 +134,7 @@ export const api = {
       body: JSON.stringify({ amount }),
     }),
   // 물은 순환 구조라 ml 로 지시할 수 없다. 펌프를 몇 초 돌릴지로 지시한다.
-  dispenserWater: (seconds = 5) =>
+  dispenserWater: (seconds = 60) =>
     request("/api/dispenser/water", {
       method: "POST",
       body: JSON.stringify({ seconds }),
@@ -147,6 +147,10 @@ export const api = {
     }),
   dispenserPumpOff: () =>
     request("/api/dispenser/pump/off", {
+      method: "POST",
+    }),
+  dispenserPumpOn: () =>
+    request("/api/dispenser/pump/on", {
       method: "POST",
     }),
   dispenserPumpSpeed: (speed = 200) =>

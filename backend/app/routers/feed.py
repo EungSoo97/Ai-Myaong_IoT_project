@@ -224,12 +224,28 @@ def stop_dispenser(request: Request):
     되돌릴 수 있는 동작이고(다시 배식하면 된다) 잘못 눌러도 피해가 없다.
     중간에 멈춰도 ESP32 가 '실제로 나간 양'을 재서 알리므로 통계는 정확하게 남는다.
     """
-    return _publish_dispenser_command(request, "dispenser/stop", {})
+    result = _publish_dispenser_command(request, "dispenser/stop", {})
+    request.app.state.simulator.update_dispenser_state("stopped")
+    request.app.state.mqtt_client.publish(
+        "dispenser/weight/request",
+        {"request_id": str(uuid4()), "source": "stop"},
+    )
+    return result
 
 
 @router.post("/pump/off", response_model=CommandResponse)
 def pump_off(request: Request):
-    return _publish_dispenser_command(request, "dispenser/pump/off", {})
+    result = _publish_dispenser_command(request, "dispenser/pump/off", {})
+    request.app.state.simulator.update_dispenser_state("water_stopped")
+    return result
+
+
+@router.post("/pump/on", response_model=CommandResponse)
+def pump_on(request: Request):
+    """Start the water pump continuously; it remains on until /pump/off."""
+    result = _publish_dispenser_command(request, "dispenser/pump/on", {})
+    request.app.state.simulator.update_dispenser_state("water_pump_on")
+    return result
 
 
 @router.post("/pump/speed", response_model=CommandResponse)
@@ -287,7 +303,11 @@ def list_logs(days: int = 400, authorization: str = Header(None), db: Session = 
     )
     waters = (
         db.query(WaterLog)
-        .filter(WaterLog.user_id == user.user_id, WaterLog.created_at >= since)
+        .filter(
+            WaterLog.user_id == user.user_id,
+            WaterLog.created_at >= since,
+            WaterLog.water_type == "consumed",
+        )
         .order_by(WaterLog.created_at.asc())
         .all()
     )

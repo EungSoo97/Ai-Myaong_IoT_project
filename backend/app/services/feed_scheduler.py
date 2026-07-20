@@ -34,6 +34,8 @@ _scheduler_lock = threading.Lock()
 _scheduler_thread = None
 _lock_socket = None
 _SCHED_LOCK_PORT = 8771
+WATER_SCHEDULE_MIN_SECONDS = 30
+WATER_SCHEDULE_MAX_SECONDS = 90
 
 
 def _parse(raw):
@@ -60,6 +62,13 @@ def _normalize_amount(value):
     except (TypeError, ValueError):
         return 0.0
     return float(int(amount)) if amount.is_integer() else amount
+
+
+def _normalize_water_seconds(value):
+    amount = int(round(_normalize_amount(value)))
+    if amount <= 0:
+        return 0
+    return max(WATER_SCHEDULE_MIN_SECONDS, min(WATER_SCHEDULE_MAX_SECONDS, amount))
 
 
 def _has_feed_log_this_minute(db, user_id, pet_id, minute_start, minute_end):
@@ -184,7 +193,7 @@ def _run_once(feed_service, hhmm):
                 if item.get("on", True) is False or str(item.get("time")) != hhmm:
                     continue
 
-                amount = _normalize_amount(item.get("amount"))
+                amount = _normalize_water_seconds(item.get("amount"))
                 if amount <= 0:
                     continue
 
@@ -209,7 +218,7 @@ def _run_once(feed_service, hhmm):
                     WaterLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        water_amount_ml=amount,
+                        water_amount_ml=0,
                         water_type="auto_pending",
                         created_at=minute_start,
                     )
@@ -218,7 +227,7 @@ def _run_once(feed_service, hhmm):
                 if feed_service:
                     try:
                         result = feed_service.water(
-                            int(round(amount)),
+                            amount,
                             source="auto",
                             user_id=settings.user_id,
                             pet_id=pet_id,
