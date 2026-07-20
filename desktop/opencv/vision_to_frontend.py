@@ -45,6 +45,10 @@ DEFAULT_CLASS_LABELS = {
 
 
 DB_API_TIMEOUT = max(0.5, float(os.getenv("VISION_DB_API_TIMEOUT", "3")))
+VISION_DETECT_FPS = max(0.1, float(os.getenv("VISION_DETECT_FPS", "3")))
+VISION_POST_FPS = max(0.1, float(os.getenv("VISION_POST_FPS", "3")))
+VISION_CONTROL_POLL_SECONDS = max(0.25, float(os.getenv("VISION_CONTROL_POLL_SECONDS", "1")))
+VISION_YOLO_IMGSZ = int(os.getenv("VISION_YOLO_IMGSZ", "416"))
 
 
 def env_bool(name, default=False):
@@ -131,7 +135,12 @@ def open_frame_source(source):
 
 
 def detect_boxes(model, frame, class_filter):
-    result = model(frame, verbose=False, conf=float(os.getenv("VISION_CONF", "0.35")))[0]
+    result = model(
+        frame,
+        verbose=False,
+        conf=float(os.getenv("VISION_CONF", "0.35")),
+        imgsz=VISION_YOLO_IMGSZ,
+    )[0]
     boxes = result.boxes if result.boxes is not None else []
     detections = []
 
@@ -911,11 +920,20 @@ def main():
     print(f"[Vision] Backend: {backend_url}")
     print(f"[Vision] Classes: {sorted(class_filter)}")
     print(f"[Vision] Flip horizontal: {flip_horizontal}")
+    print(f"[Vision] Detect FPS: {VISION_DETECT_FPS:g}")
+    print(f"[Vision] Post FPS: {VISION_POST_FPS:g}")
+    print(f"[Vision] Control poll: {VISION_CONTROL_POLL_SECONDS:g}s")
+    print(f"[Vision] YOLO imgsz: {VISION_YOLO_IMGSZ}")
     print("[Vision] Press Q or ESC to exit.")
 
     last_post_error_at = 0.0
     last_control_error_at = 0.0
     last_control_poll_at = 0.0
+    last_detect_at = 0.0
+    last_detection_post_at = 0.0
+    latest_detections = []
+    detection_post_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-detection-post")
+    detection_post_future = None
     last_capture_requested_at = 0.0
     control_baseline_loaded = False
     recording_requested = False
@@ -947,7 +965,7 @@ def main():
             emergency_clip_recorder.add_frame(raw_frame, now)
             away_clip_recorder.add_frame(raw_frame, now)
 
-            if now - last_control_poll_at >= 0.25:
+            if now - last_control_poll_at >= VISION_CONTROL_POLL_SECONDS:
                 last_control_poll_at = now
                 try:
                     control = fetch_control_state(backend_url)
@@ -1009,9 +1027,12 @@ def main():
 
             recorder.write(raw_frame)
 
-            detections = detect_boxes(model, frame, class_filter)
-            activity_tracker.update(frame, detections, now)
-            emergency_tracker.update(raw_frame, detections, now)
+            if now - last_detect_at >= 1.0 / VISION_DETECT_FPS:
+                latest_detections = detect_boxes(model, frame, class_filter)
+                last_detect_at = now
+                activity_tracker.update(frame, latest_detections, now)
+                emergency_tracker.update(raw_frame, latest_detections, now)
+            detections = latest_detections
             if away_mode:
                 person = next((item for item in detections if item["label"] == "Person"), None)
                 if person and now - last_away_person_event_at >= float(os.getenv("AWAY_PERSON_EVENT_COOLDOWN", "10")):
@@ -1030,13 +1051,21 @@ def main():
                         if now - last_event_error_at > 5:
                             print(f"[Vision] Event post failed: {error}")
                             last_event_error_at = now
-            try:
-                post_detections(backend_url, source, frame, detections)
-            except requests.RequestException as error:
-                now = cv2.getTickCount() / cv2.getTickFrequency()
-                if now - last_post_error_at > 5:
-                    print(f"[Vision] Detection post failed: {error}")
-                    last_post_error_at = now
+            if now - last_detection_post_at >= 1.0 / VISION_POST_FPS:
+                if detection_post_future is None or detection_post_future.done():
+                    if detection_post_future is not None:
+                        error = detection_post_future.exception()
+                        if error and now - last_post_error_at > 5:
+                            print(f"[Vision] Detection post failed: {error}")
+                            last_post_error_at = now
+                    detection_post_future = detection_post_executor.submit(
+                        post_detections,
+                        backend_url,
+                        source,
+                        frame.copy(),
+                        list(detections),
+                    )
+                    last_detection_post_at = now
 
             draw_boxes(frame, detections)
             emergency_tracker.draw(frame, now)
@@ -1049,6 +1078,7 @@ def main():
         recorder.stop()
         emergency_clip_recorder.stop()
         away_clip_recorder.stop()
+        detection_post_executor.shutdown(wait=False, cancel_futures=True)
         cv2.destroyAllWindows()
 
 

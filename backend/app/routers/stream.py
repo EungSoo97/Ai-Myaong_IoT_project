@@ -10,9 +10,10 @@ from ipaddress import IPv4Network
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app.core.robot_access import require_robot_device_access
 from app.runtime_config import runtime_env
 
 router = APIRouter(prefix="/api/stream", tags=["stream"])
@@ -26,7 +27,7 @@ _FRAME = base64.b64decode(
 
 
 @router.get("/url")
-def stream_url():
+def stream_url(_user_id: int = Depends(require_robot_device_access)):
     stream_prefix = _stream_prefix()
     camera_stream_url = _resolve_camera_stream_url()
     if camera_stream_url and runtime_env("CAMERA_PROXY", "false").lower() != "true":
@@ -42,7 +43,7 @@ def stream_url():
 
 
 @router.get("/live.mjpg")
-def live_mjpeg():
+def live_mjpeg(_user_id: int = Depends(require_robot_device_access)):
     camera_stream_url = _resolve_camera_stream_url()
     if camera_stream_url:
         return StreamingResponse(
@@ -57,7 +58,7 @@ def live_mjpeg():
 
 
 @router.get("/simulated.mjpg")
-def simulated_mjpeg():
+def simulated_mjpeg(_user_id: int = Depends(require_robot_device_access)):
     return StreamingResponse(_frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
