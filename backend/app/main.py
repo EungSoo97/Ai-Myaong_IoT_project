@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -200,10 +201,14 @@ app.include_router(vision.router)
 @app.on_event("startup")
 def startup() -> None:
     database.init()
-    try:
-        cleanup_old_records()
-    except Exception as error:
-        print(f"[Retention] cleanup skipped: {error}", flush=True)
+
+    def run_retention_cleanup() -> None:
+        try:
+            cleanup_old_records()
+        except Exception as error:
+            print(f"[Retention] cleanup skipped: {error}", flush=True)
+
+    threading.Thread(target=run_retention_cleanup, daemon=True, name="retention-cleanup").start()
 
     mqtt_client.start()
 
