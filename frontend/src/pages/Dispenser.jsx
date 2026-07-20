@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Minus,
@@ -42,7 +42,6 @@ const WATER_CAUTION_ML = 50
 const FOOD_MOTOR_MS_PER_AMOUNT = 250 // esp32/main/motor_control.h 와 같은 값
 const FOOD_MOTOR_MIN_RUN_MS = 300
 const FOOD_MOTOR_MAX_RUN_MS = 8000
-const WATER_PUMP_MAX_RUN_MS = 10000
 const RUN_MARGIN_MS = 400 // 명령이 기기까지 가는 시간
 
 /* 정지를 누른 뒤 눌림 표시를 유지하는 시간. 이 시간이 지나야 배식 버튼으로 넘어간다 —
@@ -51,7 +50,6 @@ const STOP_FLASH_MS = 300
 
 const foodRunMs = (g) =>
   Math.min(FOOD_MOTOR_MAX_RUN_MS, Math.max(FOOD_MOTOR_MIN_RUN_MS, g * FOOD_MOTOR_MS_PER_AMOUNT))
-const waterRunMs = (sec) => Math.min(WATER_PUMP_MAX_RUN_MS, Math.max(300, sec * 1000))
 
 /* 로봇 시리얼 번호 — 설정에서 등록하면 저장된다. 등록 전에는 디스펜서를 못 쓴다. */
 const ROBOT_SERIAL_KEY = 'aimyaong:robotSerial'
@@ -185,7 +183,7 @@ export function Dispenser() {
           try {
             const arr = JSON.parse(raw || '[]')
             // 물 스케줄은 예전에 ml(5~50)로 저장됐는데 지금은 '초'다. 범위 밖 값을 그대로
-            // 두면 리스트엔 "50초 급수"로 보이지만 펌웨어는 10초까지만 돌려 표시와 동작이
+            // 두면 리스트엔 "50초 급수"로 보이지만 펌웨어는 90초 범위로 맞춰 표시와 동작을
             // 어긋난다. 불러올 때 종류별 범위로 맞춰 화면과 실제를 일치시킨다.
             const r = SCHEDULE_RANGE[type] ?? SCHEDULE_RANGE.food
             return Array.isArray(arr)
@@ -245,6 +243,8 @@ export function Dispenser() {
   }
 
   const [busy, setBusy] = useState(false)
+  const [manualWaterOn, setManualWaterOn] = useState(false)
+  const [manualWaterStopping, setManualWaterStopping] = useState(false)
 
   /* 시리얼 번호를 등록해야 디스펜서를 쓸 수 있다. 등록 전에는 배식·급수·스케줄을 막는다.
    * 버튼을 disabled 로 막아두지만, 그래도 호출되는 경로(자동 스케줄 편집 등)가 있어
@@ -310,7 +310,9 @@ export function Dispenser() {
     setBusy(true)
     try {
       await api.dispenserFeed(foodAmount)
-      startRun(foodRunMs(foodAmount) + RUN_MARGIN_MS) // 기기 신호를 기다리지 않고 바로 정지 버튼
+      startRun(foodRunMs(foodAmount) + RUN_MARGIN_MS)
+      setDispenser((prev) => ({ ...(prev || {}), busy: true, state: 'feed_running' }))
+      window.setTimeout(refreshDispenser, 250)
       showToast(`🍚 ${foodAmount}g 배식 시작 — 버튼을 눌러 멈출 수 있어요`)
       // 배식은 '일상'이라 알림(경고)으로 보내지 않음 → 통계/최근활동으로만 표현
     } catch {
@@ -329,11 +331,23 @@ export function Dispenser() {
     if (busy) return
     setBusy(true)
     try {
-      await api.dispenserWater(waterAmount)
-      startRun(waterRunMs(waterAmount) + RUN_MARGIN_MS)
-      showToast(`💧 ${waterAmount}초 급수 시작 — 버튼을 눌러 멈출 수 있어요`)
+      if (manualWaterOn) {
+        setManualWaterOn(false)
+        setManualWaterStopping(true)
+        showToast('💧 수동 급수 종료 요청을 보냈어요')
+        await api.dispenserPumpOff()
+      } else {
+        setManualWaterStopping(false)
+        await api.dispenserPumpOn()
+        setManualWaterOn(true)
+        showToast('💧 수동 급수를 시작했어요')
+      }
     } catch {
-      showToast('급수 실패 — 기기 연결을 확인해 주세요')
+      if (manualWaterOn) {
+        setManualWaterOn(true)
+        setManualWaterStopping(false)
+      }
+      showToast('급수 제어 실패 — 기기 연결을 확인해 주세요')
     } finally {
       setBusy(false)
     }
@@ -383,20 +397,33 @@ export function Dispenser() {
   // 받은 값 사이를 useCountUp 이 애니메이션으로 메워서 해결한다.
   // 탭이 숨겨져 있으면 아예 멈춘다 — 안 보이는 화면 때문에 서버를 때릴 이유가 없다.
   const [dispenser, setDispenser] = useState(null)
+  const refreshDispenser = useCallback(() =>
+    api
+      .getDashboard()
+      .then((d) => {
+        const next = d?.status?.dispenser ?? null
+        setDispenser(next)
+        return next
+      })
+      .catch(() => {
+        setDispenser(null)
+        return null
+      }), [])
   useEffect(() => {
     let alive = true
     let timer = null
 
     const load = () =>
-      api
-        .getDashboard()
-        .then((d) => { if (alive) setDispenser(d?.status?.dispenser ?? null) })
-        .catch(() => { if (alive) setDispenser(null) })
+      refreshDispenser().then((next) => {
+        if (alive) setDispenser(next)
+      })
 
     const start = () => {
       if (timer) return
       load()
-      timer = window.setInterval(load, 3000)
+      api.requestDispenserWeight().catch(() => {})
+      window.setTimeout(load, 350)
+      timer = window.setInterval(load, 1000)
     }
     const stop = () => {
       if (!timer) return
@@ -412,7 +439,7 @@ export function Dispenser() {
       stop()
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [])
+  }, [refreshDispenser])
 
   /* ── 긴급 정지 ──
    * 구동 중인지는 ESP32 가 dispenser/status 로 알려주고 백엔드가 dispenser.busy 로 내려준다.
@@ -426,13 +453,25 @@ export function Dispenser() {
   const [pendingUntil, setPendingUntil] = useState(0) // 예상 종료 시각(ms), 0 = 대기 아님
   const [now, setNow] = useState(() => Date.now())
   const deviceBusy = !!dispenser?.busy
-  const running = deviceBusy || pendingUntil > now
+  const expectedFoodRunning = pendingUntil > now
+  const running = deviceBusy || expectedFoodRunning
+  const foodRunning = (dispenser?.state === 'feed_running' && deviceBusy) || expectedFoodRunning
+  const waterPumpRunning = !manualWaterStopping && (
+    manualWaterOn || ['water_running', 'water_pump_on'].includes(dispenser?.state)
+  )
+
+  useEffect(() => {
+    if (['idle', 'online', 'stopped', 'water_stopped'].includes(dispenser?.state)) {
+      setManualWaterOn(false)
+      setManualWaterStopping(false)
+    }
+  }, [dispenser?.state])
 
   // 예상으로 띄운 버튼은 예상 종료 시각이 되면 스스로 내려간다.
   // 기기가 상태를 보내오면 예상은 버린다 — 실제 신호가 항상 이긴다.
   useEffect(() => {
-    if (deviceBusy && pendingUntil) setPendingUntil(0)
-  }, [deviceBusy, pendingUntil])
+    if (deviceBusy && pendingUntil && dispenser?.state !== 'feed_running') setPendingUntil(0)
+  }, [deviceBusy, pendingUntil, dispenser?.state])
 
   // 경과 시간 표시 + 예상 종료 판정을 같은 틱으로 굴린다.
   const [elapsed, setElapsed] = useState(0)
@@ -457,9 +496,13 @@ export function Dispenser() {
   const doStop = async () => {
     // 눌림 반응이 다 보인 뒤에 버튼을 내린다. 즉시 내리면 running 이 false 가 되면서
     // 버튼이 통째로 사라져 애니메이션이 재생될 틈이 없다 — 그냥 뚝 꺼지는 느낌이 된다.
-    window.setTimeout(() => setPendingUntil(0), STOP_FLASH_MS)
+    setNow(Date.now())
+    setPendingUntil(0)
+    setDispenser((prev) => ({ ...(prev || {}), busy: false, state: 'stopped' }))
     try {
       await api.dispenserStop()
+      refreshDispenser()
+      window.setTimeout(refreshDispenser, 250)
       showToast('⏹ 정지했어요')
       // 명령이 실제로 나간 뒤에만 알림을 남긴다 — 실패했는데 '정지됨'이 기록되면 안 된다.
       // 배식/급수와 달리 정지는 '일상'이 아니라 사람이 개입한 사건이라 알림으로 남긴다.
@@ -475,8 +518,10 @@ export function Dispenser() {
   }
 
   // 사료/물 로드셀은 따로 논다. 한쪽만 붙어 있어도 붙은 쪽은 정상 표시해야 한다.
-  const foodLive = !!dispenser?.food_fresh
-  const waterLive = !!dispenser?.water_fresh
+  const foodFresh = !!dispenser?.food_fresh
+  const waterFresh = !!dispenser?.water_fresh
+  const foodLive = dispenser?.food_g != null
+  const waterLive = dispenser?.water_ml != null
   const foodGrams = foodLive ? Math.round(dispenser.food_g ?? 0) : null
   const waterMl = waterLive ? Math.round(dispenser.water_ml ?? 0) : null
   const foodPercent = foodLive ? (dispenser.food_percent ?? 0) : 0
@@ -584,6 +629,7 @@ export function Dispenser() {
           color="primary"
           level={foodLevel}
           live={foodLive}
+          fresh={foodFresh}
         />
         <ResourceCard
           icon={<Droplets className="w-4 h-4" />}
@@ -594,6 +640,7 @@ export function Dispenser() {
           color="water"
           level={waterLevel}
           live={waterLive}
+          fresh={waterFresh}
         />
       </section>
 
@@ -611,7 +658,7 @@ export function Dispenser() {
         busy={busy}
         button={`지금 ${foodAmount}g 배식하기`}
         icon={<UtensilsCrossed className="w-4 h-4" />}
-        running={running}
+        running={foodRunning}
         elapsed={elapsed}
         onStop={doStop}
         disabled={!hasRobotSerial}
@@ -620,17 +667,18 @@ export function Dispenser() {
       <ManualCard
         kind="water"
         title="수동 급수"
-        unitLabel="초"
-        amount={waterAmount}
-        min={1}
-        max={10}
+        unitLabel=""
+        amount={waterPumpRunning ? 'ON' : 'OFF'}
+        min={0}
+        max={1}
         step={1}
-        onChange={setWaterAmount}
+        onChange={() => {}}
+        isToggle
         onSubmit={doWater}
         busy={busy}
-        button={`지금 ${waterAmount}초 급수하기`}
+        button={waterPumpRunning ? '수동 급수 끄기' : '수동 급수 켜기'}
         icon={<Droplets className="w-4 h-4" />}
-        running={running}
+        running={false}
         elapsed={elapsed}
         onStop={doStop}
         disabled={!hasRobotSerial}
@@ -881,7 +929,7 @@ function useCountUp(target, duration = 2200) {
   return target == null ? null : shown
 }
 
-function ResourceCard({ icon, label, value, unit, percent, color, level, live = true }) {
+function ResourceCard({ icon, label, value, unit, percent, color, level, live = true, fresh = true }) {
   const accent = color === 'water' ? COLORS.water : COLORS.food
   const danger = 'rgb(var(--brand-danger))'
   const low = level === 'low'
@@ -909,6 +957,10 @@ function ResourceCard({ icon, label, value, unit, percent, color, level, live = 
           {!live ? (
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-brand-brown/20 text-brand-mute" style={{ background: withAlpha(COLORS.mute, 0.15) }}>
               <AlertTriangle className="w-3 h-3 shrink-0" /> 연결 안 됨
+            </span>
+          ) : !fresh ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-brand-brown/20 text-brand-mute" style={{ background: withAlpha(COLORS.mute, 0.15) }}>
+              <Clock className="w-3 h-3 shrink-0" /> 갱신 대기
             </span>
           ) : low ? (
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-dashed border-white/40 text-white animate-pulse" style={{ background: danger }}>
@@ -960,10 +1012,12 @@ function ResourceCard({ icon, label, value, unit, percent, color, level, live = 
   )
 }
 
-function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon, running = false, elapsed = 0, onStop, disabled = false }) {
+function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, onSubmit, busy, button, icon, running = false, elapsed = 0, onStop, disabled = false, isToggle = false }) {
   const isWater = kind === 'water'
   const accent = isWater ? COLORS.water : COLORS.food
-  const ratio = (amount - min) / (max - min)
+  const toggleActive = isToggle && amount === 'ON'
+  const active = toggleActive || running
+  const ratio = isToggle ? 0 : (amount - min) / (max - min)
   // 정지를 누른 직후 눌림 표시. 버튼이 사라지면 같이 정리된다.
   const [pressed, setPressed] = useState(false)
   useEffect(() => {
@@ -972,14 +1026,31 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
     return () => window.clearTimeout(timer)
   }, [pressed])
   return (
-    <div className="relative overflow-hidden rounded-3xl shadow-soft mt-4 px-5 py-5" style={{ backgroundColor: BG_CARD }}>
+    <div
+      className={`relative overflow-hidden rounded-3xl shadow-soft mt-4 px-5 py-5 transition-all duration-300 ${
+        active ? 'ring-2 ring-inset' : ''
+      }`}
+      style={{
+        backgroundColor: active ? withAlpha(accent, 0.1) : BG_CARD,
+        '--tw-ring-color': active ? withAlpha(accent, 0.55) : undefined,
+      }}
+    >
+      {active && (
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-1.5 animate-pulse"
+          style={{ background: accent }}
+        />
+      )}
       <Stitch />
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <span
-              className="w-10 h-10 rounded-full flex items-center justify-center border border-dashed border-brand-brown/20"
-              style={{ background: withAlpha(accent, 0.15), color: accent }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center border border-dashed border-brand-brown/20 ${
+                active ? 'animate-pulse shadow-soft' : ''
+              }`}
+              style={{ background: active ? accent : withAlpha(accent, 0.15), color: active ? '#fff' : accent }}
             >
               {icon}
             </span>
@@ -988,12 +1059,18 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
               <p className="font-display text-base font-bold text-brand-brown">1회 제공량</p>
             </div>
           </div>
-          <span className="px-3 py-1 rounded-full text-sm font-extrabold border border-dashed border-brand-brown/20" style={{ background: withAlpha(accent, 0.15), color: accent }}>
-            {amount}{unitLabel}
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-extrabold border border-dashed ${
+              active ? 'border-white/50 text-white shadow-soft' : 'border-brand-brown/20'
+            }`}
+            style={{ background: active ? accent : withAlpha(accent, 0.15), color: active ? '#fff' : accent }}
+          >
+            {active && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+            {active ? '작동 중' : amount}{!active && unitLabel}
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        {!isToggle && <div className="flex items-center gap-3">
           <button
             onClick={() => onChange(Math.max(min, amount - step))}
             className="w-11 h-11 shrink-0 rounded-full text-white shadow-soft touch-active flex items-center justify-center border border-dashed border-white/30"
@@ -1024,7 +1101,35 @@ function ManualCard({ kind, title, unitLabel, amount, min, max, step, onChange, 
           >
             <Plus className="w-5 h-5" />
           </button>
-        </div>
+        </div>}
+
+        {isToggle && (
+          <div
+            className={`rounded-2xl px-4 py-3 border border-dashed transition-colors duration-300 ${
+              toggleActive ? 'border-brand-water/40' : 'border-transparent'
+            }`}
+            style={{ background: toggleActive ? '#fff' : withAlpha(accent, 0.1), color: accent }}
+          >
+            <p className="text-sm font-extrabold">
+              {toggleActive ? '수동 급수 작동 중' : '수동 급수 대기 중'}
+            </p>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-brand-mute">
+              {toggleActive ? '펌프가 계속 켜져 있어요. 끄기 전까지 급수가 유지됩니다.' : 'OFF 상태입니다. 켜면 펌프가 계속 작동해요.'}
+            </p>
+          </div>
+        )}
+
+        {!isToggle && running && (
+          <div
+            className="mt-3 rounded-2xl px-4 py-3 border border-dashed"
+            style={{ background: '#fff', borderColor: withAlpha(accent, 0.4), color: accent }}
+          >
+            <p className="text-sm font-extrabold">수동 배식 작동 중</p>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-brand-mute">
+              배식기가 작동 중이에요. 필요하면 아래 정지 버튼으로 멈출 수 있습니다.
+            </p>
+          </div>
+        )}
 
         {/* 구동 중에는 같은 자리에서 정지 버튼이 된다 — 방금 배식을 누른 손가락이 이미 여기 있다.
          * 오거는 최대 8초라 다른 화면으로 옮겨가 찾을 시간이 없다. 평소엔 없어서 오발도 없다.
@@ -1150,10 +1255,10 @@ function FeltLabel({ children, icon, className = '' }) {
 
 /* 사료는 양(g), 물은 시간(초). 물통이 저수조 겸 음수대라 펌프를 돌려도 물이 통 밖으로
  * 나가지 않아(순환) 'ml 급수'가 성립하지 않는다. 수동 급수와 같은 눈금을 쓴다.
- * 물의 상한 10초는 펌웨어가 자르는 값(WATER_PUMP_MAX_RUN_MS)과 맞춘 것이다. */
+ * 물의 상한 90초는 펌웨어가 자르는 값(WATER_PUMP_MAX_RUN_MS)과 맞춘 것이다. */
 const SCHEDULE_RANGE = {
   food: { min: 5, max: 50, step: 5, unit: 'g', def: 25 },
-  water: { min: 1, max: 10, step: 1, unit: '초', def: 5 },
+  water: { min: 30, max: 90, step: 5, unit: '초', def: 60 },
 }
 
 function ScheduleModal({ initial, onClose, onSave }) {
@@ -1162,7 +1267,7 @@ function ScheduleModal({ initial, onClose, onSave }) {
   const [type, setType] = useState(initial.type)
   // 사료(g)와 물(초)은 서로 다른 값이다. 종류를 오가도 각자 값을 그대로 들고 있어야
   // 사료 30g 보다가 물 봤다가 돌아왔을 때 30g 이 살아있다. 편집 중인 종류만 저장값을
-  // 쓰고, 반대쪽은 기본값(사료 25g / 물 5초)으로 시작한다.
+  // 쓰고, 반대쪽은 기본값(사료 25g / 물 60초)으로 시작한다.
   const [amounts, setAmounts] = useState(() => {
     const next = { food: SCHEDULE_RANGE.food.def, water: SCHEDULE_RANGE.water.def }
     const t = SCHEDULE_RANGE[initial.type] ? initial.type : 'food'
@@ -1260,9 +1365,9 @@ function ScheduleModal({ initial, onClose, onSave }) {
             <TimeWheel value={time} onChange={setTime} visibleRows={3} />
           </div>
 
-          {/* 급여량/급수량 (슬라이드 막대) */}
+          {/* 급여량/급수 시간 (슬라이드 막대) */}
           <div className="mt-3 flex items-center justify-between">
-            <FeltLabel className="!mt-0">{isFood ? '급여량' : '급수량'}</FeltLabel>
+            <FeltLabel className="!mt-0">{isFood ? '급여량' : '급수 시간'}</FeltLabel>
             <span className="px-3 py-1 rounded-full text-sm font-extrabold text-white border border-dashed border-white/40" style={{ background: accent }}>
               {amount}{unit}
             </span>
@@ -1276,7 +1381,7 @@ function ScheduleModal({ initial, onClose, onSave }) {
               step={step}
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
-              aria-label={isFood ? '급여량' : '급수량'}
+              aria-label={isFood ? '급여량' : '급수 시간'}
               className="felt-range flex-1 cursor-pointer"
               style={{
                 color: accent,

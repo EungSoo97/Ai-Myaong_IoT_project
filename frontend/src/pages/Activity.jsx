@@ -164,7 +164,8 @@ export function Activity() {
     // (순환 구조라 펌프를 돌려도 물이 통에서 줄지 않아 급수량 ml 이 성립하지 않는다)
     const water = (feedLogs.water || []).filter((x) => (Number(x.amount_ml) || 0) > 0).map((x, i) => {
       const amt = Math.round(Number(x.amount_ml) || 0)
-      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at }
+      const skipped = x.water_type === 'skipped'
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: skipped ? '급수 미실행' : '급수', amount: amt, unit: skipped ? '초' : 'ml', feedType: x.water_type, desc: skipped ? `고양이 미감지로 ${amt}초 자동 급수 취소` : `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at, warning: skipped }
     })
     return [...food, ...water]
   }, [feedLogs])

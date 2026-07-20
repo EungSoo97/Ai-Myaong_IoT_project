@@ -10,6 +10,7 @@
 #include "loadcell_control.h"
 #include "motor_control.h"
 #include "mqtt_secrets.h"
+#include "presence_control.h"
 #include "water_pump_control.h"
 
 // Leave SSID/PASSWORD empty to let ESP32 reuse credentials already saved by WiFi.begin().
@@ -201,7 +202,7 @@ void publishDispenserWeight() {
 
 // 지금 사료 오거나 물 펌프가 도는 중인가. 앱의 '정지' 버튼은 이 상태로만 뜬다.
 bool dispenserBusy() {
-  return motorStopAt != 0 || waterPumpStopAt != 0;
+  return motorStopAt != 0 || waterPumpRunning;
 }
 
 // 구동이 끝났을 때 idle 을 알린다.
@@ -249,14 +250,20 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
     dispenseFoodAmount(amount);
     publishDispenserStatus("feed_running");
   } else if (topic == "dispenser/water") {
-    // 물은 초 단위. 옛 백엔드가 amount 만 보내면 그 값을 초로 읽는다.
-    dispenseWaterSeconds(seconds > 0 ? seconds : amount);
-    publishDispenserStatus("water_running");
+    if (jsonStringValue(payload, "source") == "auto") {
+      requestScheduledWater(
+          amount,
+          jsonStringValue(payload, "request_id"),
+          jsonStringValue(payload, "user_id"),
+          jsonStringValue(payload, "pet_id"));
+      publishDispenserStatus(scheduledWaterPending ? "water_waiting_for_cat" : "water_running");
+    } else {
+      dispenseWaterSeconds(seconds > 0 ? seconds : amount);
+      publishDispenserStatus("water_running");
+    }
   } else if (topic == "dispenser/stop") {
     // 긴급 정지: 사료 오거와 물 펌프를 동시에 즉시 끈다.
-    // 오거는 최대 8초 도는데 지금까지 이걸 멈출 방법이 없었다(pump/off 는 물만 껐다).
-    // 중간에 멈춰도 foodDispensePending 은 살아있어서, 저울이 잠잠해지면
-    // '실제로 나간 만큼'이 dispenser/dispensed 로 나간다 — 통계는 여전히 정확하다.
+    // 중간에 멈춰도 실제 배출량은 저울이 안정된 뒤 별도로 발행된다.
     stopMotors();
     stopWaterPump();
     publishDispenserStatus("stopped");
@@ -264,6 +271,9 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
   } else if (topic == "dispenser/pump/off") {
     stopWaterPump();
     publishDispenserStatus("water_stopped");
+  } else if (topic == "dispenser/pump/on") {
+    startWaterPump();
+    publishDispenserStatus("water_pump_on");
   } else if (topic == "dispenser/pump/speed") {
     setWaterPumpSpeed(amount);
     publishDispenserStatus("water_speed_set");
@@ -284,6 +294,11 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
   } else if (topic == "dispenser/wifi/setup") {
     startWifiSetupPortal();
     publishDispenserStatus("wifi_setup");
+  } else if (topic == "dispenser/presence/config") {
+    bool enabled = payload.indexOf("\"enabled\":true") >= 0 ||
+                   payload.indexOf("\"enabled\": true") >= 0;
+    setPresenceGateEnabled(enabled);
+    publishDispenserStatus(presenceGateEnabled ? "presence_gate_enabled" : "presence_gate_disabled");
   }
 }
 
@@ -561,6 +576,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/feed");
   mqttClient.subscribe("dispenser/water");
   mqttClient.subscribe("dispenser/pump/off");
+  mqttClient.subscribe("dispenser/pump/on");
   mqttClient.subscribe("dispenser/pump/speed");
   mqttClient.subscribe("dispenser/stop");
   mqttClient.subscribe("dispenser/tare");
@@ -568,6 +584,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/tare/water");
   mqttClient.subscribe("dispenser/weight/request");
   mqttClient.subscribe("dispenser/wifi/setup");
+  mqttClient.subscribe("dispenser/presence/config");
   publishDispenserStatus("online");
   publishDispenserWeight();
   Serial.println("[mqtt] connected and subscribed");
@@ -605,6 +622,23 @@ void setupMqttControl() {
   connectWifiIfNeeded();
 }
 
+void publishPresenceWaterEventIfNeeded() {
+  if (!mqttClient.connected() || presenceWaterEvent.length() == 0) return;
+
+  String payload = "{\"event\":\"" + mqttJsonEscape(presenceWaterEvent) + "\"";
+  payload += ",\"amount\":" + String(presenceWaterEventAmount);
+  payload += ",\"request_id\":\"" + mqttJsonEscape(presenceWaterEventRequestId) + "\"";
+  payload += ",\"user_id\":\"" + mqttJsonEscape(presenceWaterEventUserId) + "\"";
+  payload += ",\"pet_id\":\"" + mqttJsonEscape(presenceWaterEventPetId) + "\"}";
+  if (mqttClient.publish("dispenser/water/event", payload.c_str(), false)) {
+    presenceWaterEvent = "";
+    presenceWaterEventAmount = 0;
+    presenceWaterEventRequestId = "";
+    presenceWaterEventUserId = "";
+    presenceWaterEventPetId = "";
+  }
+}
+
 void loopMqttControl() {
   serviceWifiSetupPortal();
   connectWifiIfNeeded();
@@ -619,6 +653,7 @@ void loopMqttControl() {
 
   if (mqttClient.connected()) {
     mqttClient.loop();
+    publishPresenceWaterEventIfNeeded();
 
     // 구동 시작/종료는 앱의 '정지' 버튼이 뜨고 지는 근거라 즉시 알린다.
     publishDispenserBusyChange();

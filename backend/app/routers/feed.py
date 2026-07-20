@@ -142,6 +142,10 @@ class PumpSpeedRequest(BaseModel):
     speed: int
 
 
+class PresenceConfigRequest(BaseModel):
+    enabled: bool
+
+
 def _publish_dispenser_command(request: Request, topic: str, payload: dict):
     request_id = str(uuid4())
     message = {"request_id": request_id, **payload}
@@ -226,12 +230,28 @@ def stop_dispenser(request: Request, _user_id: int = Depends(require_robot_devic
     되돌릴 수 있는 동작이고(다시 배식하면 된다) 잘못 눌러도 피해가 없다.
     중간에 멈춰도 ESP32 가 '실제로 나간 양'을 재서 알리므로 통계는 정확하게 남는다.
     """
-    return _publish_dispenser_command(request, "dispenser/stop", {})
+    result = _publish_dispenser_command(request, "dispenser/stop", {})
+    request.app.state.simulator.update_dispenser_state("stopped")
+    request.app.state.mqtt_client.publish(
+        "dispenser/weight/request",
+        {"request_id": str(uuid4()), "source": "stop"},
+    )
+    return result
 
 
 @router.post("/pump/off", response_model=CommandResponse)
 def pump_off(request: Request, _user_id: int = Depends(require_robot_device_access)):
-    return _publish_dispenser_command(request, "dispenser/pump/off", {})
+    result = _publish_dispenser_command(request, "dispenser/pump/off", {})
+    request.app.state.simulator.update_dispenser_state("water_stopped")
+    return result
+
+
+@router.post("/pump/on", response_model=CommandResponse)
+def pump_on(request: Request, _user_id: int = Depends(require_robot_device_access)):
+    """Start the water pump continuously; it remains on until /pump/off."""
+    result = _publish_dispenser_command(request, "dispenser/pump/on", {})
+    request.app.state.simulator.update_dispenser_state("water_pump_on")
+    return result
 
 
 @router.post("/pump/speed", response_model=CommandResponse)
@@ -259,6 +279,25 @@ def tare_water_loadcell(request: Request, _user_id: int = Depends(require_robot_
     return _publish_dispenser_command(request, "dispenser/tare/water", {})
 
 
+@router.post("/presence", response_model=CommandResponse)
+def configure_presence_gate(
+    payload: PresenceConfigRequest,
+    request: Request,
+    _user_id: int = Depends(require_robot_device_access),
+):
+    request_id = str(uuid4())
+    message = {"request_id": request_id, "enabled": payload.enabled}
+    mqtt_client = request.app.state.mqtt_client
+    mqtt_client.publish("dispenser/presence/config", message, retain=True)
+    return {
+        "request_id": request_id,
+        "status": "accepted",
+        "topic": "dispenser/presence/config",
+        "payload": message,
+        "simulated": mqtt_client.simulation_mode,
+    }
+
+
 @router.post("/weight/request", response_model=CommandResponse)
 def request_weight(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/weight/request", {})
@@ -278,7 +317,11 @@ def list_logs(days: int = 400, authorization: str = Header(None), db: Session = 
     )
     waters = (
         db.query(WaterLog)
-        .filter(WaterLog.user_id == user.user_id, WaterLog.created_at >= since)
+        .filter(
+            WaterLog.user_id == user.user_id,
+            WaterLog.created_at >= since,
+            WaterLog.water_type == "consumed",
+        )
         .order_by(WaterLog.created_at.asc())
         .all()
     )
