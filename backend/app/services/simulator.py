@@ -31,10 +31,19 @@ class DeviceSimulator:
         self._food_window: list[float] = []                     # 로드셀도 초음파처럼 튀므로 중앙값 필터
         self._water_window: list[float] = []
         self._weight_window_size = max(1, int(os.getenv("WEIGHT_FILTER_WINDOW", "5")))
-        # 통 용량 — % 게이지 계산용. 통을 바꾸면 이 값만 조정하면 된다.
-        self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "1000")))
-        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "1000")))
+        # 게이지 100% 의 기준. 여기만 쓰인다 — 표시 숫자(g/ml)와 여유/보충 판정은
+        # 실측 무게 그대로라 이 값과 무관하다.
+        # 물통 자체는 300ml 보다 크지만 운용상 그 이상 채우지 않아 300 을 기준으로 잡는다.
+        self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "300")))
+        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "300")))
         self._weight_stale_sec = float(os.getenv("DISPENSER_WEIGHT_STALE_SEC", "10"))
+        # 디스펜서 구동 상태 — ESP32 가 dispenser/status 로 알려준다. 앱의 '정지' 버튼은
+        # 이 값으로만 뜬다. 프론트가 시간을 추측하지 않도록(펌웨어 상수 복제) 기기가 직접 알린다.
+        self._dispenser_state: str | None = None
+        self._dispenser_state_at = 0.0
+        # 오거 최대 8초, 펌프 최대 10초. 그보다 오래 '구동 중'이면 기기가 죽었거나 상태를
+        # 놓친 것이라 idle 로 본다 — 정지 버튼이 영영 안 사라지는 것보다 낫다.
+        self._busy_max_sec = float(os.getenv("DISPENSER_BUSY_MAX_SEC", "13"))
 
     def move(self, command: str) -> dict[str, Any]:
         self.last_command = command
@@ -121,7 +130,27 @@ class DeviceSimulator:
             self._water_weight_updated_at > 0
             and now - self._water_weight_updated_at <= self._weight_stale_sec
         )
+        # 지금 사료/물이 나오는 중인지. 앱의 '정지' 버튼이 이 값으로 뜨고 진다.
+        view["busy"] = self._dispenser_busy()
+        view["state"] = self._dispenser_state
         return view
+
+    # ESP32 가 구동 중일 때 알리는 상태값. 그 외(online/tare_done/...)는 구동과 무관하다.
+    _BUSY_STATES = {"feed_running", "water_running"}
+
+    def update_dispenser_state(self, state: str | None) -> dict[str, Any]:
+        """ESP32 의 dispenser/status 를 반영한다."""
+        if not state:
+            return self.status()
+        self._dispenser_state = state
+        self._dispenser_state_at = time.monotonic()
+        return self.status()
+
+    def _dispenser_busy(self) -> bool:
+        if self._dispenser_state not in self._BUSY_STATES:
+            return False
+        # 구동 상태가 너무 오래 붙어 있으면 종료 신호를 놓친 것으로 본다.
+        return time.monotonic() - self._dispenser_state_at <= self._busy_max_sec
 
     def update_dispenser_weight(
         self,

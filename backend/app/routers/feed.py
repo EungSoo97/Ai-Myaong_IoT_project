@@ -211,6 +211,17 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
     }
 
 
+@router.post("/stop", response_model=CommandResponse)
+def stop_dispenser(request: Request):
+    """긴급 정지 — 사료 오거와 물 펌프를 즉시 끈다.
+
+    인증을 걸지 않는다. 사료가 쏟아지는 중에 토큰이 만료됐다는 이유로 못 멈추면 안 된다.
+    되돌릴 수 있는 동작이고(다시 배식하면 된다) 잘못 눌러도 피해가 없다.
+    중간에 멈춰도 ESP32 가 '실제로 나간 양'을 재서 알리므로 통계는 정확하게 남는다.
+    """
+    return _publish_dispenser_command(request, "dispenser/stop", {})
+
+
 @router.post("/pump/off", response_model=CommandResponse)
 def pump_off(request: Request):
     return _publish_dispenser_command(request, "dispenser/pump/off", {})

@@ -26,6 +26,10 @@ class AwayModeRequest(BaseModel):
     on: bool
 
 
+class PowerRequest(BaseModel):
+    on: bool
+
+
 class FeedRequest(BaseModel):
     amount: int = Field(default=1, ge=1, le=300)
 

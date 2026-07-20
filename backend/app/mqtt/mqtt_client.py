@@ -25,9 +25,19 @@ class MqttClient:
         self._handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
         self._refresh_config()
 
-    def on_topic(self, topic: str, handler: Callable[[dict[str, Any]], None]) -> None:
-        """토픽 수신 핸들러 등록. 등록된 토픽은 접속할 때마다 자동으로 구독한다."""
-        self._handlers[topic] = handler
+    def on_topic(
+        self,
+        topic: str,
+        handler: Callable[[dict[str, Any]], None],
+        skip_retained: bool = False,
+    ) -> None:
+        """토픽 수신 핸들러 등록. 등록된 토픽은 접속할 때마다 자동으로 구독한다.
+
+        skip_retained: 브로커에 retain 된 값을 무시한다. retain 은 '마지막에 이랬다'는
+        기록이라 접속하자마자 배달되는데, '지금 구동 중인가' 같은 순간 상태에 쓰면
+        몇 시간 전 값을 현재로 착각한다. 그런 토픽에만 켠다.
+        """
+        self._handlers[topic] = (handler, skip_retained)
 
     def start(self) -> None:
         with self._lock:
@@ -170,8 +180,12 @@ class MqttClient:
                 print(f"[mqtt] subscribe failed rc={rc}: {topic}")
 
     def _on_message(self, _client, _userdata, message) -> None:
-        handler = self._handlers.get(message.topic)
-        if not handler:
+        entry = self._handlers.get(message.topic)
+        if not entry:
+            return
+
+        handler, skip_retained = entry
+        if skip_retained and message.retain:
             return
 
         try:

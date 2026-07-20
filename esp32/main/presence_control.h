@@ -125,7 +125,7 @@ void setPresenceGateEnabled(bool enabled) {
     pendingPresenceArmed = false;
     pendingWaterAmount = 0;
     clearPendingWaterMetadata();
-    dispenseWaterAmount(amount);
+    dispenseWaterSeconds(amount);
     Serial.println("[presence] pending scheduled water released because gate was disabled");
   }
 }
@@ -138,7 +138,7 @@ void requestScheduledWater(int amount, const String& requestId, const String& us
   if (!presenceGateEnabled) {
     queuePresenceWaterEvent("executed", amount);
     clearPendingWaterMetadata();
-    dispenseWaterAmount(amount);
+    dispenseWaterSeconds(amount);
     Serial.println("[presence] scheduled water started immediately");
     return;
   }
@@ -191,6 +191,6 @@ void servicePresenceSensor() {
     pendingWaterAmount = 0;
     clearPendingWaterMetadata();
     Serial.println("[presence] cat detected; starting scheduled water");
-    dispenseWaterAmount(amount);
+    dispenseWaterSeconds(amount);
   }
 }

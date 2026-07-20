@@ -16,6 +16,7 @@ from app.routers import (
     network,
     pets,
     robot,
+    robot_devices,
     settings,
     stream,
     vision,
@@ -166,12 +167,23 @@ def _handle_scheduled_water_event(payload: dict) -> None:
         db.close()
 
 
+def _handle_dispenser_status_message(payload: dict) -> None:
+    # 디스펜서가 지금 사료/물을 내보내는 중인지. 앱의 '긴급 정지' 버튼이 이 값으로 뜬다.
+    # 기기만 정확히 아는 정보라, 프론트가 배출 시간을 추측하지 않도록 여기서 받는다.
+    simulator.update_dispenser_state(payload.get("state"))
+
+
 mqtt_client.on_topic("ai-myaong/robot/sensor", _handle_sensor_message)
 mqtt_client.on_topic("dispenser/weight", _handle_dispenser_weight_message)
 mqtt_client.on_topic("dispenser/dispensed", _handle_dispenser_dispensed_message)
 mqtt_client.on_topic("dispenser/water/event", _handle_scheduled_water_event)
+# retain 된 상태는 무시한다. dispenser/status 는 retain 이라 접속하자마자 마지막 값이
+# 배달되는데, 그게 몇 시간 전 feed_running 이면 백엔드가 '지금 배식 중'으로 착각해
+# 재시작할 때마다 정지 버튼이 유령처럼 뜬다. 구동 여부는 '지금 오는' 신호로만 판단한다.
+mqtt_client.on_topic("dispenser/status", _handle_dispenser_status_message, skip_retained=True)
 
 app.include_router(robot.router)
+app.include_router(robot_devices.router)
 app.include_router(feed.router)
 app.include_router(stream.router)
 app.include_router(ws.router)
@@ -210,7 +222,6 @@ def startup() -> None:
             print("[FeedScheduler] started", flush=True)
     else:
         print("[FeedScheduler] disabled by FEED_SCHEDULER_ENABLED", flush=True)
-
 
 @app.on_event("shutdown")
 def shutdown() -> None:

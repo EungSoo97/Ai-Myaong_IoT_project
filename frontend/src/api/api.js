@@ -139,6 +139,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ seconds }),
     }),
+  // 긴급 정지 — 사료 오거 + 물 펌프 즉시 정지. 중간에 멈춰도 ESP32 가 실제로 나간 양을
+  // 재서 알리므로 통계는 정확히 남는다.
+  dispenserStop: () =>
+    request("/api/dispenser/stop", {
+      method: "POST",
+    }),
   dispenserPumpOff: () =>
     request("/api/dispenser/pump/off", {
       method: "POST",
@@ -206,6 +212,13 @@ export const api = {
   // 양방향 음성 호출 시작
   voiceCall: () =>
     request("/api/robot/voice-call", { method: "POST" }),
+  rebootRobot: () =>
+    request("/api/robot/reboot", { method: "POST" }),
+  setRobotPower: (on) =>
+    request("/api/robot/power", {
+      method: "POST",
+      body: JSON.stringify({ on }),
+    }),
   // 외출 모드 on/off 서버 동기화
   setAwayMode: (on) =>
     request("/api/robot/away-mode", {
@@ -288,6 +301,26 @@ export const api = {
   getSettings: () => request("/api/settings"),
   updateSettings: (body) =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+  claimRobotDevice: (robotSerial) =>
+    request("/api/robot-devices/claim", {
+      method: "POST",
+      body: JSON.stringify({ robot_serial: robotSerial }),
+    }),
+  getMyRobotDevices: () => request("/api/robot-devices/me"),
+  releaseRobotDevice: (robotSerial) =>
+    request(`/api/robot-devices/${encodeURIComponent(robotSerial)}/claim`, {
+      method: "DELETE",
+    }),
+  getRobotDeviceMembers: (robotSerial) =>
+    request(`/api/robot-devices/${encodeURIComponent(robotSerial)}/members`),
+  grantRobotDeviceMember: ({ robotSerial, userEmail }) =>
+    request("/api/robot-devices/members/grant", {
+      method: "POST",
+      body: JSON.stringify({
+        robot_serial: robotSerial,
+        user_email: userEmail,
+      }),
+    }),
 
   // 펫 CRUD (DB 반영) — body 는 toApiPet 으로 변환된 스네이크 형태
   getPets: () => request("/api/pets"),

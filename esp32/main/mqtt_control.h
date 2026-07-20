@@ -96,6 +96,36 @@ void sendSetupJson(int status, const String& payload) {
   wifiSetupServer.send(status, "application/json; charset=utf-8", payload);
 }
 
+// 키가 없으면 0. mqttExtractAmount 와 달리 1 로 올리지 않는다 —
+// 호출부가 '안 왔음'을 구분해서 옛 payload 로 폴백해야 한다.
+int mqttExtractIntField(const String& payload, const char* key) {
+  String marker = String("\"") + key + "\"";
+  int keyIndex = payload.indexOf(marker);
+  if (keyIndex < 0) {
+    return 0;
+  }
+
+  int colonIndex = payload.indexOf(':', keyIndex + marker.length());
+  if (colonIndex < 0) {
+    return 0;
+  }
+
+  int start = colonIndex + 1;
+  while (start < payload.length() && !isDigit(payload[start]) && payload[start] != '-') {
+    start += 1;
+  }
+  int end = start;
+  while (end < payload.length() && (isDigit(payload[end]) || payload[end] == '-')) {
+    end += 1;
+  }
+  if (end == start) {
+    return 0;
+  }
+
+  long value = payload.substring(start, end).toInt();
+  return value < 0 ? 0 : static_cast<int>(value);
+}
+
 int mqttExtractAmount(const String& payload) {
   int amountIndex = payload.indexOf("\"amount\"");
   if (amountIndex >= 0) {
@@ -150,24 +180,73 @@ void publishDispenserWeight() {
     return;
   }
 
-  String payload = "{\"food_g\":";
-  payload += String(mqttReadUnitsOrZero(loadCell1), 1);
-  payload += ",\"water_g\":";
-  payload += String(mqttReadUnitsOrZero(loadCell2), 1);
-  payload += ",\"food_count\":";
-  payload += String(mqttReadCountOrZero(loadCell1));
-  payload += ",\"water_count\":";
-  payload += String(mqttReadCountOrZero(loadCell2));
-  payload += ",\"ip\":\"";
+  // 아직 한 번도 못 읽은 채널은 키를 뺀다. 0 을 보내면 백엔드가 '통이 비었다'로 읽어서
+  // 가득 찬 통을 비었다고 표시한다 — 모르는 것과 비어있는 것은 다르다.
+  // (예전엔 is_ready() 가 false 인 순간마다 0 이 나가서 진짜 값과 0 이 번갈아 나갔다)
+  String payload = "{";
+  if (loadCell1HasValue) {
+    payload += "\"food_g\":";
+    payload += String(loadCell1Grams, 1);
+    payload += ",";
+  }
+  if (loadCell2HasValue) {
+    payload += "\"water_g\":";
+    payload += String(loadCell2Grams, 1);
+    payload += ",";
+  }
+  payload += "\"ip\":\"";
   payload += WiFi.localIP().toString();
   payload += "\"}";
   mqttClient.publish("dispenser/weight", payload.c_str(), false);
 }
 
+// 지금 사료 오거나 물 펌프가 도는 중인가. 앱의 '정지' 버튼은 이 상태로만 뜬다.
+bool dispenserBusy() {
+  return motorStopAt != 0 || waterPumpStopAt != 0;
+}
+
+// 구동이 끝났을 때 idle 을 알린다.
+//
+// feed_running / water_running 은 명령을 받을 때 발행되는데 '끝났다'는 신호가 없었다.
+// dispenser/status 는 retain 이라 상태가 feed_running 에 박힌 채 남고, 앱은 영원히
+// 배식 중으로 본다. 상태가 바뀌는 순간에만 발행해 브로커를 도배하지 않는다.
+void publishDispenserBusyChange() {
+  static bool lastBusy = false;
+  bool busy = dispenserBusy();
+  if (busy == lastBusy) {
+    return;
+  }
+  lastBusy = busy;
+  if (!busy) {
+    publishDispenserStatus("idle");
+  }
+}
+
+// 이번 배식이 실제로 몇 g 나갔는지. 저울이 잠잠해지는 시점은 이 기기만 알기 때문에
+// 여기서 재서 알린다. 백엔드가 이걸 그대로 통계에 쌓는다.
+void publishFoodDispensedIfDone() {
+  float grams = takeFoodDispensedGrams();
+  if (grams < 0.0f || !mqttClient.connected()) {
+    return;
+  }
+
+  String payload = "{\"food_g\":";
+  payload += String(grams, 1);
+  payload += ",\"ip\":\"";
+  payload += WiFi.localIP().toString();
+  payload += "\"}";
+  mqttClient.publish("dispenser/dispensed", payload.c_str(), false);
+
+  Serial.print("[food] dispensed g=");
+  Serial.println(grams, 1);
+}
+
 void handleDispenserMqttMessage(const String& topic, const String& payload) {
   int amount = mqttExtractAmount(payload);
+  int seconds = mqttExtractIntField(payload, "seconds");
 
   if (topic == "dispenser/feed") {
+    markFoodDispenseStart();  // 오거 돌리기 전 무게를 적어둔다
     dispenseFoodAmount(amount);
     publishDispenserStatus("feed_running");
   } else if (topic == "dispenser/water") {
@@ -179,9 +258,16 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
           jsonStringValue(payload, "pet_id"));
       publishDispenserStatus(scheduledWaterPending ? "water_waiting_for_cat" : "water_running");
     } else {
-      dispenseWaterAmount(amount);
+      dispenseWaterSeconds(seconds > 0 ? seconds : amount);
       publishDispenserStatus("water_running");
     }
+  } else if (topic == "dispenser/stop") {
+    // 긴급 정지: 사료 오거와 물 펌프를 동시에 즉시 끈다.
+    // 중간에 멈춰도 실제 배출량은 저울이 안정된 뒤 별도로 발행된다.
+    stopMotors();
+    stopWaterPump();
+    publishDispenserStatus("stopped");
+    Serial.println("ACK DISPENSER_STOP");
   } else if (topic == "dispenser/pump/off") {
     stopWaterPump();
     publishDispenserStatus("water_stopped");
@@ -488,6 +574,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/water");
   mqttClient.subscribe("dispenser/pump/off");
   mqttClient.subscribe("dispenser/pump/speed");
+  mqttClient.subscribe("dispenser/stop");
   mqttClient.subscribe("dispenser/tare");
   mqttClient.subscribe("dispenser/tare/food");
   mqttClient.subscribe("dispenser/tare/water");
@@ -554,9 +641,20 @@ void loopMqttControl() {
   connectMqttIfNeeded();
   serviceMqttSetupFallback();
 
+  // 오거가 사료를 쏟는 중이거나 펌프가 물을 돌리는 중엔 저울이 흔들려 값이 무의미하다.
+  // 멈추고 잠잠해질 때까지 측정을 미룬다. (serviceLoadCell() 이 이 다음에 돈다)
+  if (motorStopAt != 0 || waterPumpStopAt != 0) {
+    holdLoadCellSettle();
+  }
+
   if (mqttClient.connected()) {
     mqttClient.loop();
     publishPresenceWaterEventIfNeeded();
+
+    // 구동 시작/종료는 앱의 '정지' 버튼이 뜨고 지는 근거라 즉시 알린다.
+    publishDispenserBusyChange();
+    // 배출량은 저울이 잠잠해지는 즉시 한 번 나간다 — 주기 발행을 기다리지 않는다.
+    publishFoodDispensedIfDone();
 
     unsigned long now = millis();
     if (now - lastMqttWeightPublishMs >= MQTT_WEIGHT_INTERVAL_MS) {
