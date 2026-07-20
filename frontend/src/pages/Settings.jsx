@@ -126,7 +126,9 @@ export function Settings() {
   }, [setupUrl]);
 
   // 로봇 시리얼 번호 (기기 등록)
-  const [serial, setSerial] = useState(() => readLocal(ROBOT_SERIAL_KEY, ""));
+  const [serial, setSerial] = useState(() =>
+    ROBOT_DEVICE_CLAIM_ENABLED ? "" : readLocal(ROBOT_SERIAL_KEY, ""),
+  );
   const [serialInput, setSerialInput] = useState("");
   const [serialBusy, setSerialBusy] = useState(false);
   const [serialMessage, setSerialMessage] = useState("");
@@ -138,7 +140,20 @@ export function Settings() {
   const [memberPanelOpen, setMemberPanelOpen] = useState(false);
   const [robotActionBusy, setRobotActionBusy] = useState("");
   const [robotActionMessage, setRobotActionMessage] = useState("");
-  useEffect(() => writeLocal(ROBOT_SERIAL_KEY, serial), [serial]);
+  useEffect(() => {
+    if (!ROBOT_DEVICE_CLAIM_ENABLED) {
+      writeLocal(ROBOT_SERIAL_KEY, serial);
+      return;
+    }
+    if (serial) writeLocal(ROBOT_SERIAL_KEY, serial);
+    else {
+      try {
+        localStorage.removeItem(ROBOT_SERIAL_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [serial]);
 
   // settings 일부 필드 DB 저장 (실패해도 로컬은 유지)
   const saveSettings = (patch) => {
@@ -231,27 +246,43 @@ export function Settings() {
     setSerialMessage("");
     try {
       if (ROBOT_DEVICE_CLAIM_ENABLED) {
-        await api.claimRobotDevice(v);
+        const claimed = await api.claimRobotDevice(v);
+        setRobotRole(claimed.role || "OWNER");
         setSerialMessage("로봇 등록이 완료되었습니다.");
       } else {
         setSerialMessage("시리얼 번호가 임시 저장되었습니다. DB 반영 후 기기 인증으로 전환됩니다.");
       }
       setSerial(v);
       setSerialInput("");
-      saveSettings({ robot_serial: v }); // DB 저장
+      if (!ROBOT_DEVICE_CLAIM_ENABLED) {
+        saveSettings({ robot_serial: v });
+      }
     } catch (error) {
       setSerialMessage(error.message || "로봇 등록에 실패했습니다.");
     } finally {
       setSerialBusy(false);
     }
   };
-  const unregisterSerial = () => {
-    setSerial("");
-    setRobotRole("");
+  const unregisterSerial = async () => {
+    if (!serial) return;
+    setSerialBusy(true);
     setSerialMessage("");
-    setMemberEmail("");
-    setMemberMessage("");
-    saveSettings({ robot_serial: "" });
+    try {
+      if (ROBOT_DEVICE_CLAIM_ENABLED) {
+        await api.releaseRobotDevice(serial);
+      } else {
+        saveSettings({ robot_serial: "" });
+      }
+      setSerial("");
+      setRobotRole("");
+      setMemberEmail("");
+      setMemberMessage("");
+      setSerialMessage("시리얼 번호 연결을 해제했습니다.");
+    } catch (error) {
+      setSerialMessage(error.message || "시리얼 번호 해제에 실패했습니다.");
+    } finally {
+      setSerialBusy(false);
+    }
   };
 
   const grantMemberAccess = async () => {

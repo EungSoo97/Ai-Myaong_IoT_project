@@ -1,5 +1,6 @@
 import database.robot_devices
 from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
@@ -77,6 +78,16 @@ def claim_robot_device(
         raise HTTPException(status_code=403, detail="This robot device is disabled.")
 
     if device.owner_user_id and device.owner_user_id != user_id:
+        member = (
+            db.query(RobotDeviceMember)
+            .filter(
+                RobotDeviceMember.device_id == device.device_id,
+                RobotDeviceMember.user_id == user_id,
+            )
+            .first()
+        )
+        if member:
+            return _device_response(device, member.role)
         raise HTTPException(status_code=409, detail="This robot device is already registered.")
 
     device.owner_user_id = user_id
@@ -109,14 +120,29 @@ def list_my_robot_devices(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    rows = (
+    devices_by_id = {}
+
+    owned_devices = (
+        db.query(RobotDevice)
+        .filter(RobotDevice.owner_user_id == user_id)
+        .all()
+    )
+    for device in owned_devices:
+        devices_by_id[device.device_id] = _device_response(device, "OWNER")
+
+    member_rows = (
         db.query(RobotDevice, RobotDeviceMember.role)
         .join(RobotDeviceMember, RobotDeviceMember.device_id == RobotDevice.device_id)
         .filter(RobotDeviceMember.user_id == user_id)
         .all()
     )
+    for device, role in member_rows:
+        if device.owner_user_id == user_id:
+            role = "OWNER"
+        devices_by_id[device.device_id] = _device_response(device, role)
+
     return RobotDeviceListResponse(
-        devices=[_device_response(device, role) for device, role in rows]
+        devices=list(devices_by_id.values())
     )
 
 
@@ -139,6 +165,46 @@ def list_robot_device_members(
     )
 
 
+@router.delete("/{robot_serial}/claim")
+def release_robot_device(
+    robot_serial: str,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    device = (
+        db.query(RobotDevice)
+        .filter(RobotDevice.robot_serial == robot_serial.strip().upper())
+        .first()
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="Registered robot serial was not found.")
+
+    if device.owner_user_id == user_id:
+        device.owner_user_id = None
+        (
+            db.query(RobotDeviceMember)
+            .filter(RobotDeviceMember.device_id == device.device_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return {"released": True, "role": "OWNER"}
+
+    member = (
+        db.query(RobotDeviceMember)
+        .filter(
+            RobotDeviceMember.device_id == device.device_id,
+            RobotDeviceMember.user_id == user_id,
+        )
+        .first()
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Robot access was not found.")
+
+    db.delete(member)
+    db.commit()
+    return {"released": True, "role": member.role}
+
+
 @router.post("/members/grant", response_model=RobotDeviceMemberResponse)
 def grant_robot_device_member(
     body: RobotDeviceGrantMemberRequest,
@@ -146,7 +212,11 @@ def grant_robot_device_member(
     db: Session = Depends(get_db),
 ):
     device = _owner_device_or_403(db, user_id, body.robot_serial)
-    target_user = db.query(User).filter(User.email == body.user_email).first()
+    target_user = (
+        db.query(User)
+        .filter(func.lower(User.email) == body.user_email)
+        .first()
+    )
     if not target_user:
         raise HTTPException(status_code=404, detail="User was not found.")
     if target_user.user_id == user_id:

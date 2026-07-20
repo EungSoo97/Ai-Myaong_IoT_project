@@ -302,6 +302,10 @@ export const api = {
       body: JSON.stringify({ robot_serial: robotSerial }),
     }),
   getMyRobotDevices: () => request("/api/robot-devices/me"),
+  releaseRobotDevice: (robotSerial) =>
+    request(`/api/robot-devices/${encodeURIComponent(robotSerial)}/claim`, {
+      method: "DELETE",
+    }),
   getRobotDeviceMembers: (robotSerial) =>
     request(`/api/robot-devices/${encodeURIComponent(robotSerial)}/members`),
   grantRobotDeviceMember: ({ robotSerial, userEmail }) =>
