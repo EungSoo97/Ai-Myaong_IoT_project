@@ -52,6 +52,7 @@ const TYPE_META = {
   abnormal: { icon: AlertTriangle, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   food_low: { icon: UtensilsCrossed, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   water_low: { icon: Droplets, cls: 'bg-[#5BA4D9]/15 text-[rgb(var(--brand-water-ink))]' },
+  water_skipped: { icon: Droplets, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   feed: { icon: UtensilsCrossed, cls: 'bg-brand-primary/15 text-brand-primary' },
   // 긴급 정지 — 없으면 DEFAULT_META 의 종 아이콘이 붙어서 뭘 멈췄는지 안 보인다
   dispenser_stopped: { icon: X, cls: 'bg-brand-danger/15 text-brand-danger' },

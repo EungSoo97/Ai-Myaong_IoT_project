@@ -209,23 +209,35 @@ def _run_once(feed_service, hhmm):
                     WaterLog(
                         user_id=settings.user_id,
                         pet_id=pet_id,
-                        water_amount_ml=0,
-                        water_type="auto",
+                        water_amount_ml=amount,
+                        water_type="auto_pending",
                         created_at=minute_start,
                     )
                 )
                 db.flush()
                 if feed_service:
                     try:
-                        feed_service.water(int(round(amount)))  # amount = 초
-                    except Exception:
-                        pass
+                        result = feed_service.water(
+                            int(round(amount)),
+                            source="auto",
+                            user_id=settings.user_id,
+                            pet_id=pet_id,
+                        )
+                        print(
+                            f"[FeedScheduler] scheduled water sent "
+                            f"user={settings.user_id} pet={pet_id} "
+                            f"amount={amount} request={result.get('request_id')}",
+                            flush=True,
+                        )
+                    except Exception as error:
+                        print(f"[FeedScheduler] scheduled water send failed: {error}", flush=True)
 
         db.commit()
     except IntegrityError:
         db.rollback()
     except Exception as error:
         db.rollback()
+        print(f"[FeedScheduler] run failed at {hhmm}: {error}", flush=True)
     finally:
         db.close()
 

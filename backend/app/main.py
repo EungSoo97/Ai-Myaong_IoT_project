@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -105,6 +106,67 @@ def _handle_dispenser_dispensed_message(payload: dict) -> None:
     dispenser_logger.on_food_dispensed(payload.get("food_g"))
 
 
+def _handle_scheduled_water_event(payload: dict) -> None:
+    from database.alerts import Alert
+    from database.base import SessionLocal
+    from database.water_logs import WaterLog
+
+    if SessionLocal is None:
+        return
+
+    event = str(payload.get("event") or "")
+    if event not in {"executed", "skipped"}:
+        return
+    try:
+        user_id = int(payload.get("user_id") or 0)
+        pet_id = int(payload.get("pet_id") or 0)
+    except (TypeError, ValueError):
+        return
+    if not user_id or not pet_id:
+        return
+
+    db = SessionLocal()
+    try:
+        pending = (
+            db.query(WaterLog)
+            .filter(
+                WaterLog.user_id == user_id,
+                WaterLog.pet_id == pet_id,
+                WaterLog.water_type == "auto_pending",
+            )
+            .order_by(WaterLog.created_at.desc(), WaterLog.water_log_id.desc())
+            .first()
+        )
+        if pending:
+            pending.water_type = "auto" if event == "executed" else "skipped"
+
+        if event == "skipped":
+            amount = int(float(payload.get("amount") or 0))
+            message = json.dumps(
+                {
+                    "title": "예약 급수 시간에 고양이가 감지되지 않았어요",
+                    "desc": f"고양이가 10분 동안 감지되지 않아 예약된 급수({amount}초)를 실행하지 않았습니다.",
+                    "link": "/activity",
+                },
+                ensure_ascii=False,
+            )
+            db.add(
+                Alert(
+                    user_id=user_id,
+                    pet_id=pet_id,
+                    alert_type="water_skipped",
+                    message=message,
+                    is_confirmed="N",
+                )
+            )
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        print(f"[scheduled-water] event handling failed: {error}", flush=True)
+    finally:
+        db.close()
+
+
 def _handle_dispenser_status_message(payload: dict) -> None:
     # 디스펜서가 지금 사료/물을 내보내는 중인지. 앱의 '긴급 정지' 버튼이 이 값으로 뜬다.
     # 기기만 정확히 아는 정보라, 프론트가 배출 시간을 추측하지 않도록 여기서 받는다.
@@ -114,6 +176,7 @@ def _handle_dispenser_status_message(payload: dict) -> None:
 mqtt_client.on_topic("ai-myaong/robot/sensor", _handle_sensor_message)
 mqtt_client.on_topic("dispenser/weight", _handle_dispenser_weight_message)
 mqtt_client.on_topic("dispenser/dispensed", _handle_dispenser_dispensed_message)
+mqtt_client.on_topic("dispenser/water/event", _handle_scheduled_water_event)
 # retain 된 상태는 무시한다. dispenser/status 는 retain 이라 접속하자마자 마지막 값이
 # 배달되는데, 그게 몇 시간 전 feed_running 이면 백엔드가 '지금 배식 중'으로 착각해
 # 재시작할 때마다 정지 버튼이 유령처럼 뜬다. 구동 여부는 '지금 오는' 신호로만 판단한다.
