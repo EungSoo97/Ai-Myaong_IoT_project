@@ -160,7 +160,8 @@ export function Activity() {
     })
     const water = (feedLogs.water || []).map((x, i) => {
       const amt = Math.round(Number(x.amount_ml) || 0)
-      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: '급수', amount: amt, unit: 'ml', feedType: x.water_type, desc: `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at }
+      const skipped = x.water_type === 'skipped'
+      return { id: `w${i}-${x.created_at}`, cat: 'feed', kind: 'water', icon: Droplets, type: skipped ? '급수 미실행' : '급수', amount: amt, unit: skipped ? '초' : 'ml', feedType: x.water_type, desc: skipped ? `고양이 미감지로 ${amt}초 자동 급수 취소` : `물 ${amt}ml`, time: fmt(x.created_at), rawTime: x.created_at, warning: skipped }
     })
     return [...food, ...water]
   }, [feedLogs])

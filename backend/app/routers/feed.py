@@ -131,6 +131,10 @@ class PumpSpeedRequest(BaseModel):
     speed: int
 
 
+class PresenceConfigRequest(BaseModel):
+    enabled: bool
+
+
 def _publish_dispenser_command(request: Request, topic: str, payload: dict):
     request_id = str(uuid4())
     message = {"request_id": request_id, **payload}
@@ -231,6 +235,21 @@ def tare_food_loadcell(request: Request):
 @router.post("/tare/water", response_model=CommandResponse)
 def tare_water_loadcell(request: Request):
     return _publish_dispenser_command(request, "dispenser/tare/water", {})
+
+
+@router.post("/presence", response_model=CommandResponse)
+def configure_presence_gate(payload: PresenceConfigRequest, request: Request):
+    request_id = str(uuid4())
+    message = {"request_id": request_id, "enabled": payload.enabled}
+    mqtt_client = request.app.state.mqtt_client
+    mqtt_client.publish("dispenser/presence/config", message, retain=True)
+    return {
+        "request_id": request_id,
+        "status": "accepted",
+        "topic": "dispenser/presence/config",
+        "payload": message,
+        "simulated": mqtt_client.simulation_mode,
+    }
 
 
 @router.post("/weight/request", response_model=CommandResponse)

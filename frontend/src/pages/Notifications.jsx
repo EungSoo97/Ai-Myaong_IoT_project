@@ -52,6 +52,7 @@ const TYPE_META = {
   abnormal: { icon: AlertTriangle, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   food_low: { icon: UtensilsCrossed, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   water_low: { icon: Droplets, cls: 'bg-[#5BA4D9]/15 text-[rgb(var(--brand-water-ink))]' },
+  water_skipped: { icon: Droplets, cls: 'bg-brand-warning/20 text-[rgb(var(--brand-warning-ink))]' },
   feed: { icon: UtensilsCrossed, cls: 'bg-brand-primary/15 text-brand-primary' },
   sleep: { icon: Moon, cls: 'bg-brand-brown/10 text-brand-brown' },
   call: { icon: PhoneCall, cls: 'bg-brand-brown/10 text-brand-brown' },

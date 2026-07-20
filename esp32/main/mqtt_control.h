@@ -10,6 +10,7 @@
 #include "loadcell_control.h"
 #include "motor_control.h"
 #include "mqtt_secrets.h"
+#include "presence_control.h"
 #include "water_pump_control.h"
 
 // Leave SSID/PASSWORD empty to let ESP32 reuse credentials already saved by WiFi.begin().
@@ -170,8 +171,17 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
     dispenseFoodAmount(amount);
     publishDispenserStatus("feed_running");
   } else if (topic == "dispenser/water") {
-    dispenseWaterAmount(amount);
-    publishDispenserStatus("water_running");
+    if (jsonStringValue(payload, "source") == "auto") {
+      requestScheduledWater(
+          amount,
+          jsonStringValue(payload, "request_id"),
+          jsonStringValue(payload, "user_id"),
+          jsonStringValue(payload, "pet_id"));
+      publishDispenserStatus(scheduledWaterPending ? "water_waiting_for_cat" : "water_running");
+    } else {
+      dispenseWaterAmount(amount);
+      publishDispenserStatus("water_running");
+    }
   } else if (topic == "dispenser/pump/off") {
     stopWaterPump();
     publishDispenserStatus("water_stopped");
@@ -195,6 +205,11 @@ void handleDispenserMqttMessage(const String& topic, const String& payload) {
   } else if (topic == "dispenser/wifi/setup") {
     startWifiSetupPortal();
     publishDispenserStatus("wifi_setup");
+  } else if (topic == "dispenser/presence/config") {
+    bool enabled = payload.indexOf("\"enabled\":true") >= 0 ||
+                   payload.indexOf("\"enabled\": true") >= 0;
+    setPresenceGateEnabled(enabled);
+    publishDispenserStatus(presenceGateEnabled ? "presence_gate_enabled" : "presence_gate_disabled");
   }
 }
 
@@ -478,6 +493,7 @@ void connectMqttIfNeeded() {
   mqttClient.subscribe("dispenser/tare/water");
   mqttClient.subscribe("dispenser/weight/request");
   mqttClient.subscribe("dispenser/wifi/setup");
+  mqttClient.subscribe("dispenser/presence/config");
   publishDispenserStatus("online");
   publishDispenserWeight();
   Serial.println("[mqtt] connected and subscribed");
@@ -515,6 +531,23 @@ void setupMqttControl() {
   connectWifiIfNeeded();
 }
 
+void publishPresenceWaterEventIfNeeded() {
+  if (!mqttClient.connected() || presenceWaterEvent.length() == 0) return;
+
+  String payload = "{\"event\":\"" + mqttJsonEscape(presenceWaterEvent) + "\"";
+  payload += ",\"amount\":" + String(presenceWaterEventAmount);
+  payload += ",\"request_id\":\"" + mqttJsonEscape(presenceWaterEventRequestId) + "\"";
+  payload += ",\"user_id\":\"" + mqttJsonEscape(presenceWaterEventUserId) + "\"";
+  payload += ",\"pet_id\":\"" + mqttJsonEscape(presenceWaterEventPetId) + "\"}";
+  if (mqttClient.publish("dispenser/water/event", payload.c_str(), false)) {
+    presenceWaterEvent = "";
+    presenceWaterEventAmount = 0;
+    presenceWaterEventRequestId = "";
+    presenceWaterEventUserId = "";
+    presenceWaterEventPetId = "";
+  }
+}
+
 void loopMqttControl() {
   serviceWifiSetupPortal();
   connectWifiIfNeeded();
@@ -523,6 +556,7 @@ void loopMqttControl() {
 
   if (mqttClient.connected()) {
     mqttClient.loop();
+    publishPresenceWaterEventIfNeeded();
 
     unsigned long now = millis();
     if (now - lastMqttWeightPublishMs >= MQTT_WEIGHT_INTERVAL_MS) {
