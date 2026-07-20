@@ -166,6 +166,11 @@ export const api = {
     request("/api/dispenser/tare/water", {
       method: "POST",
     }),
+  setDispenserPresenceGate: (enabled) =>
+    request("/api/dispenser/presence", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
   requestDispenserWeight: () =>
     request("/api/dispenser/weight/request", {
       method: "POST",

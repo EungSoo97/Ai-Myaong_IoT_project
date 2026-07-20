@@ -23,9 +23,11 @@ import {
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useTheme } from "../theme/ThemeProvider";
 import { api } from "../api/api";
+import { requestPushPermission } from "../lib/notificationRepository";
 
 const ESP32_SETUP_URL_KEY = "aimyaong:esp32SetupUrl";
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
+const PRESENCE_GATE_KEY = "aimyaong:presenceGateEnabled";
 const ROBOT_DEVICE_CLAIM_ENABLED =
   import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
 const DEFAULT_ESP32_SETUP_URL =
@@ -108,6 +110,10 @@ export function Settings() {
   const [showAppInfo, setShowAppInfo] = useState(false); // 앱 정보(빌드 현황) 시트
   const [tareBusy, setTareBusy] = useState("");
   const [tareMessage, setTareMessage] = useState("");
+  const [presenceGateEnabled, setPresenceGateEnabled] = useState(
+    () => readLocal(PRESENCE_GATE_KEY, "false") === "true",
+  );
+  const [presenceBusy, setPresenceBusy] = useState(false);
 
   useEffect(() => writeLocal(ESP32_SETUP_URL_KEY, setupUrl), [setupUrl]);
 
@@ -168,6 +174,12 @@ export function Settings() {
     } catch {
       setMotionAlert(previous);
     }
+  };
+
+  const updatePushEnabled = async (value) => {
+    if (value) await requestPushPermission();
+    setPushOn(value);
+    saveSettings({ push_enabled: value ? "Y" : "N" });
   };
 
   // 알림 제어 상태를 localStorage 에 미러 → notificationRepository 가 발송 전 확인 (꺼진 알림 차단)
@@ -504,6 +516,20 @@ export function Settings() {
     }
   }
 
+  async function updatePresenceGate(enabled) {
+    const previous = presenceGateEnabled;
+    setPresenceGateEnabled(enabled);
+    setPresenceBusy(true);
+    try {
+      await api.setDispenserPresenceGate(enabled);
+      writeLocal(PRESENCE_GATE_KEY, String(enabled));
+    } catch {
+      setPresenceGateEnabled(previous);
+    } finally {
+      setPresenceBusy(false);
+    }
+  }
+
   // 네트워크 행 탭 → 연결 시트 열기
   const openWifiSheet = (network) => {
     setSelectedSsid(network.ssid);
@@ -720,6 +746,34 @@ export function Settings() {
 
       <section className="mt-6">
         <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
+          자동 급수 고양이 감지
+        </h3>
+        <FeltCard innerClassName="p-4">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-brand-cream text-brand-brown flex items-center justify-center shrink-0">
+              <Wifi className="w-5 h-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-brand-brown">감지 후 자동 급수</p>
+              <p className="mt-1 text-xs font-semibold text-brand-mute">
+                자동 스케줄 시간이 되면 고양이를 감지할 때까지 기다립니다. 수동 급수는 바로 실행됩니다.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={presenceGateEnabled}
+              onChange={updatePresenceGate}
+              label="자동 급수 고양이 감지"
+              disabled={presenceBusy}
+            />
+          </div>
+          <p className="mt-3 rounded-2xl bg-brand-cream px-3 py-2.5 text-xs font-semibold text-brand-brown">
+            감지 대기는 최대 10분이며, 감지되지 않으면 해당 급수는 취소됩니다.
+          </p>
+        </FeltCard>
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-display text-base font-bold text-brand-brown px-1 mb-2">
           디스펜서 무게 영점
         </h3>
         <FeltCard innerClassName="p-4">
@@ -783,7 +837,7 @@ export function Settings() {
             right={
               <ToggleSwitch
                 checked={pushOn}
-                onChange={(v) => { setPushOn(v); saveSettings({ push_enabled: v ? "Y" : "N" }); }}
+                onChange={updatePushEnabled}
                 label="푸시 알림"
               />
             }
