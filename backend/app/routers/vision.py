@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.robot_access import require_robot_device_access
 from app.core.security import decode_access_token
 import database.clips  # noqa: F401
 import database.daily_activity_summaries  # noqa: F401
@@ -365,7 +366,11 @@ def latest_detections(request: Request):
 
 
 @router.post("/capture")
-def request_capture(authorization: str = Header(None), db: Session = Depends(get_db)):
+def request_capture(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+    _user_id: int = Depends(require_robot_device_access),
+):
     user = _current_user(authorization, db)
     _remember_active_user(user, db)
     _control_state["capture_request_id"] += 1
@@ -377,7 +382,12 @@ def request_capture(authorization: str = Header(None), db: Session = Depends(get
 
 
 @router.post("/recording")
-def set_recording(payload: VisionRecordingRequest, authorization: str = Header(None), db: Session = Depends(get_db)):
+def set_recording(
+    payload: VisionRecordingRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+    _user_id: int = Depends(require_robot_device_access),
+):
     user = _current_user(authorization, db)
     _remember_active_user(user, db)
     _control_state["recording"] = payload.on
@@ -390,6 +400,7 @@ def set_emergency_detection(
     payload: VisionEmergencyRequest,
     authorization: str = Header(None),
     db: Session = Depends(get_db),
+    _user_id: int = Depends(require_robot_device_access),
 ):
     user = _current_user(authorization, db)
     settings = db.query(Settings).filter(Settings.user_id == user.user_id).first()
@@ -645,7 +656,7 @@ def get_media(path: str = Query(...)):
 
 
 @router.post("/reveal")
-def reveal_media(payload: VisionRevealRequest):
+def reveal_media(payload: VisionRevealRequest, _user_id: int = Depends(require_robot_device_access)):
     resolved = _resolve_media_path(payload.path)
 
     if os.name == "nt":

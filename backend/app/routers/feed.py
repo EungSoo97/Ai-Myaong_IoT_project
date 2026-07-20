@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.robot_access import require_robot_device_access
 from app.core.security import decode_access_token
 from app.models.command import CommandResponse, FeedRequest, WaterRequest
 from database.base import get_db
@@ -44,13 +45,23 @@ def _claim_dispenser_owner(request: Request, authorization: Optional[str]) -> No
 
 
 @router.post("/feed", response_model=CommandResponse)
-def feed(payload: FeedRequest, request: Request, authorization: str = Header(None)):
+def feed(
+    payload: FeedRequest,
+    request: Request,
+    authorization: str = Header(None),
+    _user_id: int = Depends(require_robot_device_access),
+):
     _claim_dispenser_owner(request, authorization)
     return request.app.state.feed_service.feed(payload.amount)
 
 
 @router.post("/water", response_model=CommandResponse)
-def water(payload: WaterRequest, request: Request, authorization: str = Header(None)):
+def water(
+    payload: WaterRequest,
+    request: Request,
+    authorization: str = Header(None),
+    _user_id: int = Depends(require_robot_device_access),
+):
     _claim_dispenser_owner(request, authorization)
     return request.app.state.feed_service.water(payload.seconds)
 
@@ -208,7 +219,7 @@ def create_water_log(body: WaterLogCreate, authorization: str = Header(None), db
 
 
 @router.post("/stop", response_model=CommandResponse)
-def stop_dispenser(request: Request):
+def stop_dispenser(request: Request, _user_id: int = Depends(require_robot_device_access)):
     """긴급 정지 — 사료 오거와 물 펌프를 즉시 끈다.
 
     인증을 걸지 않는다. 사료가 쏟아지는 중에 토큰이 만료됐다는 이유로 못 멈추면 안 된다.
@@ -219,33 +230,37 @@ def stop_dispenser(request: Request):
 
 
 @router.post("/pump/off", response_model=CommandResponse)
-def pump_off(request: Request):
+def pump_off(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/pump/off", {})
 
 
 @router.post("/pump/speed", response_model=CommandResponse)
-def pump_speed(payload: PumpSpeedRequest, request: Request):
+def pump_speed(
+    payload: PumpSpeedRequest,
+    request: Request,
+    _user_id: int = Depends(require_robot_device_access),
+):
     speed = max(0, min(255, int(payload.speed)))
     return _publish_dispenser_command(request, "dispenser/pump/speed", {"amount": speed, "speed": speed})
 
 
 @router.post("/tare", response_model=CommandResponse)
-def tare_loadcells(request: Request):
+def tare_loadcells(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/tare", {})
 
 
 @router.post("/tare/food", response_model=CommandResponse)
-def tare_food_loadcell(request: Request):
+def tare_food_loadcell(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/tare/food", {})
 
 
 @router.post("/tare/water", response_model=CommandResponse)
-def tare_water_loadcell(request: Request):
+def tare_water_loadcell(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/tare/water", {})
 
 
 @router.post("/weight/request", response_model=CommandResponse)
-def request_weight(request: Request):
+def request_weight(request: Request, _user_id: int = Depends(require_robot_device_access)):
     return _publish_dispenser_command(request, "dispenser/weight/request", {})
 
 

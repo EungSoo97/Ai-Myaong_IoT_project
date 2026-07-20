@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.device_hmac import verify_signed_message
+from app.core.robot_access import require_robot_device_access
 from app.models.command import (
     AwayModeRequest,
     CameraRequest,
@@ -27,7 +28,7 @@ _last_rear_obstacle_alert_at = 0.0
 
 
 @router.post("/move", response_model=CommandResponse)
-def move_robot(payload: MoveRequest, request: Request):
+def move_robot(payload: MoveRequest, request: Request, _user_id: int = Depends(require_robot_device_access)):
     # 후방 충돌 방지: 후방 장애물이 '실시간으로' 감지된 상태면 후진(BACKWARD)을 하드 차단한다.
     # (프론트 버튼 잠금이 우회되거나 다른 클라이언트로 명령이 와도 로봇이 후진하지 않도록)
     if payload.command == "BACKWARD":
@@ -48,7 +49,7 @@ def move_robot(payload: MoveRequest, request: Request):
 
 
 @router.post("/camera", response_model=CommandResponse)
-def move_camera(payload: CameraRequest, request: Request):
+def move_camera(payload: CameraRequest, request: Request, _user_id: int = Depends(require_robot_device_access)):
     try:
         return request.app.state.robot_service.camera(payload.direction)
     except LocalSerialError as error:
@@ -56,7 +57,7 @@ def move_camera(payload: CameraRequest, request: Request):
 
 
 @router.post("/away-mode", response_model=CommandResponse)
-def set_away_mode(payload: AwayModeRequest, request: Request):
+def set_away_mode(payload: AwayModeRequest, request: Request, _user_id: int = Depends(require_robot_device_access)):
     try:
         return request.app.state.robot_service.away_mode(payload.on)
     except LocalSerialError as error:
@@ -64,7 +65,7 @@ def set_away_mode(payload: AwayModeRequest, request: Request):
 
 
 @router.post("/capture", response_model=CommandResponse)
-def capture_snapshot(request: Request):
+def capture_snapshot(request: Request, _user_id: int = Depends(require_robot_device_access)):
     try:
         return request.app.state.robot_service.capture()
     except LocalSerialError as error:
@@ -72,7 +73,7 @@ def capture_snapshot(request: Request):
 
 
 @router.post("/reboot", response_model=CommandResponse)
-def reboot_robot(request: Request):
+def reboot_robot(request: Request, _user_id: int = Depends(require_robot_device_access)):
     try:
         return request.app.state.robot_service.reboot()
     except LocalSerialError as error:
@@ -80,7 +81,7 @@ def reboot_robot(request: Request):
 
 
 @router.post("/power", response_model=CommandResponse)
-def power_robot(payload: PowerRequest, request: Request):
+def power_robot(payload: PowerRequest, request: Request, _user_id: int = Depends(require_robot_device_access)):
     try:
         return request.app.state.robot_service.power(payload.on)
     except LocalSerialError as error:
