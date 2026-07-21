@@ -142,6 +142,9 @@ const CAMERA_HOLD_REPEAT_MS = 180;
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
 const ROBOT_DEVICE_CLAIM_ENABLED =
   import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
+const DETECTION_TTL_SECONDS = Number(
+  import.meta.env.VITE_VISION_DETECTION_TTL_SECONDS || 2.5,
+);
 
 const CAMERA_COMMANDS = {
   up: "CAM_UP",
@@ -1651,7 +1654,7 @@ function DetectionOverlay({ detections, className = "" }) {
   const frameWidth = detections?.frame_width || 0;
   const frameHeight = detections?.frame_height || 0;
   const updatedAt = detections?.updated_at || 0;
-  const isFresh = updatedAt && Date.now() / 1000 - updatedAt < 2;
+  const isFresh = updatedAt && Date.now() / 1000 - updatedAt < DETECTION_TTL_SECONDS;
 
   if (!isFresh || !frameWidth || !frameHeight || boxes.length === 0) {
     return <div className={`${className} pointer-events-none`} />;
