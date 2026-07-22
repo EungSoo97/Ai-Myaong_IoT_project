@@ -4,9 +4,11 @@
 
 constexpr uint8_t REAR_ULTRASONIC_TRIG_PIN = 11;
 constexpr uint8_t REAR_ULTRASONIC_ECHO_PIN = 12;
-constexpr unsigned long REAR_ULTRASONIC_SAMPLE_MS = 250;
-constexpr unsigned long REAR_ULTRASONIC_REPORT_MS = 1000;
-constexpr unsigned long REAR_OBSTACLE_REPORT_MS = 500;
+// HC-SR04는 에코가 겹치지 않도록 최소 약 60ms 간격이 필요하다.
+// 100ms마다 측정하고 200ms마다 전송해 UI와 후진 차단의 반응 지연을 줄인다.
+constexpr unsigned long REAR_ULTRASONIC_SAMPLE_MS = 100;
+constexpr unsigned long REAR_ULTRASONIC_REPORT_MS = 200;
+constexpr unsigned long REAR_OBSTACLE_REPORT_MS = 100;
 constexpr unsigned long REAR_ULTRASONIC_TIMEOUT_US = 25000;
 constexpr int REAR_OBSTACLE_ALERT_CM = 15;
 constexpr int REAR_OBSTACLE_CLEAR_CM = 20;
