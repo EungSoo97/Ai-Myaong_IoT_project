@@ -72,6 +72,8 @@ class DeviceSimulator:
             self.camera["pan"] = min(180, self.camera["pan"] + step)
         elif direction == "CAM_CENTER":
             self.camera = {"pan": 90, "tilt": 90}
+        elif direction == "CAM_STOP":
+            pass
         self._drain_battery()
         return self.status()
 
