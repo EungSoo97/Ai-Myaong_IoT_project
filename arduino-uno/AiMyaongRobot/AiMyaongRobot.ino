@@ -14,6 +14,7 @@ void setup() {
 
 void loop() {
   processIncomingCommands();
+  serviceServos();
   serviceMotorSafety();
   serviceRearUltrasonicSensor();
 }

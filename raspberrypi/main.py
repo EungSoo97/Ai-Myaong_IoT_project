@@ -46,6 +46,7 @@ ROBOT_COMMANDS = {
     "CAM_LEFT",
     "CAM_RIGHT",
     "CAM_CENTER",
+    "CAM_STOP",
     "REBOOT",
     "POWER_ON",
     "POWER_OFF",
@@ -77,6 +78,8 @@ PANTILT_COMMAND_ALIASES = {
     "CAM_RIGHT": "CAM_RIGHT",
     "CENTER": "CAM_CENTER",
     "CAM_CENTER": "CAM_CENTER",
+    "STOP": "CAM_STOP",
+    "CAM_STOP": "CAM_STOP",
 }
 
 

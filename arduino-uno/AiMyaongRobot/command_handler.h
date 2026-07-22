@@ -48,6 +48,8 @@ inline bool handleCommand(const String& command) {
     cameraRight();
   } else if (command == "CAM_CENTER") {
     cameraCenter();
+  } else if (command == "CAM_STOP") {
+    cameraStop();
   } else {
     return false;
   }

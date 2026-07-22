@@ -55,3 +55,4 @@ Supported commands in the scaffold:
 - `CAM_LEFT`
 - `CAM_RIGHT`
 - `CAM_CENTER`
+- `CAM_STOP`

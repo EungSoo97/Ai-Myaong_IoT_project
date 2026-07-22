@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 MoveCommand = Literal["FORWARD", "BACKWARD", "LEFT", "RIGHT", "STOP"]
-CameraCommand = Literal["CAM_UP", "CAM_DOWN", "CAM_LEFT", "CAM_RIGHT", "CAM_CENTER"]
+CameraCommand = Literal["CAM_UP", "CAM_DOWN", "CAM_LEFT", "CAM_RIGHT", "CAM_CENTER", "CAM_STOP"]
 
 
 class MoveRequest(BaseModel):
