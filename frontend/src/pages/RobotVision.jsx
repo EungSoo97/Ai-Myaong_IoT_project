@@ -138,7 +138,9 @@ const MOVE_COMMANDS = {
 };
 
 const MOVE_HOLD_REPEAT_MS = 300;
-const CAMERA_HOLD_REPEAT_MS = 180;
+// Keep target updates ahead of the Arduino's smooth 15 ms servo loop so a
+// held direction moves continuously instead of as isolated angle jumps.
+const CAMERA_HOLD_REPEAT_MS = 90;
 const ROBOT_SERIAL_KEY = "aimyaong:robotSerial";
 const ROBOT_DEVICE_CLAIM_ENABLED =
   import.meta.env.VITE_ROBOT_DEVICE_CLAIM_ENABLED === "true";
@@ -188,6 +190,8 @@ export function RobotVision() {
   const [camStatus, setCamStatus] = useState("connecting"); // connecting | live | off
   const controlBusyRef = useRef(false);
   const pendingCommandCountRef = useRef(0);
+  const cameraRequestInFlightRef = useRef(false);
+  const pendingCameraCommandRef = useRef(null);
   const captureNoticeTimerRef = useRef(null);
   const captureFlashTimerRef = useRef(null);
   // 뷰포트가 portrait 인데 전체화면이면 CSS 로 강제 가로 회전.
@@ -484,7 +488,42 @@ export function RobotVision() {
 
   const onPan = (dir) => {
     if (blockRobotAction()) return;
-    sendCommand("camera", CAMERA_COMMANDS[dir]);
+    queueCameraCommand(CAMERA_COMMANDS[dir]);
+  };
+
+  const queueCameraCommand = (command) => {
+    if (!command || !hasRobotSerial) return;
+
+    // Keep at most one camera request waiting. This prevents delayed HTTP/MQTT
+    // bursts from replaying old directions after the user releases the button.
+    if (cameraRequestInFlightRef.current) {
+      pendingCameraCommandRef.current = command;
+      return;
+    }
+
+    cameraRequestInFlightRef.current = true;
+    api
+      .moveCamera(command)
+      .catch((error) => {
+        console.error("[RobotVision] camera command failed:", error);
+      })
+      .finally(() => {
+        cameraRequestInFlightRef.current = false;
+        const pending = pendingCameraCommandRef.current;
+        pendingCameraCommandRef.current = null;
+        if (pending) queueCameraCommand(pending);
+      });
+  };
+
+  const onPanStop = () => {
+    if (!hasRobotSerial) return;
+    // Overwrite any queued direction with an explicit hold-position command.
+    pendingCameraCommandRef.current = "CAM_STOP";
+    if (!cameraRequestInFlightRef.current) {
+      const command = pendingCameraCommandRef.current;
+      pendingCameraCommandRef.current = null;
+      queueCameraCommand(command);
+    }
   };
 
   const toggleAwayMode = async () => {
@@ -756,6 +795,7 @@ export function RobotVision() {
               <DPad
                 label="카메라"
                 onPress={onPan}
+                onRelease={onPanStop}
                 centerAction="center"
                 muted
                 tone="light"
@@ -1112,6 +1152,7 @@ function FullscreenView({
         className="absolute bottom-6 right-6 z-50"
         label="카메라"
         onPress={onPan}
+        onRelease={onPanStop}
         centerAction="center"
         muted
         holdToPress

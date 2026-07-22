@@ -16,11 +16,17 @@ constexpr int TILT_MAX_ANGLE = 140;
 
 constexpr int PAN_CENTER_ANGLE = 90;
 constexpr int TILT_CENTER_ANGLE = 90;
-constexpr int SERVO_STEP = 2;
-constexpr unsigned long SERVO_SMOOTH_DELAY_MS = 12;
+// A held camera button updates the target in small chunks.  The actual servos
+// are advanced independently from the serial command handler so new commands
+// can be accepted while they are moving.
+constexpr int SERVO_COMMAND_STEP = 4;
+constexpr unsigned long SERVO_UPDATE_INTERVAL_MS = 15;
 
 int currentPanAngle = PAN_CENTER_ANGLE;
 int currentTiltAngle = TILT_CENTER_ANGLE;
+int targetPanAngle = PAN_CENTER_ANGLE;
+int targetTiltAngle = TILT_CENTER_ANGLE;
+unsigned long lastServoUpdateMs = 0;
 
 inline int clampAngle(int angle, int minAngle, int maxAngle) {
   if (angle < minAngle) {
@@ -34,22 +40,21 @@ inline int clampAngle(int angle, int minAngle, int maxAngle) {
   return angle;
 }
 
-inline void moveServoSmoothly(Servo& servo, int& currentAngle, int targetAngle, int minAngle, int maxAngle) {
-  const int clampedTarget = clampAngle(targetAngle, minAngle, maxAngle);
-
-  while (currentAngle != clampedTarget) {
-    currentAngle += (currentAngle < clampedTarget) ? 1 : -1;
-    servo.write(currentAngle);
-    delay(SERVO_SMOOTH_DELAY_MS);
-  }
-}
-
 inline void writePanAngle(int angle) {
-  moveServoSmoothly(panServo, currentPanAngle, angle, PAN_MIN_ANGLE, PAN_MAX_ANGLE);
+  targetPanAngle = clampAngle(angle, PAN_MIN_ANGLE, PAN_MAX_ANGLE);
 }
 
 inline void writeTiltAngle(int angle) {
-  moveServoSmoothly(tiltServo, currentTiltAngle, angle, TILT_MIN_ANGLE, TILT_MAX_ANGLE);
+  targetTiltAngle = clampAngle(angle, TILT_MIN_ANGLE, TILT_MAX_ANGLE);
+}
+
+inline void advanceServo(Servo& servo, int& currentAngle, int targetAngle) {
+  if (currentAngle == targetAngle) {
+    return;
+  }
+
+  currentAngle += (currentAngle < targetAngle) ? 1 : -1;
+  servo.write(currentAngle);
 }
 }  // namespace
 
@@ -58,30 +63,51 @@ inline void cameraDown();
 inline void cameraLeft();
 inline void cameraRight();
 inline void cameraCenter();
+inline void cameraStop();
+inline void serviceServos();
 
 inline void setupServos() {
   panServo.attach(PAN_SERVO_PIN);
   tiltServo.attach(TILT_SERVO_PIN);
-  cameraCenter();
+  panServo.write(currentPanAngle);
+  tiltServo.write(currentTiltAngle);
+  lastServoUpdateMs = millis();
 }
 
 inline void cameraUp() {
-  writeTiltAngle(currentTiltAngle - SERVO_STEP);
+  writeTiltAngle(targetTiltAngle - SERVO_COMMAND_STEP);
 }
 
 inline void cameraDown() {
-  writeTiltAngle(currentTiltAngle + SERVO_STEP);
+  writeTiltAngle(targetTiltAngle + SERVO_COMMAND_STEP);
 }
 
 inline void cameraLeft() {
-  writePanAngle(currentPanAngle + SERVO_STEP);
+  writePanAngle(targetPanAngle + SERVO_COMMAND_STEP);
 }
 
 inline void cameraRight() {
-  writePanAngle(currentPanAngle - SERVO_STEP);
+  writePanAngle(targetPanAngle - SERVO_COMMAND_STEP);
 }
 
 inline void cameraCenter() {
   writePanAngle(PAN_CENTER_ANGLE);
   writeTiltAngle(TILT_CENTER_ANGLE);
+}
+
+inline void cameraStop() {
+  // Discard any target accumulated while a direction button was held.
+  targetPanAngle = currentPanAngle;
+  targetTiltAngle = currentTiltAngle;
+}
+
+inline void serviceServos() {
+  const unsigned long now = millis();
+  if (now - lastServoUpdateMs < SERVO_UPDATE_INTERVAL_MS) {
+    return;
+  }
+
+  lastServoUpdateMs = now;
+  advanceServo(panServo, currentPanAngle, targetPanAngle);
+  advanceServo(tiltServo, currentTiltAngle, targetTiltAngle);
 }
