@@ -656,6 +656,7 @@ export function RobotVision() {
                 onMove={onMove}
                 onMoveStop={onMoveStop}
                 onPan={onPan}
+                onPanStop={onPanStop}
                 recording={recording}
                 awayMode={awayMode}
                 captureNotice={captureNotice}
@@ -1053,6 +1054,7 @@ function FullscreenView({
   onMove,
   onMoveStop,
   onPan,
+  onPanStop,
   recording,
   awayMode,
   captureNotice,

@@ -150,10 +150,15 @@ def _publish_dispenser_command(request: Request, topic: str, payload: dict):
     request_id = str(uuid4())
     message = {"request_id": request_id, **payload}
     mqtt_client = request.app.state.mqtt_client
-    mqtt_client.publish(topic, message)
+    published = mqtt_client.publish(topic, message)
+    if not published:
+        raise HTTPException(
+            status_code=503,
+            detail="디스펜서와 MQTT 연결이 끊겨 명령을 전송하지 못했습니다.",
+        )
     return {
         "request_id": request_id,
-        "status": "accepted",
+        "status": "published",
         "topic": topic,
         "payload": message,
         "simulated": mqtt_client.simulation_mode,

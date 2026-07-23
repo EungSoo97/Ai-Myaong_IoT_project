@@ -35,7 +35,7 @@ class DeviceSimulator:
         # 실측 무게 그대로라 이 값과 무관하다.
         # 물통 자체는 300ml 보다 크지만 운용상 그 이상 채우지 않아 300 을 기준으로 잡는다.
         self._food_capacity_g = max(1.0, float(os.getenv("DISPENSER_FOOD_CAPACITY_G", "300")))
-        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "300")))
+        self._water_capacity_ml = max(1.0, float(os.getenv("DISPENSER_WATER_CAPACITY_ML", "500")))
         self._weight_stale_sec = float(os.getenv("DISPENSER_WEIGHT_STALE_SEC", "10"))
         # 디스펜서 구동 상태 — ESP32 가 dispenser/status 로 알려준다. 앱의 '정지' 버튼은
         # 이 값으로만 뜬다. 프론트가 시간을 추측하지 않도록(펌웨어 상수 복제) 기기가 직접 알린다.
